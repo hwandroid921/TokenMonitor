@@ -1,0 +1,75 @@
+{
+  "name": "token-monitor",
+  "version": "0.1.0",
+  "description": "Desktop dashboard for monitoring LLM token usage and spend.",
+  "main": "dist-electron/main.js",
+  "type": "module",
+  "scripts": {
+    "dev": "concurrently -k \"vite --host 127.0.0.1\" \"wait-on http://127.0.0.1:5173 && electron .\"",
+    "build": "tsc && vite build && tsc -p electron/tsconfig.json",
+    "dist:win": "npm run build && electron-builder --win nsis portable",
+    "preview": "vite preview --host 127.0.0.1",
+    "typecheck": "tsc --noEmit"
+  },
+  "build": {
+    "appId": "com.tokenmonitor.app",
+    "productName": "Token Monitor",
+    "directories": {
+      "output": "dist-app"
+    },
+    "files": [
+      "dist/**/*",
+      "dist-electron/**/*",
+      "build/**/*",
+      "electron/preload.cjs",
+      "package.json"
+    ],
+    "win": {
+      "icon": "build/icon.ico",
+      "executableName": "TokenMonitor",
+      "artifactName": "TokenMonitor-${version}-${arch}.${ext}",
+      "target": [
+        "nsis",
+        "portable"
+      ]
+    },
+    "nsis": {
+      "oneClick": false,
+      "perMachine": false,
+      "allowToChangeInstallationDirectory": true
+    }
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/hwandroid921/TokenMonitor.git"
+  },
+  "keywords": [
+    "llm",
+    "token",
+    "monitoring",
+    "electron"
+  ],
+  "author": "",
+  "license": "MIT",
+  "bugs": {
+    "url": "https://github.com/hwandroid921/TokenMonitor/issues"
+  },
+  "homepage": "https://github.com/hwandroid921/TokenMonitor#readme",
+  "dependencies": {
+    "lucide-react": "^0.554.0",
+    "react": "^19.2.0",
+    "react-dom": "^19.2.0"
+  },
+  "devDependencies": {
+    "@types/node": "^25.9.1",
+    "@types/react": "^19.2.15",
+    "@types/react-dom": "^19.2.3",
+    "@vitejs/plugin-react": "^5.1.1",
+    "concurrently": "^9.2.1",
+    "electron": "^39.2.4",
+    "electron-builder": "^26.8.1",
+    "typescript": "^5.9.3",
+    "vite": "^7.2.4",
+    "wait-on": "^9.0.3"
+  }
+}
