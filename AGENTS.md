@@ -52,6 +52,65 @@ Stop stale processes by process id:
 Get-Process -Id <PID> -ErrorAction SilentlyContinue | Stop-Process -Force
 ```
 
+## Git Workflow
+
+Before starting implementation work, create or switch to the correct feature branch.
+
+Branch flow:
+
+```text
+main -> dev -> feature/<feature-name>
+```
+
+Rules:
+
+- Keep `main` as the stable base branch.
+- Create `dev` from `main` when a development branch is needed.
+- Create each implementation branch from `dev`.
+- Use `feature/<short-feature-name>` for feature branch names.
+- Keep feature branch names lowercase and descriptive.
+- Do not commit directly to `main` for implementation work unless the user explicitly asks.
+
+Commit message format:
+
+```text
+[YYYY-MM-DD] implemented feature summary
+```
+
+Korean commit messages are allowed. Example:
+
+```text
+[2026-05-25] 사용량 모니터링 및 오버레이 개선
+```
+
+After committing, push the feature branch when the user asks for push/PR work:
+
+```powershell
+git push -u origin feature/<feature-name>
+```
+
+After pushing, prepare a concise PR description for the user.
+
+PR description format:
+
+```markdown
+## Summary
+
+- Briefly describe the implemented feature or change.
+
+## Verification
+
+- npm run typecheck
+- npm run build
+- portable exe packaging, if performed
+
+## Notes
+
+- Mention important limitations, version changes, or packaging output.
+```
+
+Tell the user the branch name, commit hash, push result, and PR description draft after finishing the Git workflow.
+
 ## Verification
 
 Run these before finalizing code changes:
