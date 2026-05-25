@@ -1,4 +1,4 @@
-import { app, BrowserWindow, Menu, Tray, dialog, ipcMain, screen, shell } from "electron";
+import { app, BrowserWindow, Menu, Tray, ipcMain, screen, shell } from "electron";
 import { spawn } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
@@ -6,6 +6,7 @@ import { fileURLToPath } from "node:url";
 import { getClaudeUsage } from "./claude-usage.js";
 import { getCliSessionStatus } from "./cli-session.js";
 import { getCodexUsage } from "./codex-usage.js";
+import { getGeminiUsage } from "./gemini-usage.js";
 import { defaultOverlaySettings, normalizeOverlaySettings, type OverlaySettings } from "./overlay-settings.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -22,6 +23,9 @@ let usageCacheTime = 0;
 let claudeUsagePromise: ReturnType<typeof getClaudeUsage> | null = null;
 let claudeUsageCache: Awaited<ReturnType<typeof getClaudeUsage>> | null = null;
 let claudeUsageCacheTime = 0;
+let geminiUsagePromise: ReturnType<typeof getGeminiUsage> | null = null;
+let geminiUsageCache: Awaited<ReturnType<typeof getGeminiUsage>> | null = null;
+let geminiUsageCacheTime = 0;
 let cliSessionPromise: ReturnType<typeof getCliSessionStatus> | null = null;
 let cliSessionCache: Awaited<ReturnType<typeof getCliSessionStatus>> | null = null;
 let cliSessionCacheTime = 0;
@@ -75,24 +79,6 @@ function quitApp() {
   tray?.destroy();
   tray = null;
   app.exit(0);
-}
-
-function confirmExitWithoutTray() {
-  if (!mainWindow || mainWindow.isDestroyed()) {
-    return true;
-  }
-
-  const choice = dialog.showMessageBoxSync(mainWindow, {
-    type: "warning",
-    buttons: ["종료", "취소"],
-    defaultId: 1,
-    cancelId: 1,
-    title: "프로그램 종료",
-    message: "시스템 트레이 최소화가 꺼져 있습니다.",
-    detail: "지금 종료하면 Token Monitor와 오버레이가 모두 종료됩니다."
-  });
-
-  return choice === 0;
 }
 
 function closeOverlayWindow() {
@@ -182,9 +168,8 @@ function createWindow() {
 
     if (!overlaySettings.closeToTray) {
       event.preventDefault();
-      if (confirmExitWithoutTray()) {
-        quitApp();
-      }
+      showMainWindow();
+      window.webContents.send("app-exit:confirm-requested");
       return;
     }
 
@@ -203,8 +188,8 @@ function createOverlayWindow() {
   }
 
   overlayWindow = new BrowserWindow({
-    width: 430,
-    height: 390,
+    width: 420,
+    height: 310,
     frame: false,
     transparent: true,
     resizable: false,
@@ -320,6 +305,27 @@ function readClaudeUsageShared() {
   return claudeUsagePromise;
 }
 
+function readGeminiUsageShared() {
+  const now = Date.now();
+  if (geminiUsageCache && now - geminiUsageCacheTime < 15_000) {
+    return Promise.resolve(geminiUsageCache);
+  }
+
+  if (!geminiUsagePromise) {
+    geminiUsagePromise = getGeminiUsage()
+      .then((result) => {
+        geminiUsageCache = result;
+        geminiUsageCacheTime = Date.now();
+        return result;
+      })
+      .finally(() => {
+        geminiUsagePromise = null;
+      });
+  }
+
+  return geminiUsagePromise;
+}
+
 function readCliSessionShared() {
   const now = Date.now();
   if (cliSessionCache && now - cliSessionCacheTime < 60_000) {
@@ -375,8 +381,10 @@ if (!gotSingleInstanceLock) {
 
     ipcMain.handle("codex-usage:read", () => readCodexUsageShared());
     ipcMain.handle("claude-usage:read", () => readClaudeUsageShared());
+    ipcMain.handle("gemini-usage:read", () => readGeminiUsageShared());
     ipcMain.handle("cli-session:read", () => readCliSessionShared());
     ipcMain.handle("claude-login:start", () => startClaudeLogin());
+    ipcMain.handle("app:quit", () => quitApp());
     ipcMain.handle("codex-usage:open-dashboard", () => shell.openExternal("https://chatgpt.com/codex/settings/usage"));
     ipcMain.handle("overlay-settings:read", () => overlaySettings);
     ipcMain.handle("overlay-settings:update", (_event, nextSettings: OverlaySettings) => {

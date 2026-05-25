@@ -1,93 +1,151 @@
 # Token Monitor
 
-Desktop overlay app for quickly checking LLM plan, usage, remaining quota, and reset times.
+Windows desktop app for checking Codex, Claude, and Antigravity quota at a glance.
 
-Token Monitor is an Electron + React app focused on local-first usage monitoring for Codex, Claude, and future Gemini integration. It provides a compact dashboard, a transparent desktop overlay, and system tray controls.
+Token Monitor is an Electron + React app that reads local LLM account/session data and shows the current plan, remaining quota, and reset time in a compact dashboard and transparent always-on-top overlay.
 
 ## Features
 
-- Usage dashboard for Codex, Claude, and Gemini placeholders
-- Transparent always-on-top overlay
-- Per-provider overlay display settings
-- System tray management
-- Close-to-tray behavior with confirmation when disabled
+- Codex quota dashboard
+- Claude quota dashboard
+- Antigravity quota dashboard through the Gemini CLI OAuth quota path
+- Transparent always-on-top usage overlay
+- Per-provider overlay visibility settings
+- App-managed exit confirmation when close-to-tray is disabled
+- System tray controls
 - Single-instance guard to prevent duplicate tray icons
-- Claude CLI login launcher
 - Portable Windows executable output
 
 ## Current Provider Support
 
 ### Codex
 
-Codex usage is read from the Codex app/server usage flow used by the local desktop session.
+Codex usage is read from the local Codex app/server usage flow.
 
 Displayed fields:
 
-- Current plan
-- CLI/session state
-- 5-hour usage and remaining percentage
-- Weekly usage and remaining percentage
-- Reset times
+- Plan
+- 5-hour remaining quota and reset time
+- Weekly remaining quota and reset time
+
+Requirements:
+
+- Codex desktop/local CLI environment must be available.
+- By default, Token Monitor looks for:
+
+  ```text
+  %LOCALAPPDATA%/OpenAI/Codex/bin/codex.exe
+  ```
+
+- You can override the executable path with:
+
+  ```text
+  CODEX_CLI_PATH
+  ```
 
 ### Claude
 
-Claude usage uses a local-first OAuth flow through Claude Code CLI.
-
-Flow:
-
-1. Click `Claude CLI login` in the Claude card when the session is missing.
-2. The app runs:
-
-   ```powershell
-   npx -y @anthropic-ai/claude-code auth login --claudeai
-   ```
-
-3. Complete the browser login.
-4. Claude Code stores local OAuth credentials under the user profile.
-5. Token Monitor reads the local session and requests Claude usage data.
-6. Local Claude JSONL logs are used only as fallback/history metadata.
+Claude usage uses the Claude Code CLI OAuth path when available. Local Claude JSONL logs are used as fallback/history metadata.
 
 Displayed fields:
 
-- Current Claude plan
-- CLI/session state
-- 5-hour usage and remaining percentage
-- Weekly usage and remaining percentage
-- Reset times
-- Extra usage limit when available
+- Plan
+- 5-hour remaining quota and reset time
+- Weekly remaining quota and reset time
 
-### Gemini
+If Claude server quota is not available, Token Monitor shows local token usage where possible and marks the server quota as not linked.
 
-Gemini is currently shown as a planned integration. The intended path is Gemini CLI OAuth/Google login, then quota usage collection through the local CLI/session path.
+Claude login command:
+
+```powershell
+npx -y @anthropic-ai/claude-code auth login --claudeai
+```
+
+Local Claude data paths:
+
+```text
+%USERPROFILE%/.claude/
+%USERPROFILE%/.claude.json
+```
+
+### Antigravity
+
+Antigravity is shown as the Google-side quota surface. The current implementation uses the existing Gemini CLI Google OAuth quota path because it is available locally and exposes the needed quota data.
+
+Displayed fields:
+
+- Plan
+- Gemini Pro remaining quota and reset time
+- Gemini Flash remaining quota and reset time
+- Gemini Flash Lite remaining quota and reset time
+
+Flow:
+
+1. Sign in to Gemini CLI with Google OAuth.
+2. Token Monitor reads local Gemini OAuth credentials.
+3. If needed, it refreshes the access token using the installed Gemini CLI OAuth client metadata.
+4. It calls Google Code Assist quota endpoints to fetch model quota windows.
+
+Local Gemini data paths:
+
+```text
+%USERPROFILE%/.gemini/settings.json
+%USERPROFILE%/.gemini/oauth_creds.json
+```
+
+Notes:
+
+- API-key and Vertex AI auth modes do not expose the same personal quota windows.
+- The UI uses the Antigravity label while the initial data source remains Gemini CLI OAuth quota.
 
 ## App Layout
 
-The main window has two tabs:
+The main window has two tabs.
 
-- `Usage Dashboard`: provider cards and current status
-- `Settings`: overlay and tray behavior
+### Usage Dashboard
+
+Shows one card per provider:
+
+- Codex
+- Claude
+- Antigravity
+
+Cards intentionally hide login/session state and show only the plan, remaining quota, and reset time fields.
+
+### Settings
 
 Settings include:
 
 - Overlay on/off
 - Close to system tray on window close
 - Per-provider overlay visibility
-- Per-provider displayed fields:
+- Per-provider displayed items:
   - Plan
-  - CLI session
   - Usage
   - Remaining
   - Reset time
 - Overlay opacity
 
-## System Tray Behavior
+## Overlay
+
+The overlay is a transparent always-on-top window. It is designed to sit over the desktop without a card background, border, or heavy UI chrome.
+
+Overlay behavior:
+
+- Transparent background
+- Large semi-transparent text
+- Click-through window
+- Provider visibility controlled from Settings
+- Refreshes usage data every minute
+
+## System Tray And Exit Behavior
 
 Token Monitor creates a tray icon on launch.
 
 - Clicking the tray icon opens the main window.
 - Closing the main window minimizes to tray by default.
-- If close-to-tray is disabled, closing the window shows a confirmation dialog.
-- Choosing full exit closes the main window, overlay, and tray icon.
+- If close-to-tray is disabled, closing the window shows an in-app confirmation dialog.
+- Confirming exit closes the main window, overlay, and tray icon.
 - A single-instance lock prevents duplicate app instances and duplicate tray icons.
 
 ## Build Requirements
@@ -99,7 +157,7 @@ Token Monitor creates a tray icon on launch.
 Install dependencies:
 
 ```powershell
-npm install
+npm ci
 ```
 
 Run in development:
@@ -133,14 +191,12 @@ $env:CSC_IDENTITY_AUTO_DISCOVERY='false'
 npx electron-builder --win portable --x64 --publish never --config.win.signAndEditExecutable=false
 ```
 
-## Output Naming Policy
+## Output
 
-File names and build artifact names should stay in English.
-
-Current portable artifact:
+Portable executable:
 
 ```text
-dist-app/TokenMonitor-0.1.0-x64.exe
+dist-app/TokenMonitor-<version>-x64.exe
 ```
 
 Build configuration uses:
@@ -148,6 +204,8 @@ Build configuration uses:
 - `productName`: `Token Monitor`
 - `executableName`: `TokenMonitor`
 - `artifactName`: `TokenMonitor-${version}-${arch}.${ext}`
+
+File names and build artifact names should stay in English.
 
 ## Important Local Paths
 
@@ -161,6 +219,14 @@ Claude local session/log data:
 
 ```text
 %USERPROFILE%/.claude/
+%USERPROFILE%/.claude.json
+```
+
+Gemini/Antigravity quota source data:
+
+```text
+%USERPROFILE%/.gemini/settings.json
+%USERPROFILE%/.gemini/oauth_creds.json
 ```
 
 Portable runtime extraction:
@@ -169,12 +235,40 @@ Portable runtime extraction:
 %LOCALAPPDATA%/Temp/
 ```
 
-## Notes
+## Privacy
 
 - OAuth tokens are read locally and are not displayed in the UI.
 - The app should not log access tokens, refresh tokens, emails, or account IDs.
-- Portable builds can leave temporary extraction folders after forced termination. Cleaning old Token Monitor temp folders can recover disk space.
-- Electron shows multiple helper processes in Task Manager. That is normal. The single-instance lock prevents multiple main app instances.
+- Usage collection is local-first and provider-specific.
+- Gemini OAuth token refresh writes the refreshed credential back to the local Gemini credential file when possible.
+
+## Troubleshooting
+
+### Codex Usage Is Not Available
+
+Check that Codex is installed and that `codex.exe` exists at the expected path, or set `CODEX_CLI_PATH`.
+
+### Claude Shows Server Quota Not Linked
+
+Run the Claude login command and complete browser authentication:
+
+```powershell
+npx -y @anthropic-ai/claude-code auth login --claudeai
+```
+
+If only local logs are available, Token Monitor can show local token history but not server quota remaining percentage.
+
+### Antigravity Usage Is Not Available
+
+Sign in with Gemini CLI Google OAuth. API-key and Vertex AI modes are not enough for the current quota collector.
+
+### Portable App Leaves Temporary Files
+
+Portable builds can leave temporary extraction folders after forced termination. Cleaning old Token Monitor temp folders under `%LOCALAPPDATA%/Temp/` can recover disk space.
+
+### Multiple Processes In Task Manager
+
+Electron shows multiple helper processes in Task Manager. That is normal. The single-instance lock prevents multiple main app instances.
 
 ## Project Structure
 
@@ -183,8 +277,10 @@ electron/
   main.ts              Electron lifecycle, windows, tray, IPC
   codex-usage.ts       Codex usage collector
   claude-usage.ts      Claude OAuth/local log collector
+  gemini-usage.ts      Antigravity/Gemini OAuth quota collector
   cli-session.ts       CLI login/session checks
   overlay-settings.ts  Overlay settings schema and migration
+  preload.ts           Source preload bridge
   preload.cjs          Packaged preload bridge
 
 src/
@@ -199,3 +295,6 @@ dist-app/
   TokenMonitor-*.exe   Windows build artifacts
 ```
 
+## License
+
+MIT

@@ -2,13 +2,24 @@ import React, { useEffect, useMemo, useState } from "react";
 import { createRoot } from "react-dom/client";
 import { ExternalLink, LayoutDashboard, MonitorUp, RefreshCw, Settings, Zap } from "lucide-react";
 import "./styles.css";
-import type { ClaudeOAuthWindow, ClaudeUsageResult, CliSessionResult, CodexUsageResult, CodexUsageWindow, OverlaySettings, ProviderId } from "./global";
+import type {
+  ClaudeOAuthWindow,
+  ClaudeUsageResult,
+  CliSessionResult,
+  CodexUsageResult,
+  CodexUsageWindow,
+  GeminiUsageResult,
+  GeminiUsageWindow,
+  OverlaySettings,
+  ProviderId
+} from "./global";
 
 type ProviderUsage = {
   id: ProviderId;
   name: string;
   source: string;
   status: "live" | "pending" | "error" | "loading";
+  fields?: Array<{ label: string; value: string }>;
   plan: string;
   session: string;
   used: string;
@@ -16,12 +27,13 @@ type ProviderUsage = {
   reset: string;
   detail: string;
   canLogin?: boolean;
+  actionLabel?: string;
 };
 
 const providerLabels: Record<ProviderId, string> = {
   codex: "Codex",
   claude: "Claude",
-  gemini: "Gemini"
+  gemini: "Antigravity"
 };
 
 const defaultOverlaySettings: OverlaySettings = {
@@ -48,29 +60,34 @@ const defaultOverlaySettings: OverlaySettings = {
 function App() {
   const [codexUsage, setCodexUsage] = useState<CodexUsageResult | null>(null);
   const [claudeUsage, setClaudeUsage] = useState<ClaudeUsageResult | null>(null);
+  const [geminiUsage, setGeminiUsage] = useState<GeminiUsageResult | null>(null);
   const [cliSessions, setCliSessions] = useState<CliSessionResult | null>(null);
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [overlaySettings, setOverlaySettings] = useState<OverlaySettings>(defaultOverlaySettings);
   const [activeTab, setActiveTab] = useState<"dashboard" | "settings">("dashboard");
+  const [showExitConfirm, setShowExitConfirm] = useState(false);
 
-  const providers = useMemo(() => buildProviderUsage(codexUsage, claudeUsage, cliSessions), [codexUsage, claudeUsage, cliSessions]);
+  const providers = useMemo(() => buildProviderUsage(codexUsage, claudeUsage, geminiUsage, cliSessions), [codexUsage, claudeUsage, geminiUsage, cliSessions]);
 
   async function refreshUsage() {
     setIsRefreshing(true);
     try {
-      if (!window.tokenMonitor?.getCodexUsage || !window.tokenMonitor?.getClaudeUsage || !window.tokenMonitor?.getCliSessionStatus) {
+      if (!window.tokenMonitor?.getCodexUsage || !window.tokenMonitor?.getClaudeUsage || !window.tokenMonitor?.getGeminiUsage || !window.tokenMonitor?.getCliSessionStatus) {
         setCodexUsage(makeCodexError("데스크탑 앱 연결을 확인할 수 없습니다."));
         setClaudeUsage(makeClaudeError("데스크탑 앱 연결을 확인할 수 없습니다."));
+        setGeminiUsage(makeGeminiError("데스크탑 앱 연결을 확인할 수 없습니다."));
         return;
       }
 
-      const [latestCodex, latestClaude, latestSessions] = await Promise.all([
+      const [latestCodex, latestClaude, latestGemini, latestSessions] = await Promise.all([
         window.tokenMonitor.getCodexUsage(),
         window.tokenMonitor.getClaudeUsage(),
+        window.tokenMonitor.getGeminiUsage(),
         window.tokenMonitor.getCliSessionStatus()
       ]);
       setCodexUsage(latestCodex);
       setClaudeUsage(latestClaude);
+      setGeminiUsage(latestGemini);
       setCliSessions(latestSessions);
     } finally {
       setIsRefreshing(false);
@@ -93,6 +110,11 @@ function App() {
     void window.tokenMonitor?.getOverlaySettings().then(setOverlaySettings);
   }, []);
 
+  useEffect(() => {
+    const unsubscribe = window.tokenMonitor?.onExitConfirmRequested(() => setShowExitConfirm(true));
+    return () => unsubscribe?.();
+  }, []);
+
   return (
     <main className="app-root">
       <section className="main-panel">
@@ -103,7 +125,7 @@ function App() {
             </span>
             <div>
               <strong>Token Monitor</strong>
-              <span>플랜, CLI 세션, 사용량, 잔여량, 초기화 시간</span>
+              <span>플랜, 잔여 사용량, 초기화 시간</span>
             </div>
           </div>
 
@@ -144,6 +166,23 @@ function App() {
           <SettingsPanel settings={overlaySettings} onChange={updateOverlaySettings} />
         )}
       </section>
+
+      {showExitConfirm ? (
+        <div className="app-dialog-backdrop" role="presentation">
+          <section className="app-dialog" role="dialog" aria-modal="true" aria-labelledby="exit-dialog-title">
+            <h2 id="exit-dialog-title">프로그램 종료</h2>
+            <p>지금 종료하면 Token Monitor와 오버레이가 모두 종료됩니다.</p>
+            <div className="app-dialog-actions">
+              <button className="secondary-button" type="button" onClick={() => setShowExitConfirm(false)}>
+                취소
+              </button>
+              <button className="danger-button" type="button" onClick={() => void window.tokenMonitor?.quitApp()}>
+                종료
+              </button>
+            </div>
+          </section>
+        </div>
+      ) : null}
     </main>
   );
 }
@@ -160,40 +199,32 @@ function ProviderCard({ provider, onClaudeLogin }: { provider: ProviderUsage; on
           <span className="provider-source">{provider.source}</span>
           <h2>{provider.name}</h2>
         </div>
-        <span className={`status-badge ${provider.status}`}>{formatProviderStatus(provider.status)}</span>
       </div>
 
       <dl className="usage-fields">
-        <div>
-          <dt>현재 플랜</dt>
-          <dd>{provider.plan}</dd>
-        </div>
-        <div>
-          <dt>CLI 세션</dt>
-          <dd>{provider.session}</dd>
-        </div>
-        <div>
-          <dt>사용량</dt>
-          <dd>{provider.used}</dd>
-        </div>
-        <div>
-          <dt>잔여량</dt>
-          <dd>{provider.remaining}</dd>
-        </div>
-        <div>
-          <dt>초기화 시간</dt>
-          <dd>{provider.reset}</dd>
-        </div>
+        {(provider.fields ?? defaultProviderFields(provider)).map((field) => (
+          <div key={field.label}>
+            <dt>{field.label}</dt>
+            <dd>{field.value}</dd>
+          </div>
+        ))}
       </dl>
 
-      <p>{provider.detail}</p>
       {provider.canLogin ? (
         <button className="provider-action" type="button" onClick={onClaudeLogin}>
-          Claude CLI 로그인 시작
+          {provider.actionLabel ?? "Claude CLI 로그인 시작"}
         </button>
       ) : null}
     </article>
   );
+}
+
+function defaultProviderFields(provider: ProviderUsage) {
+  return [
+    { label: "플랜", value: provider.plan },
+    { label: "잔여 사용량", value: provider.remaining },
+    { label: "초기화", value: provider.reset }
+  ];
 }
 
 function SettingsPanel({ settings, onChange }: { settings: OverlaySettings; onChange: (settings: OverlaySettings) => void }) {
@@ -253,10 +284,6 @@ function SettingsPanel({ settings, onChange }: { settings: OverlaySettings; onCh
                     현재 플랜
                   </label>
                   <label>
-                    <input type="checkbox" checked={item.showSession} onChange={(event) => updateProviderItem(id, { showSession: event.target.checked })} />
-                    CLI 세션
-                  </label>
-                  <label>
                     <input type="checkbox" checked={item.showUsed} onChange={(event) => updateProviderItem(id, { showUsed: event.target.checked })} />
                     사용량
                   </label>
@@ -287,17 +314,22 @@ function SettingsPanel({ settings, onChange }: { settings: OverlaySettings; onCh
 function OverlayApp() {
   const [codexUsage, setCodexUsage] = useState<CodexUsageResult | null>(null);
   const [claudeUsage, setClaudeUsage] = useState<ClaudeUsageResult | null>(null);
+  const [geminiUsage, setGeminiUsage] = useState<GeminiUsageResult | null>(null);
   const [cliSessions, setCliSessions] = useState<CliSessionResult | null>(null);
   const [settings, setSettings] = useState<OverlaySettings>(defaultOverlaySettings);
 
   const providers = useMemo(
-    () => buildProviderUsage(codexUsage, claudeUsage, cliSessions).filter((provider) => getProviderDisplay(settings, provider.id).enabled),
-    [codexUsage, claudeUsage, cliSessions, settings]
+    () => buildProviderUsage(codexUsage, claudeUsage, geminiUsage, cliSessions).filter((provider) => getProviderDisplay(settings, provider.id).enabled),
+    [codexUsage, claudeUsage, geminiUsage, cliSessions, settings]
   );
 
   useEffect(() => {
+    document.documentElement.classList.add("overlay-html");
     document.body.classList.add("overlay-body");
-    return () => document.body.classList.remove("overlay-body");
+    return () => {
+      document.documentElement.classList.remove("overlay-html");
+      document.body.classList.remove("overlay-body");
+    };
   }, []);
 
   useEffect(() => {
@@ -308,19 +340,22 @@ function OverlayApp() {
 
   useEffect(() => {
     async function refresh() {
-      if (!window.tokenMonitor?.getCodexUsage || !window.tokenMonitor?.getClaudeUsage || !window.tokenMonitor?.getCliSessionStatus) {
+      if (!window.tokenMonitor?.getCodexUsage || !window.tokenMonitor?.getClaudeUsage || !window.tokenMonitor?.getGeminiUsage || !window.tokenMonitor?.getCliSessionStatus) {
         setCodexUsage(makeCodexError("데스크탑 앱 연결을 확인할 수 없습니다."));
         setClaudeUsage(makeClaudeError("데스크탑 앱 연결을 확인할 수 없습니다."));
+        setGeminiUsage(makeGeminiError("데스크탑 앱 연결을 확인할 수 없습니다."));
         return;
       }
 
-      const [latestCodex, latestClaude, latestSessions] = await Promise.all([
+      const [latestCodex, latestClaude, latestGemini, latestSessions] = await Promise.all([
         window.tokenMonitor.getCodexUsage(),
         window.tokenMonitor.getClaudeUsage(),
+        window.tokenMonitor.getGeminiUsage(),
         window.tokenMonitor.getCliSessionStatus()
       ]);
       setCodexUsage(latestCodex);
       setClaudeUsage(latestClaude);
+      setGeminiUsage(latestGemini);
       setCliSessions(latestSessions);
     }
 
@@ -353,17 +388,30 @@ function OverlayApp() {
 
 function OverlayProvider({ provider, settings }: { provider: ProviderUsage; settings: OverlaySettings }) {
   const display = getProviderDisplay(settings, provider.id);
+  const fields = provider.fields ?? defaultProviderFields(provider);
 
   return (
     <article className="overlay-provider">
       <strong>{provider.name}</strong>
-      {display.showPlan ? <span>플랜 {provider.plan}</span> : null}
-      {display.showSession ? <span>세션 {provider.session}</span> : null}
-      {display.showUsed ? <span>사용 {provider.used}</span> : null}
-      {display.showRemaining ? <span>잔여 {provider.remaining}</span> : null}
-      {display.showReset ? <span>초기화 {provider.reset}</span> : null}
+      {fields.map((field) => {
+        if (field.label === "플랜" && !display.showPlan) {
+          return null;
+        }
+        if (field.label !== "플랜" && !display.showRemaining && !display.showReset) {
+          return null;
+        }
+        return <span key={field.label}>{field.label} {formatOverlayValue(field.value)}</span>;
+      })}
     </article>
   );
+}
+
+function formatOverlayValue(value: string) {
+  return value
+    .replace(/^남은 사용량\s*/, "")
+    .replace(/\s*\/\s*초기화\s*/, " · ")
+    .replace("초기화 시간 없음", "reset 없음")
+    .replace("남은 사용량 데이터 없음", "데이터 없음");
 }
 
 function getProviderDisplay(settings: OverlaySettings, id: ProviderId) {
@@ -377,22 +425,16 @@ function getProviderDisplay(settings: OverlaySettings, id: ProviderId) {
   };
 }
 
-function buildProviderUsage(codexUsage: CodexUsageResult | null, claudeUsage: ClaudeUsageResult | null, sessions: CliSessionResult | null): ProviderUsage[] {
+function buildProviderUsage(
+  codexUsage: CodexUsageResult | null,
+  claudeUsage: ClaudeUsageResult | null,
+  geminiUsage: GeminiUsageResult | null,
+  sessions: CliSessionResult | null
+): ProviderUsage[] {
   return [
     buildCodexProvider(codexUsage, sessions),
     buildClaudeProvider(claudeUsage, sessions),
-    {
-      id: "gemini",
-      name: "Gemini",
-      source: "Google",
-      status: "pending",
-      plan: "연동 필요",
-      session: "확인 불가",
-      used: "확인 불가",
-      remaining: "확인 불가",
-      reset: "확인 불가",
-      detail: "Gemini 사용량 수집기는 아직 연결되지 않았습니다."
-    }
+    buildGeminiProvider(geminiUsage)
   ];
 }
 
@@ -408,6 +450,11 @@ function buildCodexProvider(usage: CodexUsageResult | null, sessions: CliSession
       used: "확인 중",
       remaining: "확인 중",
       reset: "확인 중",
+      fields: [
+        { label: "플랜", value: "확인 중" },
+        { label: "5시간", value: "확인 중" },
+        { label: "주간", value: "확인 중" }
+      ],
       detail: "Codex 로컬 앱 서버에서 사용량을 읽고 있습니다."
     };
   }
@@ -423,6 +470,11 @@ function buildCodexProvider(usage: CodexUsageResult | null, sessions: CliSession
       used: "확인 불가",
       remaining: "확인 불가",
       reset: "확인 불가",
+      fields: [
+        { label: "플랜", value: "확인 불가" },
+        { label: "5시간", value: "확인 불가" },
+        { label: "주간", value: "확인 불가" }
+      ],
       detail: usage.error
     };
   }
@@ -437,6 +489,11 @@ function buildCodexProvider(usage: CodexUsageResult | null, sessions: CliSession
     used: formatWindows(usage.primary, usage.secondary, "used"),
     remaining: formatWindows(usage.primary, usage.secondary, "remaining"),
     reset: formatResetWindows(usage.primary, usage.secondary),
+    fields: [
+      { label: "플랜", value: usage.planType ?? "로그인됨" },
+      { label: "5시간", value: formatCodexWindowSummary(usage.primary) },
+      { label: "주간", value: formatCodexWindowSummary(usage.secondary) }
+    ],
     detail: `최근 갱신 ${formatTime(usage.updatedAt)}`
   };
 }
@@ -455,8 +512,14 @@ function buildClaudeProvider(usage: ClaudeUsageResult | null, sessions: CliSessi
       used: "확인 중",
       remaining: "확인 중",
       reset: "확인 중",
+      fields: [
+        { label: "플랜", value: "확인 중" },
+        { label: "5시간", value: "확인 중" },
+        { label: "주간", value: "확인 중" }
+      ],
       detail: canLogin ? "Claude CLI 로그인이 필요합니다." : "Claude 로컬 사용 로그를 읽고 있습니다.",
-      canLogin
+      canLogin,
+      actionLabel: "Claude CLI 로그인 시작"
     };
   }
 
@@ -471,12 +534,18 @@ function buildClaudeProvider(usage: ClaudeUsageResult | null, sessions: CliSessi
       used: "확인 불가",
       remaining: "확인 불가",
       reset: "확인 불가",
+      fields: [
+        { label: "플랜", value: "확인 불가" },
+        { label: "5시간", value: "확인 불가" },
+        { label: "주간", value: "확인 불가" }
+      ],
       detail: canLogin ? "Claude CLI 로그인 후 사용량을 다시 확인할 수 있습니다." : usage.error,
-      canLogin
+      canLogin,
+      actionLabel: "Claude CLI 로그인 시작"
     };
   }
 
-  const topModels = usage.modelBreakdown.map((item) => `${shortModelName(item.model)} ${formatNumber(item.tokens)}`).join(" / ");
+  const needsCliUsageLink = !usage.oauth;
   const recentTokens = usage.windows.sevenDay.tokens;
   const usedLabel = usage.oauth
     ? formatClaudeOAuthWindows(usage.oauth.fiveHour, usage.oauth.sevenDay, "used")
@@ -499,10 +568,77 @@ function buildClaudeProvider(usage: ClaudeUsageResult | null, sessions: CliSessi
     used: usedLabel,
     remaining: remainingLabel,
     reset: resetLabel,
-    detail: extraUsage ?? (topModels
-      ? `최근 7일 모델별 ${topModels}`
-      : `마지막 사용 ${usage.lastActivityAt ? formatReset(usage.lastActivityAt) : "없음"}`),
-    canLogin
+    fields: [
+      { label: "플랜", value: usage.planType ?? "로컬 로그" },
+      { label: "5시간", value: formatClaudeWindowSummary(usage.oauth?.fiveHour ?? null, usage.windows.fiveHour) },
+      { label: "주간", value: formatClaudeWindowSummary(usage.oauth?.sevenDay ?? null, usage.windows.sevenDay) }
+    ],
+    detail: extraUsage ?? `최근 갱신 ${formatTime(usage.updatedAt)}`,
+    canLogin: canLogin || needsCliUsageLink,
+    actionLabel: canLogin ? "Claude CLI 로그인 시작" : "Claude CLI 연동"
+  };
+}
+
+function buildGeminiProvider(usage: GeminiUsageResult | null): ProviderUsage {
+  if (usage == null) {
+    return {
+      id: "gemini",
+      name: "Antigravity",
+      source: "Google",
+      status: "loading",
+      plan: "확인 중",
+      session: "확인 중",
+      used: "확인 중",
+      remaining: "확인 중",
+      reset: "확인 중",
+      fields: [
+        { label: "플랜", value: "확인 중" },
+        { label: "Pro", value: "확인 중" },
+        { label: "Flash", value: "확인 중" },
+        { label: "Flash Lite", value: "확인 중" }
+      ],
+      detail: "Gemini CLI OAuth quota API에서 Antigravity 사용량을 읽고 있습니다."
+    };
+  }
+
+  if (!usage.ok) {
+    return {
+      id: "gemini",
+      name: "Antigravity",
+      source: "Google",
+      status: "error",
+      plan: "확인 불가",
+      session: "Google OAuth 확인 필요",
+      used: "확인 불가",
+      remaining: "확인 불가",
+      reset: "확인 불가",
+      fields: [
+        { label: "플랜", value: "확인 불가" },
+        { label: "Pro", value: "확인 불가" },
+        { label: "Flash", value: "확인 불가" },
+        { label: "Flash Lite", value: "확인 불가" }
+      ],
+      detail: usage.error
+    };
+  }
+
+  return {
+    id: "gemini",
+    name: "Antigravity",
+    source: "Google",
+    status: "live",
+    plan: usage.planType ?? "Google OAuth",
+    session: usage.accountEmail ? "Google OAuth 연결됨" : "Google OAuth",
+    used: formatGeminiWindows(usage.primary, usage.secondary, usage.tertiary, "used"),
+    remaining: formatGeminiWindows(usage.primary, usage.secondary, usage.tertiary, "remaining"),
+    reset: formatGeminiResets(usage.primary, usage.secondary, usage.tertiary),
+    fields: [
+      { label: "플랜", value: usage.planType ?? "Google OAuth" },
+      { label: "Pro", value: formatGeminiWindowSummary(usage.primary) },
+      { label: "Flash", value: formatGeminiWindowSummary(usage.secondary) },
+      { label: "Flash Lite", value: formatGeminiWindowSummary(usage.tertiary) }
+    ],
+    detail: `기존 Gemini CLI quota API 기준 최근 갱신 ${formatTime(usage.updatedAt)}`
   };
 }
 
@@ -524,6 +660,15 @@ function makeClaudeError(error: string): ClaudeUsageResult {
   return {
     ok: false,
     source: "local-logs",
+    error,
+    updatedAt: new Date().toISOString()
+  };
+}
+
+function makeGeminiError(error: string): GeminiUsageResult {
+  return {
+    ok: false,
+    source: "gemini-cli-oauth",
     error,
     updatedAt: new Date().toISOString()
   };
@@ -572,6 +717,58 @@ function formatClaudeOAuthResets(fiveHour: ClaudeOAuthWindow | null, sevenDay: C
   const values = [
     fiveHour?.resetsAt ? `5시간 ${formatReset(fiveHour.resetsAt)}` : null,
     sevenDay?.resetsAt ? `주간 ${formatReset(sevenDay.resetsAt)}` : null
+  ].filter(Boolean);
+
+  return values.length > 0 ? values.join(" / ") : "데이터 없음";
+}
+
+function formatGeminiWindows(primary: GeminiUsageWindow | null, secondary: GeminiUsageWindow | null, tertiary: GeminiUsageWindow | null, mode: "used" | "remaining") {
+  const key = mode === "used" ? "usedPercent" : "remainingPercent";
+  const values = [
+    primary ? `Pro ${primary[key]}%` : null,
+    secondary ? `Flash ${secondary[key]}%` : null,
+    tertiary ? `Flash Lite ${tertiary[key]}%` : null
+  ].filter(Boolean);
+
+  return values.length > 0 ? values.join(" / ") : "데이터 없음";
+}
+
+function formatCodexWindowSummary(window: CodexUsageWindow | null) {
+  if (!window) {
+    return "남은 사용량 데이터 없음";
+  }
+
+  const reset = window.resetsAt ? formatReset(window.resetsAt) : "초기화 시간 없음";
+  return `남은 사용량 ${window.remainingPercent}% / 초기화 ${reset}`;
+}
+
+function formatClaudeWindowSummary(oauthWindow: ClaudeOAuthWindow | null, localWindow: { tokens: number } | null) {
+  if (oauthWindow) {
+    const reset = oauthWindow.resetsAt ? formatReset(oauthWindow.resetsAt) : "초기화 시간 없음";
+    return `남은 사용량 ${oauthWindow.remainingPercent}% / 초기화 ${reset}`;
+  }
+
+  if (localWindow && localWindow.tokens > 0) {
+    return `로컬 사용량 ${formatNumber(localWindow.tokens)} tokens / 서버 한도 미연동`;
+  }
+
+  return "서버 한도 미연동";
+}
+
+function formatGeminiWindowSummary(window: GeminiUsageWindow | null) {
+  if (!window) {
+    return "남은 사용량 데이터 없음";
+  }
+
+  const reset = window.resetsAt ? formatReset(window.resetsAt) : "초기화 시간 없음";
+  return `남은 사용량 ${window.remainingPercent}% / 초기화 ${reset}`;
+}
+
+function formatGeminiResets(primary: GeminiUsageWindow | null, secondary: GeminiUsageWindow | null, tertiary: GeminiUsageWindow | null) {
+  const values = [
+    primary?.resetsAt ? `Pro ${formatReset(primary.resetsAt)}` : null,
+    secondary?.resetsAt ? `Flash ${formatReset(secondary.resetsAt)}` : null,
+    tertiary?.resetsAt ? `Flash Lite ${formatReset(tertiary.resetsAt)}` : null
   ].filter(Boolean);
 
   return values.length > 0 ? values.join(" / ") : "데이터 없음";

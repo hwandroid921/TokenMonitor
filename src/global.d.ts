@@ -99,6 +99,39 @@ export type ClaudeOAuthWindow = {
   resetsAt: string | null;
 };
 
+export type GeminiUsageWindow = {
+  label: string;
+  modelId: string;
+  usedPercent: number;
+  remainingPercent: number;
+  resetsAt: string | null;
+};
+
+export type GeminiUsageResult =
+  | {
+      ok: true;
+      source: "gemini-cli-oauth";
+      planType: string | null;
+      accountEmail: string | null;
+      primary: GeminiUsageWindow | null;
+      secondary: GeminiUsageWindow | null;
+      tertiary: GeminiUsageWindow | null;
+      models: Array<{
+        modelId: string;
+        label: string;
+        usedPercent: number;
+        remainingPercent: number;
+        resetsAt: string | null;
+      }>;
+      updatedAt: string;
+    }
+  | {
+      ok: false;
+      source: "gemini-cli-oauth";
+      error: string;
+      updatedAt: string;
+    };
+
 export type OverlaySettings = {
   enabled: boolean;
   closeToTray: boolean;
@@ -127,12 +160,15 @@ declare global {
       platform: string;
       getCodexUsage: () => Promise<CodexUsageResult>;
       getClaudeUsage: () => Promise<ClaudeUsageResult>;
+      getGeminiUsage: () => Promise<GeminiUsageResult>;
       getCliSessionStatus: () => Promise<CliSessionResult>;
       startClaudeLogin: () => Promise<{ ok: boolean; command: string }>;
+      quitApp: () => Promise<void>;
       openCodexUsageDashboard: () => Promise<void>;
       getOverlaySettings: () => Promise<OverlaySettings>;
       updateOverlaySettings: (settings: OverlaySettings) => Promise<OverlaySettings>;
       onOverlaySettingsChanged: (callback: (settings: OverlaySettings) => void) => () => void;
+      onExitConfirmRequested: (callback: () => void) => () => void;
     };
   }
 }
