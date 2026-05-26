@@ -5,7 +5,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { getClaudeUsage } from "./claude-usage.js";
 import { getCliSessionStatus } from "./cli-session.js";
-import { getCodexUsage, killAllActiveChildProcesses } from "./codex-usage.js";
+import { getCodexUsage, killAllActiveChildProcesses, setAppVersion } from "./codex-usage.js";
 import { getGeminiUsage } from "./gemini-usage.js";
 import { defaultOverlaySettings, normalizeOverlaySettings, type OverlaySettings, type ProviderId } from "./overlay-settings.js";
 
@@ -477,6 +477,7 @@ if (!gotSingleInstanceLock) {
   });
 
   app.whenReady().then(() => {
+    setAppVersion(app.getVersion());
     loadOverlaySettings();
     installKoreanMenu();
     createTray();

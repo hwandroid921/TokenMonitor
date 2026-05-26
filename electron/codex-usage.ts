@@ -4,6 +4,9 @@ import path from "node:path";
 
 export const activeChildProcesses = new Set<ChildProcess>();
 
+let _appVersion = "0.0.0";
+export function setAppVersion(version: string) { _appVersion = version; }
+
 export function registerChildProcess(child: ChildProcess) {
   activeChildProcesses.add(child);
   child.on("exit", () => {
@@ -189,7 +192,7 @@ export async function getCodexUsage(): Promise<CodexUsageResult> {
   const rpc = new JsonRpcClient();
 
   try {
-    await rpc.request("initialize", { clientInfo: { name: "token-monitor", version: "0.1.0" } }, 12000);
+    await rpc.request("initialize", { clientInfo: { name: "token-monitor", version: _appVersion } }, 12000);
     rpc.notify("initialized");
 
     const limitsResult = await rpc.request<RpcRateLimitsResponse>("account/rateLimits/read", {}, 6000);
