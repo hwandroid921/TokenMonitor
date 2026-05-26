@@ -1,7 +1,10 @@
-import { spawnSync } from "node:child_process";
+import { spawn } from "node:child_process";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
+
+// Cached once per process — Gemini CLI install location doesn't change at runtime.
+let oauthClientCache: { clientId: string; clientSecret: string } | null | undefined;
 
 type GeminiOAuthCredentials = {
   accessToken?: string;
@@ -141,7 +144,7 @@ async function getValidAccessToken(credentials: GeminiOAuthCredentials) {
     throw new Error("Gemini OAuth access token이 만료되었고 refresh token이 없습니다.");
   }
 
-  const client = findOAuthClient();
+  const client = await findOAuthClient();
   if (!client) {
     throw new Error("Gemini CLI OAuth client 정보를 찾을 수 없습니다. gemini를 다시 실행해 로그인 상태를 갱신하세요.");
   }
@@ -194,41 +197,47 @@ function saveRefreshedCredentials(credentials: GeminiOAuthCredentials, refreshed
   }
 }
 
-function findOAuthClient(): { clientId: string; clientSecret: string } | null {
+async function findOAuthClient(): Promise<{ clientId: string; clientSecret: string } | null> {
+  if (oauthClientCache !== undefined) {
+    return oauthClientCache;
+  }
+
   const fromEnv = {
     clientId: process.env.GEMINI_OAUTH_CLIENT_ID,
     clientSecret: process.env.GEMINI_OAUTH_CLIENT_SECRET
   };
   if (fromEnv.clientId && fromEnv.clientSecret) {
-    return { clientId: fromEnv.clientId, clientSecret: fromEnv.clientSecret };
+    oauthClientCache = { clientId: fromEnv.clientId, clientSecret: fromEnv.clientSecret };
+    return oauthClientCache;
   }
 
-  const candidates = findGeminiOAuthFiles();
+  const candidates = await findGeminiOAuthFiles();
   for (const candidate of candidates) {
     try {
       const content = fs.readFileSync(candidate, "utf8");
       const clientId = matchConstant(content, "OAUTH_CLIENT_ID");
       const clientSecret = matchConstant(content, "OAUTH_CLIENT_SECRET");
       if (clientId && clientSecret) {
-        return { clientId, clientSecret };
+        oauthClientCache = { clientId, clientSecret };
+        return oauthClientCache;
       }
     } catch {
       // Keep searching known Gemini CLI install layouts.
     }
   }
 
+  oauthClientCache = null;
   return null;
 }
 
-function findGeminiOAuthFiles() {
+async function findGeminiOAuthFiles(): Promise<string[]> {
   const roots = [
     path.join(process.env.APPDATA ?? "", "npm", "node_modules", "@google", "gemini-cli"),
     path.join(process.env.LOCALAPPDATA ?? "", "fnm_multishells"),
     path.join(process.env.ProgramFiles ?? "", "nodejs", "node_modules", "@google", "gemini-cli")
   ].filter(Boolean);
 
-  const which = spawnSync(process.platform === "win32" ? "where.exe" : "which", ["gemini"], { encoding: "utf8", windowsHide: true });
-  const geminiPaths = which.status === 0 ? which.stdout.split(/\r?\n/).map((value) => value.trim()).filter(Boolean) : [];
+  const geminiPaths = await resolveGeminiCliPaths();
   for (const geminiPath of geminiPaths) {
     roots.push(path.dirname(geminiPath));
   }
@@ -239,6 +248,17 @@ function findGeminiOAuthFiles() {
   }
 
   return [...files];
+}
+
+function resolveGeminiCliPaths(): Promise<string[]> {
+  return new Promise((resolve) => {
+    const cmd = process.platform === "win32" ? "where.exe" : "which";
+    const child = spawn(cmd, ["gemini"], { windowsHide: true });
+    let stdout = "";
+    child.stdout?.on("data", (chunk: Buffer) => { stdout += chunk.toString("utf8"); });
+    child.on("close", () => resolve(stdout.split(/\r?\n/).map((s) => s.trim()).filter(Boolean)));
+    child.on("error", () => resolve([]));
+  });
 }
 
 function addOAuthFilesFromRoot(root: string, files: Set<string>, depth: number) {

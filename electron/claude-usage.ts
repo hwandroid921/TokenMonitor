@@ -89,6 +89,9 @@ export type ClaudeUsageWindow = {
   since: string;
 };
 
+// Keyed by absolute file path — persists across getClaudeUsage() calls within the process.
+const fileEntryCache = new Map<string, { mtime: number; entries: Map<string, UsageEntry> }>();
+
 export async function getClaudeUsage(): Promise<ClaudeUsageResult> {
   try {
     const oauth = await getClaudeOAuthUsage().catch(() => null);
@@ -106,7 +109,7 @@ export async function getClaudeUsage(): Promise<ClaudeUsageResult> {
 
     const entriesByKey = new Map<string, UsageEntry>();
     for (const file of files) {
-      readUsageEntries(file, entriesByKey);
+      readUsageEntriesCached(file, entriesByKey);
     }
 
     const entries = [...entriesByKey.values()];
@@ -317,6 +320,30 @@ function readUsageEntries(file: string, entriesByKey: Map<string, UsageEntry>) {
       outputTokens,
       totalTokens: inputTokens + cacheCreationTokens + cacheReadTokens + outputTokens
     });
+  }
+}
+
+function readUsageEntriesCached(file: string, entriesByKey: Map<string, UsageEntry>) {
+  let mtime: number;
+  try {
+    mtime = fs.statSync(file).mtimeMs;
+  } catch {
+    return;
+  }
+
+  const cached = fileEntryCache.get(file);
+  if (cached && cached.mtime === mtime) {
+    for (const [key, entry] of cached.entries) {
+      entriesByKey.set(key, entry);
+    }
+    return;
+  }
+
+  const fresh = new Map<string, UsageEntry>();
+  readUsageEntries(file, fresh);
+  fileEntryCache.set(file, { mtime, entries: fresh });
+  for (const [key, entry] of fresh) {
+    entriesByKey.set(key, entry);
   }
 }
 
