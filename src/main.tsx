@@ -791,19 +791,6 @@ function formatGeminiResets(primary: GeminiUsageWindow | null, secondary: Gemini
   return values.length > 0 ? values.join(" / ") : "데이터 없음";
 }
 
-function formatProviderStatus(status: ProviderUsage["status"]) {
-  if (status === "live") {
-    return "연결됨";
-  }
-  if (status === "loading") {
-    return "확인 중";
-  }
-  if (status === "error") {
-    return "오류";
-  }
-  return "대기";
-}
-
 function formatTime(value: string) {
   return new Intl.DateTimeFormat("ko-KR", {
     hour: "2-digit",
@@ -824,10 +811,6 @@ function formatReset(value: string) {
 
 function formatNumber(value: number) {
   return new Intl.NumberFormat("ko-KR").format(value);
-}
-
-function shortModelName(model: string) {
-  return model.replace(/^claude-/, "").replace(/-\d{8}$/, "");
 }
 
 createRoot(document.getElementById("root")!).render(
