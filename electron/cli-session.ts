@@ -1,5 +1,5 @@
 import { spawn } from "node:child_process";
-import { getCodexUsage } from "./codex-usage.js";
+import { type CodexUsageResult, getCodexUsage } from "./codex-usage.js";
 
 export type CliSessionStatus = {
   provider: "codex" | "claude";
@@ -16,14 +16,14 @@ export type CliSessionResult = {
   claude: CliSessionStatus;
 };
 
-export async function getCliSessionStatus(): Promise<CliSessionResult> {
-  const [codex, claude] = await Promise.all([getCodexSession(), getClaudeSession()]);
+export async function getCliSessionStatus(codexResult?: CodexUsageResult): Promise<CliSessionResult> {
+  const [codex, claude] = await Promise.all([getCodexSession(codexResult), getClaudeSession()]);
   return { codex, claude };
 }
 
-async function getCodexSession(): Promise<CliSessionStatus> {
+async function getCodexSession(usageResult?: CodexUsageResult): Promise<CliSessionStatus> {
   const checkedAt = new Date().toISOString();
-  const usage = await getCodexUsage();
+  const usage = usageResult ?? await getCodexUsage();
 
   if (!usage.ok) {
     return {

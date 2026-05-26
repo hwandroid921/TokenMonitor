@@ -125,7 +125,7 @@ export async function getClaudeUsage(): Promise<ClaudeUsageResult> {
       },
       modelBreakdown: makeModelBreakdown(entries, now - 7 * 24 * 60 * 60 * 1000),
       logFileCount: files.length,
-      lastActivityAt: entries.length > 0 ? new Date(Math.max(...entries.map((entry) => entry.timestamp))).toISOString() : null,
+      lastActivityAt: entries.length > 0 ? new Date(entries.reduce((max, e) => Math.max(max, e.timestamp), 0)).toISOString() : null,
       updatedAt: new Date().toISOString()
     };
   } catch (error) {

@@ -411,7 +411,8 @@ function readCliSessionShared() {
   }
 
   if (!cliSessionPromise) {
-    cliSessionPromise = getCliSessionStatus()
+    cliSessionPromise = readCodexUsageShared()
+      .then((codexResult) => getCliSessionStatus(codexResult))
       .then((result) => {
         cliSessionCache = result;
         cliSessionCacheTime = Date.now();

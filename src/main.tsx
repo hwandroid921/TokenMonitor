@@ -188,9 +188,11 @@ function App() {
               <button className="secondary-button" type="button" onClick={() => setShowExitConfirm(false)}>
                 취소
               </button>
-              <button className="secondary-button tray-button" type="button" onClick={() => void handleMinimizeToTray()}>
-                최소화
-              </button>
+              {overlaySettings.closeToTray ? (
+                <button className="secondary-button tray-button" type="button" onClick={() => void handleMinimizeToTray()}>
+                  최소화
+                </button>
+              ) : null}
               <button className="danger-button" type="button" onClick={() => void window.tokenMonitor?.quitApp()}>
                 종료
               </button>
@@ -418,15 +420,9 @@ function OverlayProvider({ provider, settings }: { provider: ProviderUsage; sett
   return (
     <article className="overlay-provider">
       <strong>{heading}</strong>
-      {detailFields.map((field) => {
-        if (field.label === "플랜" && !display.showPlan) {
-          return null;
-        }
-        if (field.label !== "플랜" && !display.showRemaining && !display.showReset) {
-          return null;
-        }
-        return <span key={field.label}>{field.label} {formatOverlayValue(field.value)}</span>;
-      })}
+      {(!display.showRemaining && !display.showReset) ? null : detailFields.map((field) => (
+        <span key={field.label}>{field.label} {formatOverlayValue(field.value)}</span>
+      ))}
     </article>
   );
 }
