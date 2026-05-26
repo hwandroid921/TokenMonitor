@@ -17,9 +17,13 @@ The app has:
 - Keep UI changes aligned with the current compact dashboard style.
 - Do not show account emails, access tokens, refresh tokens, or account IDs in the UI or logs.
 - Keep portable artifact names in English.
-- Before finishing user-requested work, review the local `RELEASE_VERSION_POLICY.md` document and decide whether the work requires a patch, minor, or final `1.0.0` version update.
-- If a version update is required, update `package.json`, `package-lock.json`, and any release/output references that include the version string.
-- Manage release version units automatically according to the local release policy unless the user gives a different versioning instruction.
+- Distinguish the project milestone version from the app/exe release version.
+- The project milestone version is managed in the local `RELEASE_VERSION_POLICY.md` document.
+- The app/exe release version is managed by `package.json` and is used in packaged executable names.
+- Before finishing user-requested work, review `RELEASE_VERSION_POLICY.md` and decide whether the work affects the project milestone, the app/exe release version, both, or neither.
+- Only update `package.json`, `package-lock.json`, and versioned output references when code changes or user-facing distributable changes require a new app/exe version.
+- For documentation-only or instruction-only changes, do not update `package.json` and do not package a new exe unless the user explicitly asks.
+- Manage version units automatically according to the local release policy unless the user gives a different versioning instruction.
 
 ## Build And Packaging Process
 
@@ -62,25 +66,31 @@ Branch flow:
 main -> dev -> feature/<feature-name>
 ```
 
+For feature implementation work, create a task-specific branch under `feature/` for each functional unit.
+
 Rules:
 
 - Keep `main` as the stable base branch.
 - Create `dev` from `main` when a development branch is needed.
 - Create each implementation branch from `dev`.
 - Use `feature/<short-feature-name>` for feature branch names.
+- For implementation work, create one `feature/<short-feature-name>` branch per feature or functional unit instead of mixing unrelated changes in one branch.
 - Keep feature branch names lowercase and descriptive.
 - Do not commit directly to `main` for implementation work unless the user explicitly asks.
 
 Commit message format:
 
 ```text
-[YYYY-MM-DD] implemented feature summary
+[YYYY-MM-DD] implemented feature
 ```
 
-Korean commit messages are allowed. Example:
+When the user asks for remote upload work, commit and push the current feature branch. Write the commit message in the format above, but keep the summary brief and focused on the changed items rather than a broad or generic description.
+
+Korean commit messages are allowed. Examples:
 
 ```text
-[2026-05-25] 사용량 모니터링 및 오버레이 개선
+[2026-05-25] README 문서 구조 개선
+[2026-05-25] overlay opacity 설정 추가
 ```
 
 After committing, push the feature branch when the user asks for push/PR work:
@@ -89,7 +99,7 @@ After committing, push the feature branch when the user asks for push/PR work:
 git push -u origin feature/<feature-name>
 ```
 
-After pushing, prepare a concise PR description for the user.
+After pushing, do not create the pull request directly unless the user explicitly asks. Instead, prepare a concise PR description for the user in a markdown code block. Focus on what changed, key implementation notes, and differences from the previous behavior.
 
 PR description format:
 
@@ -120,13 +130,26 @@ npm run typecheck
 npm run build
 ```
 
-After completing user-requested work, package the app into the portable Windows executable unless the user explicitly asks not to package.
+After completing user-requested code or user-facing distributable work, package the app into the portable Windows executable unless the user explicitly asks not to package.
+
+For documentation-only or instruction-only work, skip packaging unless the user explicitly asks for a new executable.
 
 When packaging during development, prefer the portable-only command:
 
 ```powershell
 $env:CSC_IDENTITY_AUTO_DISCOVERY='false'
 npx electron-builder --win portable --x64 --publish never --config.win.signAndEditExecutable=false
+```
+
+When creating an executable for a higher version, remove older versioned executables first so `dist-app/` keeps only the latest portable exe.
+
+PowerShell cleanup example:
+
+```powershell
+$currentVersion = (Get-Content -Raw package.json | ConvertFrom-Json).version
+Get-ChildItem -Path dist-app -Filter "TokenMonitor-*-x64.exe" -File |
+  Where-Object { $_.Name -ne "TokenMonitor-$currentVersion-x64.exe" } |
+  Remove-Item -Force
 ```
 
 After packaging, verify the executable and hash:
