@@ -1,6 +1,32 @@
-import { spawn } from "node:child_process";
+import { type ChildProcess, spawn } from "node:child_process";
 import os from "node:os";
 import path from "node:path";
+
+export const activeChildProcesses = new Set<ChildProcess>();
+
+export function registerChildProcess(child: ChildProcess) {
+  activeChildProcesses.add(child);
+  child.on("exit", () => {
+    activeChildProcesses.delete(child);
+  });
+  child.on("error", () => {
+    activeChildProcesses.delete(child);
+  });
+}
+
+export function killAllActiveChildProcesses() {
+  for (const child of activeChildProcesses) {
+    try {
+      if (!child.killed) {
+        child.kill("SIGKILL");
+      }
+    } catch {
+      // Ignore
+    }
+  }
+  activeChildProcesses.clear();
+}
+
 
 type RpcMessage = {
   id?: number;
@@ -82,6 +108,7 @@ class JsonRpcClient {
   });
 
   constructor() {
+    registerChildProcess(this.child);
     this.child.stdout.on("data", (chunk: Buffer) => {
       this.buffer += chunk.toString("utf8");
 

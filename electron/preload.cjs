@@ -7,6 +7,7 @@ contextBridge.exposeInMainWorld("tokenMonitor", {
   getGeminiUsage: () => ipcRenderer.invoke("gemini-usage:read"),
   getCliSessionStatus: () => ipcRenderer.invoke("cli-session:read"),
   startClaudeLogin: () => ipcRenderer.invoke("claude-login:start"),
+  minimizeToTray: () => ipcRenderer.invoke("app:minimize-to-tray"),
   quitApp: () => ipcRenderer.invoke("app:quit"),
   openCodexUsageDashboard: () => ipcRenderer.invoke("codex-usage:open-dashboard"),
   getOverlaySettings: () => ipcRenderer.invoke("overlay-settings:read"),
@@ -20,5 +21,10 @@ contextBridge.exposeInMainWorld("tokenMonitor", {
     const listener = () => callback();
     ipcRenderer.on("app-exit:confirm-requested", listener);
     return () => ipcRenderer.removeListener("app-exit:confirm-requested", listener);
+  },
+  onUsageRefreshRequested: (callback) => {
+    const listener = () => callback();
+    ipcRenderer.on("usage:refresh-requested", listener);
+    return () => ipcRenderer.removeListener("usage:refresh-requested", listener);
   }
 });

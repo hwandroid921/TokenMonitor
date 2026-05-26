@@ -163,12 +163,14 @@ declare global {
       getGeminiUsage: () => Promise<GeminiUsageResult>;
       getCliSessionStatus: () => Promise<CliSessionResult>;
       startClaudeLogin: () => Promise<{ ok: boolean; command: string }>;
+      minimizeToTray: () => Promise<void>;
       quitApp: () => Promise<void>;
       openCodexUsageDashboard: () => Promise<void>;
       getOverlaySettings: () => Promise<OverlaySettings>;
       updateOverlaySettings: (settings: OverlaySettings) => Promise<OverlaySettings>;
       onOverlaySettingsChanged: (callback: (settings: OverlaySettings) => void) => () => void;
       onExitConfirmRequested: (callback: () => void) => () => void;
+      onUsageRefreshRequested: (callback: () => void) => () => void;
     };
   }
 }

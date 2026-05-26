@@ -5,9 +5,9 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { getClaudeUsage } from "./claude-usage.js";
 import { getCliSessionStatus } from "./cli-session.js";
-import { getCodexUsage } from "./codex-usage.js";
+import { getCodexUsage, killAllActiveChildProcesses } from "./codex-usage.js";
 import { getGeminiUsage } from "./gemini-usage.js";
-import { defaultOverlaySettings, normalizeOverlaySettings, type OverlaySettings } from "./overlay-settings.js";
+import { defaultOverlaySettings, normalizeOverlaySettings, type OverlaySettings, type ProviderId } from "./overlay-settings.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const isDev = process.env.VITE_DEV_SERVER_URL || !app.isPackaged;
@@ -30,6 +30,12 @@ let cliSessionPromise: ReturnType<typeof getCliSessionStatus> | null = null;
 let cliSessionCache: Awaited<ReturnType<typeof getCliSessionStatus>> | null = null;
 let cliSessionCacheTime = 0;
 const gotSingleInstanceLock = app.requestSingleInstanceLock();
+const initialOverlayDelayMs = 1200;
+const trayProviderLabels: Record<ProviderId, string> = {
+  codex: "Codex",
+  claude: "Claude",
+  gemini: "Antigravity"
+};
 
 function installKoreanMenu() {
   Menu.setApplicationMenu(null);
@@ -67,8 +73,16 @@ function showMainWindow() {
   mainWindow.focus();
 }
 
+function minimizeMainWindowToTray() {
+  createTray();
+  if (mainWindow && !mainWindow.isDestroyed()) {
+    mainWindow.hide();
+  }
+}
+
 function quitApp() {
   isQuitting = true;
+  killAllActiveChildProcesses();
 
   for (const window of BrowserWindow.getAllWindows()) {
     if (!window.isDestroyed()) {
@@ -78,7 +92,7 @@ function quitApp() {
 
   tray?.destroy();
   tray = null;
-  app.exit(0);
+  app.quit();
 }
 
 function closeOverlayWindow() {
@@ -101,6 +115,19 @@ function updateTrayMenu() {
       label: overlaySettings.enabled ? "오버레이 끄기" : "오버레이 켜기",
       click: () => applyOverlaySettings({ ...overlaySettings, enabled: !overlaySettings.enabled })
     },
+    {
+      label: "Refresh usage",
+      click: requestUsageRefresh
+    },
+    {
+      label: "Overlay items",
+      submenu: (Object.keys(trayProviderLabels) as ProviderId[]).map((id) => ({
+        label: trayProviderLabels[id],
+        type: "checkbox" as const,
+        checked: overlaySettings.providerItems[id]?.enabled ?? overlaySettings.providers[id],
+        click: () => toggleTrayProvider(id)
+      }))
+    },
     { type: "separator" },
     {
       label: "종료",
@@ -110,6 +137,46 @@ function updateTrayMenu() {
 
   tray.setContextMenu(menu);
   tray.setToolTip("Token Monitor");
+}
+
+function toggleTrayProvider(id: ProviderId) {
+  const currentItem = overlaySettings.providerItems[id] ?? defaultOverlaySettings.providerItems[id];
+  const enabled = !(currentItem.enabled ?? overlaySettings.providers[id]);
+
+  applyOverlaySettings({
+    ...overlaySettings,
+    providers: {
+      ...overlaySettings.providers,
+      [id]: enabled
+    },
+    providerItems: {
+      ...overlaySettings.providerItems,
+      [id]: {
+        ...currentItem,
+        enabled
+      }
+    }
+  });
+}
+
+function clearUsageCaches() {
+  usageCache = null;
+  usageCacheTime = 0;
+  claudeUsageCache = null;
+  claudeUsageCacheTime = 0;
+  geminiUsageCache = null;
+  geminiUsageCacheTime = 0;
+  cliSessionCache = null;
+  cliSessionCacheTime = 0;
+}
+
+function requestUsageRefresh() {
+  clearUsageCaches();
+  for (const window of BrowserWindow.getAllWindows()) {
+    if (!window.isDestroyed()) {
+      window.webContents.send("usage:refresh-requested");
+    }
+  }
 }
 
 function createTray() {
@@ -133,7 +200,7 @@ function createWindow() {
     minHeight: 680,
     title: "Token Monitor",
     icon: path.join(__dirname, "../build/icon.ico"),
-    show: false,
+    show: true,
     backgroundColor: "#f7f7f2",
     webPreferences: {
       preload: preloadPath,
@@ -149,7 +216,6 @@ function createWindow() {
   }
 
   window.once("ready-to-show", () => {
-    window.show();
     window.focus();
   });
 
@@ -236,7 +302,7 @@ function positionOverlayWindow() {
 
   const display = screen.getPrimaryDisplay();
   const area = display.workArea;
-  const margin = 18;
+  const margin = 4;
   const [width, height] = overlayWindow.getSize();
 
   overlayWindow.setBounds({
@@ -305,6 +371,18 @@ function readClaudeUsageShared() {
   return claudeUsagePromise;
 }
 
+function scheduleInitialOverlayLoad() {
+  if (!overlaySettings.enabled) {
+    return;
+  }
+
+  setTimeout(() => {
+    if (!isQuitting && overlaySettings.enabled) {
+      applyOverlaySettings(overlaySettings);
+    }
+  }, initialOverlayDelayMs);
+}
+
 function readGeminiUsageShared() {
   const now = Date.now();
   if (geminiUsageCache && now - geminiUsageCacheTime < 15_000) {
@@ -347,10 +425,33 @@ function readCliSessionShared() {
   return cliSessionPromise;
 }
 
-function startClaudeLogin() {
+function isExistingClaudeCliLink(session: Awaited<ReturnType<typeof getCliSessionStatus>>["claude"]) {
+  if (!session.ok || !session.installed || !session.loggedIn) {
+    return false;
+  }
+
+  const authMethod = session.authMethod?.toLowerCase() ?? "";
+  const detail = session.detail.toLowerCase();
+  return authMethod.includes("claude") || detail.includes("claude") || detail.includes("anthropic");
+}
+
+async function startClaudeLogin() {
+  const sessionStatus = await getCliSessionStatus();
+  cliSessionCache = sessionStatus;
+  cliSessionCacheTime = Date.now();
+
+  if (isExistingClaudeCliLink(sessionStatus.claude)) {
+    return {
+      ok: true,
+      command: "claude auth status --json",
+      skipped: true,
+      detail: "Existing Claude CLI login detected"
+    };
+  }
+
   if (process.platform === "win32") {
     const command = "npx -y @anthropic-ai/claude-code auth login --claudeai";
-    const child = spawn("cmd.exe", ["/c", "start", "Claude CLI Login", "cmd.exe", "/k", command], {
+    const child = spawn("cmd.exe", ["/c", "start", "Claude CLI Login", "cmd.exe", "/c", command], {
       detached: true,
       stdio: "ignore",
       windowsHide: false
@@ -384,6 +485,7 @@ if (!gotSingleInstanceLock) {
     ipcMain.handle("gemini-usage:read", () => readGeminiUsageShared());
     ipcMain.handle("cli-session:read", () => readCliSessionShared());
     ipcMain.handle("claude-login:start", () => startClaudeLogin());
+    ipcMain.handle("app:minimize-to-tray", () => minimizeMainWindowToTray());
     ipcMain.handle("app:quit", () => quitApp());
     ipcMain.handle("codex-usage:open-dashboard", () => shell.openExternal("https://chatgpt.com/codex/settings/usage"));
     ipcMain.handle("overlay-settings:read", () => overlaySettings);
@@ -393,9 +495,7 @@ if (!gotSingleInstanceLock) {
     });
 
     createWindow();
-    if (overlaySettings.enabled) {
-      applyOverlaySettings(overlaySettings);
-    }
+    scheduleInitialOverlayLoad();
 
     screen.on("display-metrics-changed", positionOverlayWindow);
 
@@ -407,6 +507,7 @@ if (!gotSingleInstanceLock) {
 
 app.on("before-quit", () => {
   isQuitting = true;
+  killAllActiveChildProcesses();
   closeOverlayWindow();
 });
 
@@ -414,4 +515,8 @@ app.on("window-all-closed", () => {
   if (process.platform !== "darwin" && !overlaySettings.closeToTray) {
     app.quit();
   }
+});
+
+process.on("exit", () => {
+  killAllActiveChildProcesses();
 });

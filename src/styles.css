@@ -1,8 +1,10 @@
+@import "@fontsource/pretendard/index.css";
+
 :root {
   color: #20231f;
   background: #f6f7f2;
   font-family:
-    Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI",
+    Pretendard, Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI",
     sans-serif;
   font-synthesis: none;
   text-rendering: optimizeLegibility;
@@ -238,6 +240,10 @@ h2 {
 }
 
 .provider-action {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
   justify-self: start;
   min-height: 34px;
   padding: 0 12px;
@@ -252,6 +258,23 @@ h2 {
 
 .provider-action:hover {
   background: #1d3b30;
+}
+
+.provider-card > .provider-action:not(.provider-header-action) {
+  display: none;
+}
+
+.provider-header-action {
+  justify-self: end;
+  max-width: 154px;
+  min-height: 32px;
+  padding: 0 10px;
+  white-space: nowrap;
+}
+
+.provider-header-action span {
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .app-dialog-backdrop {
@@ -307,6 +330,18 @@ h2 {
   color: #ffffff;
   background: #8a1f22;
   border: 1px solid #8a1f22;
+}
+
+.app-dialog-actions .danger-button {
+  order: 1;
+}
+
+.app-dialog-actions .tray-button {
+  order: 2;
+}
+
+.app-dialog-actions .secondary-button:not(.tray-button) {
+  order: 3;
 }
 
 .settings-panel {
@@ -445,6 +480,9 @@ body.overlay-body #root {
 
 .overlay-root {
   --overlay-alpha: 0.92;
+  --overlay-text: rgba(246, 247, 242, var(--overlay-alpha));
+  --overlay-stroke: rgba(14, 18, 14, 0.98);
+  --overlay-stroke-width: 1.25px;
   width: 100vw;
   height: 100vh;
   background: transparent !important;
@@ -452,12 +490,11 @@ body.overlay-body #root {
 
 .overlay-card {
   display: grid;
-  grid-template-rows: 24px minmax(0, 1fr);
-  gap: 9px;
+  grid-template-rows: minmax(0, 1fr);
   width: 100%;
   height: 100%;
-  padding: 6px;
-  color: rgba(255, 255, 255, var(--overlay-alpha));
+  padding: 2px 4px 2px 2px;
+  color: var(--overlay-text);
   background: transparent !important;
   border: 0;
   border-radius: 0;
@@ -465,59 +502,57 @@ body.overlay-body #root {
   backdrop-filter: none;
 }
 
-.overlay-title {
-  display: flex;
-  align-items: center;
-  gap: 7px;
-  color: rgba(255, 255, 255, var(--overlay-alpha));
-  font-size: 15px;
-  font-weight: 900;
-  text-shadow:
-    0 1px 2px rgba(0, 0, 0, 0.95),
-    0 0 8px rgba(0, 0, 0, 0.75);
-}
-
 .overlay-provider-list {
   display: grid;
-  align-content: start;
-  gap: 10px;
+  align-content: end;
+  gap: 8px;
   overflow: hidden;
 }
 
 .overlay-provider {
   display: grid;
-  grid-template-columns: 88px minmax(0, 1fr);
-  gap: 4px 10px;
+  justify-items: end;
+  gap: 3px;
   min-width: 0;
   padding: 0;
-  color: rgba(255, 255, 255, var(--overlay-alpha));
+  color: var(--overlay-text);
   background: transparent !important;
   border: 0;
   border-radius: 0;
-  text-shadow:
-    0 1px 2px rgba(0, 0, 0, 0.98),
-    0 0 8px rgba(0, 0, 0, 0.78);
-  -webkit-text-stroke: 0.25px rgba(0, 0, 0, 0.7);
 }
 
 .overlay-provider strong {
-  grid-row: 1 / span 4;
-  align-self: start;
-  color: rgba(255, 255, 255, var(--overlay-alpha));
-  font-size: 15px;
+  max-width: 100%;
+  overflow: hidden;
+  color: var(--overlay-text);
+  font-size: 22.8px;
   font-weight: 950;
-  line-height: 1.15;
+  line-height: 1.1;
+  text-align: right;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  -webkit-text-stroke: var(--overlay-stroke-width) var(--overlay-stroke);
+  paint-order: stroke fill;
+  stroke-linejoin: round;
+  font-variant-numeric: tabular-nums;
+  font-feature-settings: "tnum" on, "lnum" on;
 }
 
 .overlay-provider span,
 .overlay-muted {
   overflow: hidden;
-  color: rgba(255, 255, 255, var(--overlay-alpha));
-  font-size: 14px;
-  font-weight: 900;
-  line-height: 1.2;
+  color: var(--overlay-text);
+  font-size: 20.4px;
+  font-weight: 950;
+  line-height: 1.12;
+  text-align: right;
   text-overflow: ellipsis;
   white-space: nowrap;
+  -webkit-text-stroke: var(--overlay-stroke-width) var(--overlay-stroke);
+  paint-order: stroke fill;
+  stroke-linejoin: round;
+  font-variant-numeric: tabular-nums;
+  font-feature-settings: "tnum" on, "lnum" on;
 }
 
 .overlay-muted {

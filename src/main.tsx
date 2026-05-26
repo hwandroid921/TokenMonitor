@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { createRoot } from "react-dom/client";
-import { ExternalLink, LayoutDashboard, MonitorUp, RefreshCw, Settings, Zap } from "lucide-react";
+import { ExternalLink, LayoutDashboard, Link, RefreshCw, Settings, Zap } from "lucide-react";
 import "./styles.css";
 import type {
   ClaudeOAuthWindow,
@@ -105,6 +105,11 @@ function App() {
     setOverlaySettings(saved);
   }
 
+  async function handleMinimizeToTray() {
+    setShowExitConfirm(false);
+    await window.tokenMonitor?.minimizeToTray();
+  }
+
   useEffect(() => {
     void refreshUsage();
     void window.tokenMonitor?.getOverlaySettings().then(setOverlaySettings);
@@ -112,6 +117,13 @@ function App() {
 
   useEffect(() => {
     const unsubscribe = window.tokenMonitor?.onExitConfirmRequested(() => setShowExitConfirm(true));
+    return () => unsubscribe?.();
+  }, []);
+
+  useEffect(() => {
+    const unsubscribe = window.tokenMonitor?.onUsageRefreshRequested(() => {
+      void refreshUsage();
+    });
     return () => unsubscribe?.();
   }, []);
 
@@ -176,6 +188,9 @@ function App() {
               <button className="secondary-button" type="button" onClick={() => setShowExitConfirm(false)}>
                 취소
               </button>
+              <button className="secondary-button tray-button" type="button" onClick={() => void handleMinimizeToTray()}>
+                최소화
+              </button>
               <button className="danger-button" type="button" onClick={() => void window.tokenMonitor?.quitApp()}>
                 종료
               </button>
@@ -199,6 +214,12 @@ function ProviderCard({ provider, onClaudeLogin }: { provider: ProviderUsage; on
           <span className="provider-source">{provider.source}</span>
           <h2>{provider.name}</h2>
         </div>
+        {provider.canLogin ? (
+          <button className="provider-action provider-header-action" type="button" onClick={onClaudeLogin} aria-label={provider.actionLabel ?? "Claude CLI"} title={provider.actionLabel ?? "Claude CLI"}>
+            <Link size={15} aria-hidden="true" />
+            <span>{provider.actionLabel ?? "Claude CLI"}</span>
+          </button>
+        ) : null}
       </div>
 
       <dl className="usage-fields">
@@ -360,8 +381,14 @@ function OverlayApp() {
     }
 
     void refresh();
+    const unsubscribe = window.tokenMonitor?.onUsageRefreshRequested(() => {
+      void refresh();
+    });
     const timer = window.setInterval(refresh, 60_000);
-    return () => window.clearInterval(timer);
+    return () => {
+      unsubscribe?.();
+      window.clearInterval(timer);
+    };
   }, []);
 
   const alpha = Math.max(0.35, Math.min(0.95, settings.opacity / 100));
@@ -369,11 +396,6 @@ function OverlayApp() {
   return (
     <main className="overlay-root" style={{ "--overlay-alpha": alpha } as React.CSSProperties}>
       <section className="overlay-card">
-        <div className="overlay-title">
-          <MonitorUp size={15} aria-hidden="true" />
-          <span>사용량</span>
-        </div>
-
         <div className="overlay-provider-list">
           {providers.length === 0 ? (
             <p className="overlay-muted">표시할 서비스 없음</p>
@@ -389,11 +411,14 @@ function OverlayApp() {
 function OverlayProvider({ provider, settings }: { provider: ProviderUsage; settings: OverlaySettings }) {
   const display = getProviderDisplay(settings, provider.id);
   const fields = provider.fields ?? defaultProviderFields(provider);
+  const planField = fields[0];
+  const detailFields = fields.slice(1);
+  const heading = display.showPlan && planField?.value ? `${provider.name.toUpperCase()} / ${formatOverlayValue(planField.value)}` : provider.name.toUpperCase();
 
   return (
     <article className="overlay-provider">
-      <strong>{provider.name}</strong>
-      {fields.map((field) => {
+      <strong>{heading}</strong>
+      {detailFields.map((field) => {
         if (field.label === "플랜" && !display.showPlan) {
           return null;
         }
@@ -746,10 +771,6 @@ function formatClaudeWindowSummary(oauthWindow: ClaudeOAuthWindow | null, localW
   if (oauthWindow) {
     const reset = oauthWindow.resetsAt ? formatReset(oauthWindow.resetsAt) : "초기화 시간 없음";
     return `남은 사용량 ${oauthWindow.remainingPercent}% / 초기화 ${reset}`;
-  }
-
-  if (localWindow && localWindow.tokens > 0) {
-    return `로컬 사용량 ${formatNumber(localWindow.tokens)} tokens / 서버 한도 미연동`;
   }
 
   return "서버 한도 미연동";
