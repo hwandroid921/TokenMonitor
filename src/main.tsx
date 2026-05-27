@@ -57,6 +57,9 @@ const defaultOverlaySettings: OverlaySettings = {
   opacity: 78
 };
 
+const claudeLoginPollIntervalMs = 2500;
+const claudeLoginPollTimeoutMs = 20 * 60_000;
+
 function App() {
   const [codexUsage, setCodexUsage] = useState<CodexUsageResult | null>(null);
   const [claudeUsage, setClaudeUsage] = useState<ClaudeUsageResult | null>(null);
@@ -66,6 +69,7 @@ function App() {
   const [overlaySettings, setOverlaySettings] = useState<OverlaySettings>(defaultOverlaySettings);
   const [activeTab, setActiveTab] = useState<"dashboard" | "settings">("dashboard");
   const [showExitConfirm, setShowExitConfirm] = useState(false);
+  const [isClaudeLoginPending, setIsClaudeLoginPending] = useState(false);
 
   const providers = useMemo(() => buildProviderUsage(codexUsage, claudeUsage, geminiUsage, cliSessions), [codexUsage, claudeUsage, geminiUsage, cliSessions]);
 
@@ -108,6 +112,26 @@ function App() {
   async function handleMinimizeToTray() {
     setShowExitConfirm(false);
     await window.tokenMonitor?.minimizeToTray();
+  }
+
+  async function handleClaudeLogin() {
+    if (isClaudeLoginPending) {
+      return;
+    }
+
+    setIsClaudeLoginPending(true);
+    try {
+      await window.tokenMonitor?.startClaudeLogin();
+      await waitForClaudeLoginCompletion({
+        onUpdate: ({ claudeUsage, cliSessions }) => {
+          setClaudeUsage(claudeUsage);
+          setCliSessions(cliSessions);
+        }
+      });
+      await refreshUsage();
+    } finally {
+      setIsClaudeLoginPending(false);
+    }
   }
 
   useEffect(() => {
@@ -171,7 +195,7 @@ function App() {
         {activeTab === "dashboard" ? (
           <section className="provider-grid" aria-label="서비스별 사용량">
             {providers.map((provider) => (
-              <ProviderCard key={provider.id} provider={provider} onClaudeLogin={startClaudeLogin} />
+              <ProviderCard key={provider.id} provider={provider} isClaudeLoginPending={isClaudeLoginPending} onClaudeLogin={handleClaudeLogin} />
             ))}
           </section>
         ) : (
@@ -204,11 +228,10 @@ function App() {
   );
 }
 
-async function startClaudeLogin() {
-  await window.tokenMonitor?.startClaudeLogin();
-}
+function ProviderCard({ provider, isClaudeLoginPending, onClaudeLogin }: { provider: ProviderUsage; isClaudeLoginPending: boolean; onClaudeLogin: () => void }) {
+  const isActionPending = provider.id === "claude" && isClaudeLoginPending;
+  const actionLabel = isActionPending ? "연동 확인 중" : (provider.actionLabel ?? "Claude CLI");
 
-function ProviderCard({ provider, onClaudeLogin }: { provider: ProviderUsage; onClaudeLogin: () => void }) {
   return (
     <article className="provider-card">
       <div className="provider-card-header">
@@ -217,9 +240,17 @@ function ProviderCard({ provider, onClaudeLogin }: { provider: ProviderUsage; on
           <h2>{provider.name}</h2>
         </div>
         {provider.canLogin ? (
-          <button className="provider-action provider-header-action" type="button" onClick={onClaudeLogin} aria-label={provider.actionLabel ?? "Claude CLI"} title={provider.actionLabel ?? "Claude CLI"}>
-            <Link size={15} aria-hidden="true" />
-            <span>{provider.actionLabel ?? "Claude CLI"}</span>
+          <button
+            className="provider-action provider-header-action"
+            type="button"
+            onClick={onClaudeLogin}
+            disabled={isActionPending}
+            aria-busy={isActionPending}
+            aria-label={actionLabel}
+            title={actionLabel}
+          >
+            {isActionPending ? <RefreshCw size={15} aria-hidden="true" className="spinning" /> : <Link size={15} aria-hidden="true" />}
+            <span>{actionLabel}</span>
           </button>
         ) : null}
       </div>
@@ -234,12 +265,41 @@ function ProviderCard({ provider, onClaudeLogin }: { provider: ProviderUsage; on
       </dl>
 
       {provider.canLogin ? (
-        <button className="provider-action" type="button" onClick={onClaudeLogin}>
-          {provider.actionLabel ?? "Claude CLI 로그인 시작"}
+        <button className="provider-action" type="button" onClick={onClaudeLogin} disabled={isActionPending} aria-busy={isActionPending}>
+          {actionLabel}
         </button>
       ) : null}
     </article>
   );
+}
+
+async function waitForClaudeLoginCompletion({ onUpdate }: { onUpdate: (usage: { claudeUsage: ClaudeUsageResult; cliSessions: CliSessionResult }) => void }) {
+  const startedAt = Date.now();
+
+  while (Date.now() - startedAt < claudeLoginPollTimeoutMs) {
+    const [claudeUsage, cliSessions] = await Promise.all([
+      window.tokenMonitor?.getClaudeUsage(true),
+      window.tokenMonitor?.getCliSessionStatus(true)
+    ]);
+
+    if (claudeUsage && cliSessions) {
+      onUpdate({ claudeUsage, cliSessions });
+
+      if (isClaudeUsageLinked(claudeUsage, cliSessions)) {
+        return;
+      }
+    }
+
+    await delay(claudeLoginPollIntervalMs);
+  }
+}
+
+function isClaudeUsageLinked(claudeUsage: ClaudeUsageResult, cliSessions: CliSessionResult) {
+  return Boolean(cliSessions.claude.loggedIn && claudeUsage.ok && claudeUsage.oauth);
+}
+
+function delay(ms: number) {
+  return new Promise((resolve) => window.setTimeout(resolve, ms));
 }
 
 function defaultProviderFields(provider: ProviderUsage) {

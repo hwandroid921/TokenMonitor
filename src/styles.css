@@ -260,6 +260,11 @@ h2 {
   background: #1d3b30;
 }
 
+.provider-action:disabled {
+  cursor: progress;
+  opacity: 0.78;
+}
+
 .provider-card > .provider-action:not(.provider-header-action) {
   display: none;
 }

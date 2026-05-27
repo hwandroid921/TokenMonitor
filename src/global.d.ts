@@ -159,10 +159,10 @@ declare global {
     tokenMonitor?: {
       platform: string;
       getCodexUsage: () => Promise<CodexUsageResult>;
-      getClaudeUsage: () => Promise<ClaudeUsageResult>;
+      getClaudeUsage: (force?: boolean) => Promise<ClaudeUsageResult>;
       getGeminiUsage: () => Promise<GeminiUsageResult>;
-      getCliSessionStatus: () => Promise<CliSessionResult>;
-      startClaudeLogin: () => Promise<{ ok: boolean; command: string }>;
+      getCliSessionStatus: (force?: boolean) => Promise<CliSessionResult>;
+      startClaudeLogin: () => Promise<{ ok: boolean; command: string; skipped?: boolean; detail?: string }>;
       minimizeToTray: () => Promise<void>;
       quitApp: () => Promise<void>;
       openCodexUsageDashboard: () => Promise<void>;

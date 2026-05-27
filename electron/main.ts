@@ -350,9 +350,9 @@ function readCodexUsageShared() {
   return usagePromise;
 }
 
-function readClaudeUsageShared() {
+function readClaudeUsageShared(force = false) {
   const now = Date.now();
-  if (claudeUsageCache && now - claudeUsageCacheTime < 15_000) {
+  if (!force && claudeUsageCache && now - claudeUsageCacheTime < 15_000) {
     return Promise.resolve(claudeUsageCache);
   }
 
@@ -404,9 +404,9 @@ function readGeminiUsageShared() {
   return geminiUsagePromise;
 }
 
-function readCliSessionShared() {
+function readCliSessionShared(force = false) {
   const now = Date.now();
-  if (cliSessionCache && now - cliSessionCacheTime < 60_000) {
+  if (!force && cliSessionCache && now - cliSessionCacheTime < 60_000) {
     return Promise.resolve(cliSessionCache);
   }
 
@@ -426,27 +426,18 @@ function readCliSessionShared() {
   return cliSessionPromise;
 }
 
-function isExistingClaudeCliLink(session: Awaited<ReturnType<typeof getCliSessionStatus>>["claude"]) {
-  if (!session.ok || !session.installed || !session.loggedIn) {
-    return false;
-  }
-
-  const authMethod = session.authMethod?.toLowerCase() ?? "";
-  const detail = session.detail.toLowerCase();
-  return authMethod.includes("claude") || detail.includes("claude") || detail.includes("anthropic");
-}
-
 async function startClaudeLogin() {
   const sessionStatus = await getCliSessionStatus();
+  const claudeUsage = await readClaudeUsageShared(true);
   cliSessionCache = sessionStatus;
   cliSessionCacheTime = Date.now();
 
-  if (isExistingClaudeCliLink(sessionStatus.claude)) {
+  if (claudeUsage.ok && claudeUsage.oauth) {
     return {
       ok: true,
-      command: "claude auth status --json",
+      command: "claude oauth usage",
       skipped: true,
-      detail: "Existing Claude CLI login detected"
+      detail: "Existing Claude OAuth usage link detected"
     };
   }
 
@@ -483,9 +474,9 @@ if (!gotSingleInstanceLock) {
     createTray();
 
     ipcMain.handle("codex-usage:read", () => readCodexUsageShared());
-    ipcMain.handle("claude-usage:read", () => readClaudeUsageShared());
+    ipcMain.handle("claude-usage:read", (_event, force?: boolean) => readClaudeUsageShared(Boolean(force)));
     ipcMain.handle("gemini-usage:read", () => readGeminiUsageShared());
-    ipcMain.handle("cli-session:read", () => readCliSessionShared());
+    ipcMain.handle("cli-session:read", (_event, force?: boolean) => readCliSessionShared(Boolean(force)));
     ipcMain.handle("claude-login:start", () => startClaudeLogin());
     ipcMain.handle("app:minimize-to-tray", () => minimizeMainWindowToTray());
     ipcMain.handle("app:quit", () => quitApp());

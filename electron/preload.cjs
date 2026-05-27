@@ -3,9 +3,9 @@ const { contextBridge, ipcRenderer } = require("electron");
 contextBridge.exposeInMainWorld("tokenMonitor", {
   platform: process.platform,
   getCodexUsage: () => ipcRenderer.invoke("codex-usage:read"),
-  getClaudeUsage: () => ipcRenderer.invoke("claude-usage:read"),
+  getClaudeUsage: (force) => ipcRenderer.invoke("claude-usage:read", force),
   getGeminiUsage: () => ipcRenderer.invoke("gemini-usage:read"),
-  getCliSessionStatus: () => ipcRenderer.invoke("cli-session:read"),
+  getCliSessionStatus: (force) => ipcRenderer.invoke("cli-session:read", force),
   startClaudeLogin: () => ipcRenderer.invoke("claude-login:start"),
   minimizeToTray: () => ipcRenderer.invoke("app:minimize-to-tray"),
   quitApp: () => ipcRenderer.invoke("app:quit"),
