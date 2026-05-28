@@ -168,6 +168,139 @@ For each release-worthy version bump, summarize:
 - Packaging notes
 - Known limitations
 
+## Release History
+
+### 0.3.0 — 2026-05-28 — MINOR
+
+**Change category:** MINOR (provider data-source addition)
+
+**User-visible changes:**
+- Gemini/Antigravity quota is now read from the local language server process directly when available, removing the dependency on the Gemini CLI OAuth path
+- Model window labels are now sourced from the API response (`label` field) instead of being hardcoded, so future model name changes reflect automatically
+
+**Provider/data-source changes:**
+- Added `antigravity-local` source: probes the Antigravity language server's listening ports via gRPC-JSON to retrieve quota data without OAuth
+- `antigravity-local` is attempted first; falls back to `gemini-cli-oauth` if local probe fails
+- Endpoint changed to `daily-cloudcode-pa.googleapis.com` for the OAuth path
+
+**Packaging notes:**
+- No executable packaged for this milestone (dev stabilization phase)
+- Version reflected in `package.json`, `package-lock.json`, and `RELEASE_VERSION_POLICY.md`
+
+**Known limitations:**
+- Antigravity local probe requires the language server process to be running with accessible ports
+- Port enumeration relies on `netstat` on Windows; may miss ephemeral ports on first probe
+
+---
+
+### 0.2.7 — 2026-05-27 — PATCH
+
+**Change category:** PATCH (connection flow and IPC polish)
+
+**User-visible changes:**
+- Claude CLI login completion detection is more reliable: polls usage after OAuth link opens instead of waiting a fixed delay
+- Force-refresh parameters added to `getClaudeUsage` and `getCliSessionStatus` IPC handlers so callers can bypass the 15s cache
+- Exit dialog now shows a Minimize button only when `closeToTray` is enabled
+
+**Provider/data-source changes:**
+- No provider source changes
+
+**Packaging notes:**
+- No executable packaged
+
+**Known limitations:**
+- Login polling may time out if the browser flow takes more than ~60 seconds
+
+---
+
+### 0.2.4 — 2026-05-26 — MINOR
+
+**Change category:** MINOR (reliability, tray UX, and internal cleanup)
+
+**User-visible changes:**
+- Tray menu: added **Refresh usage** item and **Overlay items** submenu with per-provider checkboxes
+- Minimize-to-tray now available via tray IPC handler
+- Child processes spawned for Codex are now tracked and killed on app exit/quit
+
+**Provider/data-source changes:**
+- Codex IPC no longer double-spawns when overlay and dashboard request usage simultaneously (promise deduplication)
+- Stack overflow in Codex usage result formatter fixed (`reduce` replaces spread accumulator)
+- Claude log JSONL files now use mtime-based incremental read (avoids full re-parse on every poll)
+- Gemini CLI path resolution switched from `spawnSync` to async `spawn` (non-blocking main process)
+- Gemini OAuth client credentials cached once per process lifetime
+
+**Packaging notes:**
+- No executable packaged
+
+**Known limitations:**
+- Tray per-provider toggle writes both `providers` and `providerItems` keys; minor redundancy
+
+---
+
+### 0.1.2 — 2026-05-25/26 — PATCH
+
+**Change category:** PATCH (documentation and workflow)
+
+**User-visible changes:**
+- No user-visible code changes
+
+**Provider/data-source changes:**
+- None
+
+**Packaging notes:**
+- Added `AGENTS.md` with branch workflow, commit format, and security rules
+- Added `RELEASE_VERSION_POLICY.md` with versioning rules
+- README substantially expanded with setup, tray usage, and overlay instructions
+
+**Known limitations:**
+- None added
+
+---
+
+### 0.1.1 — 2026-05-25 — PATCH
+
+**Change category:** PATCH (overlay and monitoring improvements)
+
+**User-visible changes:**
+- Overlay display improvements and usage monitoring reliability
+
+**Provider/data-source changes:**
+- Gemini integration improvements
+
+**Packaging notes:**
+- No executable packaged
+
+**Known limitations:**
+- None recorded
+
+---
+
+### 0.1.0 — 2026-05-24 — MAJOR
+
+**Change category:** MAJOR (initial packaged release)
+
+**User-visible changes:**
+- Codex quota display
+- Claude quota display
+- Antigravity (Gemini) quota display via Gemini CLI OAuth path
+- Transparent always-on-top overlay (bottom-right, click-through)
+- System tray icon with show/hide and exit options
+- Single-instance enforcement
+
+**Provider/data-source changes:**
+- Codex: JSON-RPC subprocess against Codex CLI
+- Claude: OAuth usage API via `~/.claude/.credentials.json`
+- Gemini/Antigravity: `cloudcode-pa.googleapis.com` quota API via Gemini CLI OAuth credentials
+
+**Packaging notes:**
+- Portable Windows x64 exe: `TokenMonitor-0.1.0-x64.exe`
+
+**Known limitations:**
+- Gemini CLI must be installed and authenticated for Antigravity quota to display
+- Claude credentials file must exist at the default path
+
+---
+
 ## Do Not
 
 - Do not jump to `1.0.0` for partial work.
