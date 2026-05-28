@@ -1,7 +1,10 @@
 import { spawn } from "node:child_process";
 import fs from "node:fs";
+import http from "node:http";
+import https from "node:https";
 import os from "node:os";
 import path from "node:path";
+import type { RequestOptions } from "node:https";
 
 // Cached once per process — Gemini CLI install location doesn't change at runtime.
 let oauthClientCache: { clientId: string; clientSecret: string } | null | undefined;
@@ -36,7 +39,7 @@ export type GeminiUsageWindow = {
 export type GeminiUsageResult =
   | {
       ok: true;
-      source: "gemini-cli-oauth";
+      source: "antigravity-local" | "gemini-cli-oauth";
       planType: string | null;
       accountEmail: string | null;
       primary: GeminiUsageWindow | null;
@@ -47,16 +50,25 @@ export type GeminiUsageResult =
     }
   | {
       ok: false;
-      source: "gemini-cli-oauth";
+      source: "antigravity-local" | "gemini-cli-oauth";
       error: string;
       updatedAt: string;
     };
 
-const loadCodeAssistEndpoint = "https://cloudcode-pa.googleapis.com/v1internal:loadCodeAssist";
-const quotaEndpoint = "https://cloudcode-pa.googleapis.com/v1internal:retrieveUserQuota";
+const loadCodeAssistEndpoint = "https://daily-cloudcode-pa.googleapis.com/v1internal:loadCodeAssist";
+const quotaEndpoint = "https://daily-cloudcode-pa.googleapis.com/v1internal:retrieveUserQuota";
 const tokenRefreshEndpoint = "https://oauth2.googleapis.com/token";
+const antigravityUnleashPath = "/exa.language_server_pb.LanguageServerService/GetUnleashData";
+const antigravityUserStatusPath = "/exa.language_server_pb.LanguageServerService/GetUserStatus";
+const antigravityCommandModelsPath = "/exa.language_server_pb.LanguageServerService/GetCommandModelConfigs";
+const antigravityProbeTimeoutMs = 8_000;
 
 export async function getGeminiUsage(): Promise<GeminiUsageResult> {
+  const localResult = await getAntigravityLocalUsage();
+  if (localResult.ok) {
+    return localResult;
+  }
+
   try {
     const authType = readGeminiAuthType();
     if (authType === "api-key" || authType === "vertex-ai") {
@@ -94,13 +106,229 @@ export async function getGeminiUsage(): Promise<GeminiUsageResult> {
   }
 }
 
-function makeError(error: string): GeminiUsageResult {
+function makeError(error: string, source: "antigravity-local" | "gemini-cli-oauth" = "gemini-cli-oauth"): GeminiUsageResult {
   return {
     ok: false,
-    source: "gemini-cli-oauth",
+    source,
     error,
     updatedAt: new Date().toISOString()
   };
+}
+
+async function getAntigravityLocalUsage(): Promise<GeminiUsageResult> {
+  try {
+    const processInfo = await findAntigravityProcess();
+    if (!processInfo) {
+      return makeError("Antigravity language server process not found.", "antigravity-local");
+    }
+
+    const ports = await findListeningPorts(processInfo.pid);
+    const candidatePorts = uniqueNumbers([processInfo.extensionPort, ...ports]);
+    if (candidatePorts.length === 0) {
+      return makeError("Antigravity local ports not found.", "antigravity-local");
+    }
+
+    const endpoint = await resolveAntigravityEndpoint(candidatePorts, processInfo.csrfToken, processInfo.extensionServerCSRFToken);
+    if (!endpoint) {
+      return makeError("Antigravity local endpoint probe failed.", "antigravity-local");
+    }
+
+    const userStatus = await postLocalJson(endpoint, antigravityUserStatusPath, endpoint.csrfToken).catch(() => null);
+    const payload = userStatus ?? await postLocalJson(endpoint, antigravityCommandModelsPath, endpoint.csrfToken);
+    const models = parseQuotaModels(payload);
+    if (models.length === 0) {
+      return makeError("Antigravity local quota response did not include model quota data.", "antigravity-local");
+    }
+
+    return {
+      ok: true,
+      source: "antigravity-local",
+      planType: readAntigravityPlan(payload) ?? "Antigravity",
+      accountEmail: readAntigravityEmail(payload),
+      primary: makeWindow("Claude", pickModel(models, "claude")),
+      secondary: makeWindow("Gemini Pro", pickModel(models, "pro")),
+      tertiary: makeWindow("Gemini Flash", pickModel(models, "flash")),
+      models,
+      updatedAt: new Date().toISOString()
+    };
+  } catch (error) {
+    return makeError(error instanceof Error ? error.message : "Antigravity local usage probe failed.", "antigravity-local");
+  }
+}
+
+type AntigravityProcessInfo = {
+  pid: number;
+  commandLine: string;
+  csrfToken: string;
+  extensionPort: number | null;
+  extensionServerCSRFToken: string | null;
+};
+
+type AntigravityEndpoint = {
+  scheme: "http" | "https";
+  port: number;
+  csrfToken: string;
+};
+
+async function findAntigravityProcess(): Promise<AntigravityProcessInfo | null> {
+  const processes = await readWindowsProcesses();
+  for (const processInfo of processes) {
+    const command = processInfo.CommandLine ?? "";
+    if (!isAntigravityLanguageServerCommand(command)) {
+      continue;
+    }
+
+    const csrfToken = extractFlag(command, "--csrf_token");
+    if (!csrfToken) {
+      continue;
+    }
+
+    return {
+      pid: Number(processInfo.ProcessId),
+      commandLine: command,
+      csrfToken,
+      extensionPort: readPort(extractFlag(command, "--extension_server_port")),
+      extensionServerCSRFToken: extractFlag(command, "--extension_server_csrf_token")
+    };
+  }
+
+  return null;
+}
+
+async function readWindowsProcesses() {
+  const command = "Get-CimInstance Win32_Process | Where-Object { $_.CommandLine -match 'language_server' -and $_.CommandLine -match 'antigravity' } | Select-Object ProcessId,Name,CommandLine | ConvertTo-Json -Compress";
+  const raw = await runPowerShell(command, antigravityProbeTimeoutMs);
+  if (!raw.trim()) {
+    return [] as Array<{ ProcessId: number; Name: string; CommandLine: string }>;
+  }
+
+  const parsed = JSON.parse(raw) as unknown;
+  const list = Array.isArray(parsed) ? parsed : [parsed];
+  return list.filter((item): item is { ProcessId: number; Name: string; CommandLine: string } => Boolean(item && typeof item === "object"));
+}
+
+function isAntigravityLanguageServerCommand(command: string) {
+  const lower = command.toLowerCase();
+  return /(^|[/\\])language_server[^/\\\s]*?(\.exe)?(\s|$)/.test(lower) && (lower.includes("--app_data_dir") && lower.includes("antigravity") || lower.includes("\\antigravity\\") || lower.includes("/antigravity/"));
+}
+
+function extractFlag(command: string, flag: string) {
+  const pattern = new RegExp(`${escapeRegExp(flag)}(?:=|\\s+)([^\\s"]+|"[^"]+")`, "i");
+  const value = command.match(pattern)?.[1];
+  return value?.replace(/^"|"$/g, "") ?? null;
+}
+
+async function findListeningPorts(pid: number) {
+  const command = `Get-NetTCPConnection -State Listen -OwningProcess ${pid} -ErrorAction SilentlyContinue | Select-Object -ExpandProperty LocalPort | ConvertTo-Json -Compress`;
+  const raw = await runPowerShell(command, antigravityProbeTimeoutMs).catch(() => "");
+  if (!raw.trim()) {
+    return [] as number[];
+  }
+
+  const parsed = JSON.parse(raw) as unknown;
+  const values = Array.isArray(parsed) ? parsed : [parsed];
+  return values.map((value) => Number(value)).filter((value) => Number.isInteger(value) && value > 0);
+}
+
+async function resolveAntigravityEndpoint(ports: number[], languageServerToken: string, extensionServerToken: string | null): Promise<AntigravityEndpoint | null> {
+  const candidates = ports.flatMap((port) => [
+    { scheme: "https" as const, port, csrfToken: languageServerToken },
+    { scheme: "http" as const, port, csrfToken: extensionServerToken ?? languageServerToken }
+  ]);
+
+  for (const candidate of candidates) {
+    try {
+      await postLocalJson(candidate, antigravityUnleashPath, candidate.csrfToken);
+      return candidate;
+    } catch {
+      // Try the next local endpoint candidate.
+    }
+  }
+
+  return null;
+}
+
+function postLocalJson(endpoint: AntigravityEndpoint, requestPath: string, csrfToken: string): Promise<unknown> {
+  const body = JSON.stringify(defaultAntigravityBody());
+  const transport = endpoint.scheme === "https" ? https : http;
+  const options: RequestOptions = {
+    hostname: "127.0.0.1",
+    port: endpoint.port,
+    path: requestPath,
+    method: "POST",
+    rejectUnauthorized: false,
+    headers: {
+      "content-type": "application/json",
+      "content-length": Buffer.byteLength(body),
+      "connect-protocol-version": "1",
+      "x-codeium-csrf-token": csrfToken
+    }
+  };
+
+  return new Promise((resolve, reject) => {
+    const request = transport.request(options, (response) => {
+      let data = "";
+      response.setEncoding("utf8");
+      response.on("data", (chunk) => { data += chunk; });
+      response.on("end", () => {
+        if ((response.statusCode ?? 500) < 200 || (response.statusCode ?? 500) >= 300) {
+          reject(new Error(`Antigravity local API HTTP ${response.statusCode}`));
+          return;
+        }
+        try {
+          resolve(data.trim() ? JSON.parse(data) : {});
+        } catch (error) {
+          reject(error);
+        }
+      });
+    });
+
+    request.setTimeout(antigravityProbeTimeoutMs, () => request.destroy(new Error("Antigravity local API timed out.")));
+    request.on("error", reject);
+    request.write(body);
+    request.end();
+  });
+}
+
+function defaultAntigravityBody() {
+  return {
+    metadata: {
+      ideName: "antigravity",
+      extensionName: "antigravity",
+      locale: "en",
+      ideVersion: "unknown"
+    }
+  };
+}
+
+function runPowerShell(command: string, timeoutMs: number) {
+  return new Promise<string>((resolve, reject) => {
+    const child = spawn("powershell.exe", ["-NoProfile", "-ExecutionPolicy", "Bypass", "-Command", command], {
+      windowsHide: true,
+      stdio: ["ignore", "pipe", "pipe"]
+    });
+    let stdout = "";
+    let stderr = "";
+    const timer = setTimeout(() => {
+      child.kill();
+      reject(new Error("PowerShell command timed out."));
+    }, timeoutMs);
+
+    child.stdout?.on("data", (chunk: Buffer) => { stdout += chunk.toString("utf8"); });
+    child.stderr?.on("data", (chunk: Buffer) => { stderr += chunk.toString("utf8"); });
+    child.on("error", (error) => {
+      clearTimeout(timer);
+      reject(error);
+    });
+    child.on("close", (code) => {
+      clearTimeout(timer);
+      if (code === 0) {
+        resolve(stdout);
+      } else {
+        reject(new Error(stderr.trim() || `PowerShell exited with ${code}`));
+      }
+    });
+  });
 }
 
 function readGeminiAuthType() {
@@ -306,6 +534,19 @@ function matchConstant(content: string, name: string) {
   return content.match(pattern)?.[1] ?? null;
 }
 
+function uniqueNumbers(values: Array<number | null | undefined>) {
+  return [...new Set(values.filter((value): value is number => value != null && Number.isInteger(value) && value > 0))];
+}
+
+function readPort(value: string | null) {
+  const port = Number(value);
+  return Number.isInteger(port) && port > 0 ? port : null;
+}
+
+function escapeRegExp(value: string) {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
 async function loadCodeAssist(accessToken: string): Promise<{ tier: string | null; projectId: string | null }> {
   const response = await fetch(loadCodeAssistEndpoint, {
     method: "POST",
@@ -360,8 +601,10 @@ function parseQuotaModels(value: unknown): GeminiQuotaModel[] {
     }
 
     const record = node as Record<string, unknown>;
-    const remaining = readNumber(record.remainingFraction);
-    const modelId = readString(record.modelId ?? record.model ?? record.modelName ?? record.id);
+    const quotaInfo = record.quotaInfo && typeof record.quotaInfo === "object" ? record.quotaInfo as Record<string, unknown> : null;
+    const modelOrAlias = record.modelOrAlias && typeof record.modelOrAlias === "object" ? record.modelOrAlias as Record<string, unknown> : null;
+    const remaining = readNumber(quotaInfo?.remainingFraction ?? record.remainingFraction);
+    const modelId = readString(modelOrAlias?.model ?? record.modelId ?? record.model ?? record.modelName ?? record.id);
 
     if (remaining != null && modelId) {
       const label = readString(record.label ?? record.displayName ?? record.name) ?? modelId;
@@ -370,7 +613,7 @@ function parseQuotaModels(value: unknown): GeminiQuotaModel[] {
         label,
         usedPercent: clampPercent(100 - remaining * 100),
         remainingPercent: clampPercent(remaining * 100),
-        resetsAt: readResetTime(record.resetTime ?? record.reset_time ?? record.resetAt ?? record.resetsAt)
+        resetsAt: readResetTime(quotaInfo?.resetTime ?? record.resetTime ?? record.reset_time ?? record.resetAt ?? record.resetsAt)
       });
     }
 
@@ -394,9 +637,12 @@ function dedupeModels(models: GeminiQuotaModel[]) {
   return [...byKey.values()];
 }
 
-function pickModel(models: GeminiQuotaModel[], family: "pro" | "flash" | "flash-lite") {
+function pickModel(models: GeminiQuotaModel[], family: "claude" | "pro" | "flash" | "flash-lite") {
   const candidates = models.filter((model) => {
     const text = `${model.modelId} ${model.label}`.toLowerCase();
+    if (family === "claude") {
+      return text.includes("claude");
+    }
     if (family === "flash-lite") {
       return text.includes("flash-lite") || (text.includes("flash") && text.includes("lite"));
     }
@@ -405,6 +651,10 @@ function pickModel(models: GeminiQuotaModel[], family: "pro" | "flash" | "flash-
     }
     return text.includes("pro");
   });
+
+  if (family === "claude") {
+    return candidates.find((model) => !`${model.modelId} ${model.label}`.toLowerCase().includes("thinking")) ?? candidates[0] ?? null;
+  }
 
   return candidates[0] ?? null;
 }
@@ -433,6 +683,29 @@ function planFromTier(tier: string | null, hostedDomain: string | null) {
     return hostedDomain ? "Workspace" : "Free";
   }
   return null;
+}
+
+function readAntigravityPlan(value: unknown) {
+  const userStatus = readNestedRecord(value, ["userStatus"]);
+  const userTier = readNestedRecord(userStatus, ["userTier"]);
+  const planInfo = readNestedRecord(userStatus, ["planStatus", "planInfo"]);
+  return readString(userTier?.preferredName ?? userTier?.name ?? planInfo?.preferredName ?? planInfo?.planDisplayName ?? planInfo?.displayName ?? planInfo?.planName ?? planInfo?.planShortName);
+}
+
+function readAntigravityEmail(value: unknown) {
+  const userStatus = readNestedRecord(value, ["userStatus"]);
+  return readString(userStatus?.email);
+}
+
+function readNestedRecord(value: unknown, pathParts: string[]) {
+  let current = value;
+  for (const part of pathParts) {
+    if (!current || typeof current !== "object") {
+      return null;
+    }
+    current = (current as Record<string, unknown>)[part];
+  }
+  return current && typeof current === "object" ? current as Record<string, unknown> : null;
 }
 
 function parseJwtClaims(token: string | null): { email: string | null; hostedDomain: string | null } {

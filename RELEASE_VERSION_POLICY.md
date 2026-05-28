@@ -84,7 +84,7 @@ Before `1.0.0`, use minor versions as milestone gates:
 Current package version:
 
 ```text
-0.2.7
+0.3.0
 ```
 
 Baseline `0.1.0` includes:

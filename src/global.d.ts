@@ -110,7 +110,7 @@ export type GeminiUsageWindow = {
 export type GeminiUsageResult =
   | {
       ok: true;
-      source: "gemini-cli-oauth";
+      source: "antigravity-local" | "gemini-cli-oauth";
       planType: string | null;
       accountEmail: string | null;
       primary: GeminiUsageWindow | null;
@@ -127,7 +127,7 @@ export type GeminiUsageResult =
     }
   | {
       ok: false;
-      source: "gemini-cli-oauth";
+      source: "antigravity-local" | "gemini-cli-oauth";
       error: string;
       updatedAt: string;
     };

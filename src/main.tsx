@@ -806,9 +806,9 @@ function formatClaudeOAuthResets(fiveHour: ClaudeOAuthWindow | null, sevenDay: C
 function formatGeminiWindows(primary: GeminiUsageWindow | null, secondary: GeminiUsageWindow | null, tertiary: GeminiUsageWindow | null, mode: "used" | "remaining") {
   const key = mode === "used" ? "usedPercent" : "remainingPercent";
   const values = [
-    primary ? `Pro ${primary[key]}%` : null,
-    secondary ? `Flash ${secondary[key]}%` : null,
-    tertiary ? `Flash Lite ${tertiary[key]}%` : null
+    primary ? `${primary.label} ${primary[key]}%` : null,
+    secondary ? `${secondary.label} ${secondary[key]}%` : null,
+    tertiary ? `${tertiary.label} ${tertiary[key]}%` : null
   ].filter(Boolean);
 
   return values.length > 0 ? values.join(" / ") : "데이터 없음";
@@ -843,9 +843,9 @@ function formatGeminiWindowSummary(window: GeminiUsageWindow | null) {
 
 function formatGeminiResets(primary: GeminiUsageWindow | null, secondary: GeminiUsageWindow | null, tertiary: GeminiUsageWindow | null) {
   const values = [
-    primary?.resetsAt ? `Pro ${formatReset(primary.resetsAt)}` : null,
-    secondary?.resetsAt ? `Flash ${formatReset(secondary.resetsAt)}` : null,
-    tertiary?.resetsAt ? `Flash Lite ${formatReset(tertiary.resetsAt)}` : null
+    primary?.resetsAt ? `${primary.label} ${formatReset(primary.resetsAt)}` : null,
+    secondary?.resetsAt ? `${secondary.label} ${formatReset(secondary.resetsAt)}` : null,
+    tertiary?.resetsAt ? `${tertiary.label} ${formatReset(tertiary.resetsAt)}` : null
   ].filter(Boolean);
 
   return values.length > 0 ? values.join(" / ") : "데이터 없음";
