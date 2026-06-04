@@ -4,6 +4,8 @@ This local planning document defines the project milestone version and app/exe r
 
 This file is tracked in Git and is used as a shared working reference while planning, implementing, and packaging releases.
 
+README and other user-facing project documents should describe the current final state of the project. Do not list individual task edits, implementation diffs, or change-by-change notes there. Version-level changes are recorded only in release/version sections such as this document's Release History.
+
 ## Versioning Goal
 
 - `0.1.0` is the first packaged baseline.
@@ -64,6 +66,8 @@ MAJOR.MINOR.PATCH
 
 Documentation-only or instruction-only changes do not require an app/exe version bump unless the user explicitly asks for a new executable.
 
+Portable executable packaging is performed only for milestone release versions such as `0.3.0`, `0.4.0`, and later `MINOR.0` or `MAJOR.0` release points. Patch releases such as `0.3.1`, `0.3.2`, and `0.3.3` do not produce a portable executable by default unless explicitly requested.
+
 Before `1.0.0`, use minor versions as milestone gates:
 
 ```text
@@ -84,7 +88,7 @@ Before `1.0.0`, use minor versions as milestone gates:
 Current package version:
 
 ```text
-0.3.0
+0.3.13
 ```
 
 Baseline `0.1.0` includes:
@@ -147,7 +151,7 @@ Before finishing a task:
    npm run build
    ```
 
-6. Package the portable executable for code or user-facing distributable changes unless explicitly skipped:
+6. Package the portable executable only when the app/exe release version is a milestone package version such as `0.3.0`, `0.4.0`, or another `MINOR.0` / `MAJOR.0` release point, unless the user explicitly requests packaging for another version:
 
    ```powershell
    $env:CSC_IDENTITY_AUTO_DISCOVERY='false'
@@ -169,6 +173,291 @@ For each release-worthy version bump, summarize:
 - Known limitations
 
 ## Release History
+
+### 0.3.13 — 2026-06-03 — PATCH
+
+**Change category:** PATCH (Antigravity CLI-first collection)
+
+**User-visible changes:**
+- Antigravity collection now prefers the globally installed `antigravity-usage` CLI
+- Antigravity usage linking now opens `antigravity-usage login`
+- Dashboard guidance now explains the CLI Google path, CLI local path, and embedded fallbacks
+
+**Provider/data-source changes:**
+- Collection order is `antigravity-usage --method google`, then `antigravity-usage --method auto`, then embedded Antigravity local probe, then Gemini CLI OAuth fallback
+- `antigravity-usage` model quota fields are normalized into the app's existing remaining/reset display model
+- Account email and token fields from CLI output are discarded before renderer display
+
+**Packaging notes:**
+- Package version updated to `0.3.13`
+- No portable executable packaged because patch releases do not produce portable artifacts by default
+- `win-unpacked` development executable should be refreshed for local verification
+
+**Known limitations:**
+- `antigravity-usage` must be installed globally or available on `PATH` for CLI-first collection
+
+---
+
+### 0.3.12 — 2026-06-03 — PATCH
+
+**Change category:** PATCH (Antigravity normalized plan tiers)
+
+**User-visible changes:**
+- Antigravity/Gemini plan labels are normalized to `Free`, `Plus`, `Pro`, or `Ultra`
+- Unknown or ambiguous plan responses display `확인 필요`
+- Dashboard recovery guidance now directs users to refresh, run `사용량 수집 연동`, complete Google OAuth, or re-check after a recent plan change
+
+**Provider/data-source changes:**
+- Gemini Code Assist plan collection now reads `paidTier` and `currentTier` id/name fields, preferring the paid tier when present
+- No sensitive account identifiers are displayed or logged
+
+**Packaging notes:**
+- Package version updated to `0.3.12`
+- No portable executable packaged because patch releases do not produce portable artifacts by default
+- `win-unpacked` development executable should be refreshed for local verification
+
+**Known limitations:**
+- `Plus` is shown only when the provider response includes Plus-identifying text
+
+---
+
+### 0.3.11 — 2026-06-03 — PATCH
+
+**Change category:** PATCH (Antigravity plan naming)
+
+**User-visible changes:**
+- Antigravity Gemini OAuth fallback plan labels now use Gemini-oriented names such as `Gemini 유료`, `Gemini Free`, `Gemini Workspace`, and `Gemini Legacy`
+- Unknown Gemini OAuth fallback plans now display as `Gemini` instead of `Google AI`
+
+**Provider/data-source changes:**
+- No provider source changes
+
+**Packaging notes:**
+- Package version updated to `0.3.11`
+- No portable executable packaged because patch releases do not produce portable artifacts by default
+- `win-unpacked` development executable should be refreshed for local verification
+
+**Known limitations:**
+- The collector still avoids claiming exact Pro or Ultra names unless the provider response supplies a specific plan name
+
+---
+
+### 0.3.10 — 2026-06-03 — PATCH
+
+**Change category:** PATCH (Antigravity dashboard field simplification)
+
+**User-visible changes:**
+- Antigravity dashboard now shows only plan and Gemini quota
+- Non-Gemini quota and collection source rows were removed from the dashboard to avoid overclaiming unstable quota signals
+- Gemini shared quota label was shortened to `Gemini 한도`
+- Gemini OAuth fallback plan names now use conservative `Google AI` labels instead of source names
+
+**Provider/data-source changes:**
+- No provider source changes
+
+**Packaging notes:**
+- Package version updated to `0.3.10`
+- No portable executable packaged because patch releases do not produce portable artifacts by default
+- `win-unpacked` development executable should be refreshed for local verification
+
+**Known limitations:**
+- Collection source remains available through settings guidance and diagnostics, not as a default dashboard row
+
+---
+
+### 0.3.9 — 2026-06-03 — PATCH
+
+**Change category:** PATCH (Antigravity guide copy alignment)
+
+**User-visible changes:**
+- Antigravity dashboard issue guidance now refers to the `사용량 수집 연동` action directly
+- Settings guidance now describes Gemini shared quota display and the local-first/OAuth-fallback collection flow
+- Antigravity guidance copy was shortened to action-focused recovery steps
+
+**Provider/data-source changes:**
+- No provider source changes
+
+**Packaging notes:**
+- Package version updated to `0.3.9`
+- No portable executable packaged because patch releases do not produce portable artifacts by default
+- `win-unpacked` development executable should be refreshed for local verification
+
+**Known limitations:**
+- The collection link action starts Gemini CLI OAuth fallback setup; Antigravity local sessions still require Antigravity itself to be running
+
+---
+
+### 0.3.8 — 2026-06-03 — PATCH
+
+**Change category:** PATCH (Antigravity shared quota display and collection linking)
+
+**User-visible changes:**
+- Antigravity dashboard fields now show Gemini shared quota instead of separate Pro, Flash, and Flash Lite rows
+- Non-Gemini quota is shown separately when the collector can detect it
+- Antigravity card now includes a usage collection link action for the Gemini CLI OAuth fallback path
+- Collection source is shown as Antigravity local or Gemini OAuth
+
+**Provider/data-source changes:**
+- Added a renderer/main IPC path to launch Gemini CLI OAuth setup through `npx -y @google/gemini-cli`
+- No new Antigravity public API dependency added
+
+**Packaging notes:**
+- Package version updated to `0.3.8`
+- No portable executable packaged because patch releases do not produce portable artifacts by default
+- `win-unpacked` development executable should be refreshed for local verification
+
+**Known limitations:**
+- The Antigravity local path still depends on a running local language server
+- The collection link action can start Gemini CLI OAuth fallback setup, but cannot automatically authenticate Antigravity local sessions
+
+---
+
+### 0.3.7 — 2026-06-03 — PATCH
+
+**Change category:** PATCH (dashboard guide space allocation)
+
+**User-visible changes:**
+- Dashboard provider cards now reserve a fixed area for action guidance
+- Antigravity's four quota rows stay compact so recovery steps remain visible
+- Issue guidance copy was shortened to action-focused steps
+
+**Provider/data-source changes:**
+- No provider source changes
+
+**Packaging notes:**
+- Package version updated to `0.3.7`
+- No portable executable packaged because patch releases do not produce portable artifacts by default
+- `win-unpacked` development executable should be refreshed for local verification
+
+**Known limitations:**
+- Very long provider values are clamped in the card and may need hover/detail support in a future UI pass
+
+---
+
+### 0.3.6 — 2026-06-03 — PATCH
+
+**Change category:** PATCH (dashboard card sizing)
+
+**User-visible changes:**
+- Dashboard provider cards now use a fixed visual height so long issue guidance does not resize neighboring cards
+- Usage field values are clamped to a compact two-line display
+- Longer issue and collection guidance content scrolls inside its own panel
+
+**Provider/data-source changes:**
+- No provider source changes
+
+**Packaging notes:**
+- Package version updated to `0.3.6`
+- No portable executable packaged because patch releases do not produce portable artifacts by default
+- `win-unpacked` development executable should be refreshed for local verification
+
+**Known limitations:**
+- Very long provider diagnostics may require scrolling inside the card
+
+---
+
+### 0.3.5 — 2026-06-03 — PATCH
+
+**Change category:** PATCH (dashboard issue guidance and settings source guide)
+
+**User-visible changes:**
+- Routine provider usage collection path guidance moved from dashboard cards to each provider item in Settings
+- Dashboard provider cards now show reason and recovery steps only when usage or server quota cannot be displayed
+- Antigravity failure guidance now points users to local language server checks first and Gemini CLI OAuth fallback setup after that
+
+**Provider/data-source changes:**
+- No provider source changes
+
+**Packaging notes:**
+- Package version updated to `0.3.5`
+- No portable executable packaged because patch releases do not produce portable artifacts by default
+- `win-unpacked` development executable should be refreshed for local verification
+
+**Known limitations:**
+- Antigravity usage still requires either a running local language server or Gemini CLI Google OAuth credentials
+
+---
+
+### 0.3.4 — 2026-06-03 — PATCH
+
+**Change category:** PATCH (dashboard provider guidance)
+
+**User-visible changes:**
+- Dashboard provider cards now show usage collection paths directly in the app
+- Antigravity guidance explains the local language server path first and Gemini CLI OAuth fallback requirements after it
+- Provider error cards show the current collection failure state alongside the guide
+
+**Provider/data-source changes:**
+- No provider source changes
+
+**Packaging notes:**
+- Package version updated to `0.3.4`
+- No portable executable packaged because patch releases do not produce portable artifacts by default
+
+**Known limitations:**
+- Antigravity usage still requires either a running local language server or Gemini CLI Google OAuth credentials
+
+---
+
+### 0.3.3 — 2026-06-03 — PATCH
+
+**Change category:** PATCH (overlay text readability polish)
+
+**User-visible changes:**
+- Overlay provider backing was removed so the overlay remains visually lighter on the desktop
+- Overlay text now uses brighter gray coloring, a thicker dark stroke, and layered shadow for stronger readability without a background panel
+
+**Provider/data-source changes:**
+- No provider source changes
+
+**Packaging notes:**
+- Package version updated to `0.3.3`
+
+**Known limitations:**
+- On very bright or similarly gray backgrounds, readability still depends on text stroke and shadow contrast
+
+---
+
+### 0.3.2 — 2026-06-03 — PATCH
+
+**Change category:** PATCH (overlay readability polish)
+
+**User-visible changes:**
+- Overlay text uses softer gray coloring with the existing enlarged dark stroke
+- Overlay provider groups now have a subtle translucent backing, thin border, and shadow to improve contrast over mixed desktop backgrounds
+
+**Provider/data-source changes:**
+- No provider source changes
+
+**Packaging notes:**
+- Package version updated to `0.3.2`
+
+**Known limitations:**
+- Very busy or similarly gray desktop backgrounds may still require higher overlay opacity in settings
+
+---
+
+### 0.3.1 — 2026-06-03 — PATCH
+
+**Change category:** PATCH (overlay display alignment, UI polish, documentation policy)
+
+**User-visible changes:**
+- Overlay fields now use the same provider field model as the dashboard
+- Overlay display settings now filter plan/quota details consistently with the configured provider display items
+- Claude connection action remains visible in the card header and keeps the pending "link check" state without rendering a duplicate button
+- Overlay text stroke width increased for better readability
+- README now documents the current final project state without duplicating change history
+
+**Provider/data-source changes:**
+- No provider source changes
+
+**Packaging notes:**
+- Package version updated to `0.3.1`
+
+**Known limitations:**
+- Antigravity quota still depends on the local language server or Gemini CLI OAuth fallback being available
+
+---
 
 ### 0.3.0 — 2026-05-28 — MINOR
 

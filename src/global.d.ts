@@ -110,9 +110,15 @@ export type GeminiUsageWindow = {
 export type GeminiUsageResult =
   | {
       ok: true;
-      source: "antigravity-local" | "gemini-cli-oauth";
+      source: "antigravity-cli-google" | "antigravity-cli-local" | "antigravity-local" | "gemini-cli-oauth";
       planType: string | null;
       accountEmail: string | null;
+      promptCredits: {
+        available: number | null;
+        monthly: number | null;
+        usedPercent: number | null;
+        remainingPercent: number | null;
+      } | null;
       primary: GeminiUsageWindow | null;
       secondary: GeminiUsageWindow | null;
       tertiary: GeminiUsageWindow | null;
@@ -122,12 +128,13 @@ export type GeminiUsageResult =
         usedPercent: number;
         remainingPercent: number;
         resetsAt: string | null;
+        isAutocompleteOnly?: boolean;
       }>;
       updatedAt: string;
     }
   | {
       ok: false;
-      source: "antigravity-local" | "gemini-cli-oauth";
+      source: "antigravity-cli-google" | "antigravity-cli-local" | "antigravity-local" | "gemini-cli-oauth";
       error: string;
       updatedAt: string;
     };
@@ -163,6 +170,7 @@ declare global {
       getGeminiUsage: () => Promise<GeminiUsageResult>;
       getCliSessionStatus: (force?: boolean) => Promise<CliSessionResult>;
       startClaudeLogin: () => Promise<{ ok: boolean; command: string; skipped?: boolean; detail?: string }>;
+      startGeminiLogin: () => Promise<{ ok: boolean; command: string; skipped?: boolean; detail?: string }>;
       minimizeToTray: () => Promise<void>;
       quitApp: () => Promise<void>;
       openCodexUsageDashboard: () => Promise<void>;
