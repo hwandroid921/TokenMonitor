@@ -19,7 +19,7 @@ type ProviderUsage = {
   name: string;
   source: string;
   status: "live" | "pending" | "error" | "loading";
-  fields?: Array<{ label: string; value: string }>;
+  fields?: ProviderField[];
   plan: string;
   session: string;
   used: string;
@@ -29,6 +29,14 @@ type ProviderUsage = {
   canLogin?: boolean;
   actionLabel?: string;
 };
+
+type ProviderField = {
+  label: string;
+  value: string;
+  kind: "plan" | "quota" | "usage" | "remaining" | "reset";
+};
+
+type GeminiQuotaModelView = Extract<GeminiUsageResult, { ok: true }>["models"][number];
 
 const providerLabels: Record<ProviderId, string> = {
   codex: "Codex",
@@ -70,6 +78,7 @@ function App() {
   const [activeTab, setActiveTab] = useState<"dashboard" | "settings">("dashboard");
   const [showExitConfirm, setShowExitConfirm] = useState(false);
   const [isClaudeLoginPending, setIsClaudeLoginPending] = useState(false);
+  const [isGeminiLoginPending, setIsGeminiLoginPending] = useState(false);
 
   const providers = useMemo(() => buildProviderUsage(codexUsage, claudeUsage, geminiUsage, cliSessions), [codexUsage, claudeUsage, geminiUsage, cliSessions]);
 
@@ -134,6 +143,23 @@ function App() {
     }
   }
 
+  async function handleGeminiLogin() {
+    if (isGeminiLoginPending) {
+      return;
+    }
+
+    setIsGeminiLoginPending(true);
+    try {
+      await window.tokenMonitor?.startGeminiLogin();
+      window.setTimeout(() => {
+        void refreshUsage();
+        setIsGeminiLoginPending(false);
+      }, 5000);
+    } catch {
+      setIsGeminiLoginPending(false);
+    }
+  }
+
   useEffect(() => {
     void refreshUsage();
     void window.tokenMonitor?.getOverlaySettings().then(setOverlaySettings);
@@ -195,7 +221,14 @@ function App() {
         {activeTab === "dashboard" ? (
           <section className="provider-grid" aria-label="서비스별 사용량">
             {providers.map((provider) => (
-              <ProviderCard key={provider.id} provider={provider} isClaudeLoginPending={isClaudeLoginPending} onClaudeLogin={handleClaudeLogin} />
+              <ProviderCard
+                key={provider.id}
+                provider={provider}
+                isClaudeLoginPending={isClaudeLoginPending}
+                isGeminiLoginPending={isGeminiLoginPending}
+                onClaudeLogin={handleClaudeLogin}
+                onGeminiLogin={handleGeminiLogin}
+              />
             ))}
           </section>
         ) : (
@@ -228,9 +261,22 @@ function App() {
   );
 }
 
-function ProviderCard({ provider, isClaudeLoginPending, onClaudeLogin }: { provider: ProviderUsage; isClaudeLoginPending: boolean; onClaudeLogin: () => void }) {
-  const isActionPending = provider.id === "claude" && isClaudeLoginPending;
-  const actionLabel = isActionPending ? "연동 확인 중" : (provider.actionLabel ?? "Claude CLI");
+function ProviderCard({
+  provider,
+  isClaudeLoginPending,
+  isGeminiLoginPending,
+  onClaudeLogin,
+  onGeminiLogin
+}: {
+  provider: ProviderUsage;
+  isClaudeLoginPending: boolean;
+  isGeminiLoginPending: boolean;
+  onClaudeLogin: () => void;
+  onGeminiLogin: () => void;
+}) {
+  const isActionPending = provider.id === "claude" && isClaudeLoginPending || provider.id === "gemini" && isGeminiLoginPending;
+  const actionLabel = isActionPending ? "연동 확인 중" : (provider.actionLabel ?? "사용량 수집 연동");
+  const handleAction = provider.id === "gemini" ? onGeminiLogin : onClaudeLogin;
 
   return (
     <article className="provider-card">
@@ -243,7 +289,7 @@ function ProviderCard({ provider, isClaudeLoginPending, onClaudeLogin }: { provi
           <button
             className="provider-action provider-header-action"
             type="button"
-            onClick={onClaudeLogin}
+            onClick={handleAction}
             disabled={isActionPending}
             aria-busy={isActionPending}
             aria-label={actionLabel}
@@ -264,13 +310,125 @@ function ProviderCard({ provider, isClaudeLoginPending, onClaudeLogin }: { provi
         ))}
       </dl>
 
-      {provider.canLogin ? (
-        <button className="provider-action" type="button" onClick={onClaudeLogin} disabled={isActionPending} aria-busy={isActionPending}>
-          {actionLabel}
-        </button>
-      ) : null}
+      <ProviderIssueNotice provider={provider} />
     </article>
   );
+}
+
+function ProviderIssueNotice({ provider }: { provider: ProviderUsage }) {
+  const issue = getProviderIssue(provider);
+  if (!issue) {
+    return null;
+  }
+
+  return (
+    <section className="provider-issue" aria-label={`${provider.name} 사용량 확인 필요`}>
+      <div className="provider-issue-heading">
+        <span>필요한 조치</span>
+        <strong>{issue.reason}</strong>
+      </div>
+      <ol>
+        {issue.steps.map((step) => (
+          <li key={step}>{step}</li>
+        ))}
+      </ol>
+    </section>
+  );
+}
+
+function ProviderCollectionGuide({ providerId }: { providerId: ProviderId }) {
+  const guide = getProviderCollectionGuide(providerId);
+
+  return (
+    <section className="collection-guide" aria-label={`${providerLabels[providerId]} 수집 경로`}>
+      <div className="collection-guide-heading">
+        <span>수집 경로</span>
+        <strong>{guide.title}</strong>
+      </div>
+      <p>{guide.summary}</p>
+      <ol>
+        {guide.steps.map((step) => (
+          <li key={step}>{step}</li>
+        ))}
+      </ol>
+    </section>
+  );
+}
+
+function getProviderCollectionGuide(providerId: ProviderId) {
+  if (providerId === "codex") {
+    return {
+      title: "Codex 로컬 앱 서버",
+      summary: "Codex 설치 경로의 로컬 실행 흐름을 통해 5시간/주간 quota를 확인합니다.",
+      steps: [
+        "Codex desktop 또는 local CLI 세션 확인",
+        "기본 경로 또는 CODEX_CLI_PATH의 codex.exe 실행",
+        "표시용 plan, remaining, reset 값만 대시보드에 반영"
+      ]
+    };
+  }
+
+  if (providerId === "claude") {
+    return {
+      title: "Claude Code OAuth",
+      summary: "Claude Code CLI OAuth가 연결되면 서버 quota를 읽고, 불가할 때만 local log를 보조 정보로 사용합니다.",
+      steps: [
+        "Claude CLI 설치와 로그인 상태 확인",
+        "OAuth usage endpoint에서 5시간/주간 quota 조회",
+        "서버 quota 미연동 시 Claude CLI 연동 버튼으로 로그인 진행"
+      ]
+    };
+  }
+
+  return {
+    title: "antigravity-usage CLI",
+    summary: "전역 CLI가 Google API를 우선 사용하고, 실패하면 실행 중인 Antigravity local server에서 quota를 읽습니다.",
+    steps: [
+      "antigravity-usage 전역 설치 확인",
+      "사용량 수집 연동으로 Google 로그인",
+      "Antigravity 실행 시 local fallback 사용",
+      "대시보드는 이메일 없이 quota와 reset만 표시"
+    ]
+  };
+}
+
+function getProviderIssue(provider: ProviderUsage) {
+  const hasUnavailableField = (provider.fields ?? defaultProviderFields(provider)).some((field) => /확인 불가|확인 필요|미연동|연동 필요/.test(field.value));
+  if (provider.status !== "error" && !hasUnavailableField) {
+    return null;
+  }
+
+  if (provider.id === "codex") {
+    return {
+      reason: "Codex 연결 확인 필요",
+      steps: [
+        "Codex desktop 실행",
+        "codex.exe 경로 확인",
+        "필요 시 CODEX_CLI_PATH 설정"
+      ]
+    };
+  }
+
+  if (provider.id === "claude") {
+    return {
+      reason: "Claude OAuth 연동 필요",
+      steps: [
+        "Claude CLI 로그인 버튼 실행",
+        "브라우저 인증 완료",
+        "대시보드 새로고침"
+      ]
+    };
+  }
+
+  return {
+    reason: "Antigravity CLI 수집 확인 필요",
+    steps: [
+      "대시보드 새로고침",
+      "antigravity-usage 설치 확인",
+      "사용량 수집 연동 버튼 실행",
+      "Antigravity 실행 또는 Google 로그인 완료"
+    ]
+  };
 }
 
 async function waitForClaudeLoginCompletion({ onUpdate }: { onUpdate: (usage: { claudeUsage: ClaudeUsageResult; cliSessions: CliSessionResult }) => void }) {
@@ -302,11 +460,11 @@ function delay(ms: number) {
   return new Promise((resolve) => window.setTimeout(resolve, ms));
 }
 
-function defaultProviderFields(provider: ProviderUsage) {
+function defaultProviderFields(provider: ProviderUsage): ProviderField[] {
   return [
-    { label: "플랜", value: provider.plan },
-    { label: "잔여 사용량", value: provider.remaining },
-    { label: "초기화", value: provider.reset }
+    { label: "플랜", value: provider.plan, kind: "plan" },
+    { label: "잔여 사용량", value: provider.remaining, kind: "remaining" },
+    { label: "초기화", value: provider.reset, kind: "reset" }
   ];
 }
 
@@ -379,6 +537,8 @@ function SettingsPanel({ settings, onChange }: { settings: OverlaySettings; onCh
                     초기화 시간
                   </label>
                 </div>
+
+                <ProviderCollectionGuide providerId={id} />
               </article>
             );
           })}
@@ -472,19 +632,55 @@ function OverlayApp() {
 
 function OverlayProvider({ provider, settings }: { provider: ProviderUsage; settings: OverlaySettings }) {
   const display = getProviderDisplay(settings, provider.id);
-  const fields = provider.fields ?? defaultProviderFields(provider);
-  const planField = fields[0];
-  const detailFields = fields.slice(1);
+  const fields = filterProviderFields(provider.fields ?? defaultProviderFields(provider), display);
+  const planField = fields.find((field) => field.kind === "plan");
+  const detailFields = fields.filter((field) => field !== planField);
   const heading = display.showPlan && planField?.value ? `${provider.name.toUpperCase()} / ${formatOverlayValue(planField.value)}` : provider.name.toUpperCase();
 
   return (
     <article className="overlay-provider">
       <strong>{heading}</strong>
-      {(!display.showRemaining && !display.showReset) ? null : detailFields.map((field) => (
-        <span key={field.label}>{field.label} {formatOverlayValue(field.value)}</span>
+      {detailFields.map((field) => (
+        <span key={field.label}>{field.label} {formatOverlayValue(formatFieldValueForDisplay(field, display))}</span>
       ))}
     </article>
   );
+}
+
+function filterProviderFields(fields: ProviderField[], display: ReturnType<typeof getProviderDisplay>) {
+  return fields.filter((field) => {
+    if (field.kind === "plan") {
+      return display.showPlan;
+    }
+    if (field.kind === "usage") {
+      return display.showUsed;
+    }
+    if (field.kind === "remaining") {
+      return display.showRemaining;
+    }
+    if (field.kind === "reset") {
+      return display.showReset;
+    }
+    return display.showUsed || display.showRemaining || display.showReset;
+  });
+}
+
+function formatFieldValueForDisplay(field: ProviderField, display: ReturnType<typeof getProviderDisplay>) {
+  if (field.kind !== "quota") {
+    return field.value;
+  }
+
+  const match = field.value.match(/^남은 사용량\s+(.+?)\s+\/\s+초기화\s+(.+)$/);
+  if (!match) {
+    return field.value;
+  }
+
+  const parts = [
+    display.showRemaining ? `남은 사용량 ${match[1]}` : null,
+    display.showReset ? `초기화 ${match[2]}` : null
+  ].filter(Boolean);
+
+  return parts.length > 0 ? parts.join(" / ") : field.value;
 }
 
 function formatOverlayValue(value: string) {
@@ -532,9 +728,9 @@ function buildCodexProvider(usage: CodexUsageResult | null, sessions: CliSession
       remaining: "확인 중",
       reset: "확인 중",
       fields: [
-        { label: "플랜", value: "확인 중" },
-        { label: "5시간", value: "확인 중" },
-        { label: "주간", value: "확인 중" }
+        { label: "플랜", value: "확인 중", kind: "plan" },
+        { label: "5시간", value: "확인 중", kind: "quota" },
+        { label: "주간", value: "확인 중", kind: "quota" }
       ],
       detail: "Codex 로컬 앱 서버에서 사용량을 읽고 있습니다."
     };
@@ -552,9 +748,9 @@ function buildCodexProvider(usage: CodexUsageResult | null, sessions: CliSession
       remaining: "확인 불가",
       reset: "확인 불가",
       fields: [
-        { label: "플랜", value: "확인 불가" },
-        { label: "5시간", value: "확인 불가" },
-        { label: "주간", value: "확인 불가" }
+        { label: "플랜", value: "확인 불가", kind: "plan" },
+        { label: "5시간", value: "확인 불가", kind: "quota" },
+        { label: "주간", value: "확인 불가", kind: "quota" }
       ],
       detail: usage.error
     };
@@ -571,9 +767,9 @@ function buildCodexProvider(usage: CodexUsageResult | null, sessions: CliSession
     remaining: formatWindows(usage.primary, usage.secondary, "remaining"),
     reset: formatResetWindows(usage.primary, usage.secondary),
     fields: [
-      { label: "플랜", value: usage.planType ?? "로그인됨" },
-      { label: "5시간", value: formatCodexWindowSummary(usage.primary) },
-      { label: "주간", value: formatCodexWindowSummary(usage.secondary) }
+      { label: "플랜", value: usage.planType ?? "로그인됨", kind: "plan" },
+      { label: "5시간", value: formatCodexWindowSummary(usage.primary), kind: "quota" },
+      { label: "주간", value: formatCodexWindowSummary(usage.secondary), kind: "quota" }
     ],
     detail: `최근 갱신 ${formatTime(usage.updatedAt)}`
   };
@@ -594,9 +790,9 @@ function buildClaudeProvider(usage: ClaudeUsageResult | null, sessions: CliSessi
       remaining: "확인 중",
       reset: "확인 중",
       fields: [
-        { label: "플랜", value: "확인 중" },
-        { label: "5시간", value: "확인 중" },
-        { label: "주간", value: "확인 중" }
+        { label: "플랜", value: "확인 중", kind: "plan" },
+        { label: "5시간", value: "확인 중", kind: "quota" },
+        { label: "주간", value: "확인 중", kind: "quota" }
       ],
       detail: canLogin ? "Claude CLI 로그인이 필요합니다." : "Claude 로컬 사용 로그를 읽고 있습니다.",
       canLogin,
@@ -616,9 +812,9 @@ function buildClaudeProvider(usage: ClaudeUsageResult | null, sessions: CliSessi
       remaining: "확인 불가",
       reset: "확인 불가",
       fields: [
-        { label: "플랜", value: "확인 불가" },
-        { label: "5시간", value: "확인 불가" },
-        { label: "주간", value: "확인 불가" }
+        { label: "플랜", value: "확인 불가", kind: "plan" },
+        { label: "5시간", value: "확인 불가", kind: "quota" },
+        { label: "주간", value: "확인 불가", kind: "quota" }
       ],
       detail: canLogin ? "Claude CLI 로그인 후 사용량을 다시 확인할 수 있습니다." : usage.error,
       canLogin,
@@ -650,9 +846,9 @@ function buildClaudeProvider(usage: ClaudeUsageResult | null, sessions: CliSessi
     remaining: remainingLabel,
     reset: resetLabel,
     fields: [
-      { label: "플랜", value: usage.planType ?? "로컬 로그" },
-      { label: "5시간", value: formatClaudeWindowSummary(usage.oauth?.fiveHour ?? null, usage.windows.fiveHour) },
-      { label: "주간", value: formatClaudeWindowSummary(usage.oauth?.sevenDay ?? null, usage.windows.sevenDay) }
+      { label: "플랜", value: usage.planType ?? "로컬 로그", kind: "plan" },
+      { label: "5시간", value: formatClaudeWindowSummary(usage.oauth?.fiveHour ?? null, usage.windows.fiveHour), kind: "quota" },
+      { label: "주간", value: formatClaudeWindowSummary(usage.oauth?.sevenDay ?? null, usage.windows.sevenDay), kind: "quota" }
     ],
     detail: extraUsage ?? `최근 갱신 ${formatTime(usage.updatedAt)}`,
     canLogin: canLogin || needsCliUsageLink,
@@ -673,12 +869,12 @@ function buildGeminiProvider(usage: GeminiUsageResult | null): ProviderUsage {
       remaining: "확인 중",
       reset: "확인 중",
       fields: [
-        { label: "플랜", value: "확인 중" },
-        { label: "Pro", value: "확인 중" },
-        { label: "Flash", value: "확인 중" },
-        { label: "Flash Lite", value: "확인 중" }
+        { label: "플랜", value: "확인 중", kind: "plan" },
+        { label: "Gemini 한도", value: "확인 중", kind: "quota" }
       ],
-      detail: "Gemini CLI OAuth quota API에서 Antigravity 사용량을 읽고 있습니다."
+      detail: "antigravity-usage CLI와 local fallback을 확인하고 있습니다.",
+      canLogin: true,
+      actionLabel: "사용량 수집 연동"
     };
   }
 
@@ -688,39 +884,62 @@ function buildGeminiProvider(usage: GeminiUsageResult | null): ProviderUsage {
       name: "Antigravity",
       source: "Google",
       status: "error",
-      plan: "확인 불가",
-      session: "Google OAuth 확인 필요",
+      plan: "확인 필요",
+      session: "CLI 확인 필요",
       used: "확인 불가",
       remaining: "확인 불가",
       reset: "확인 불가",
       fields: [
-        { label: "플랜", value: "확인 불가" },
-        { label: "Pro", value: "확인 불가" },
-        { label: "Flash", value: "확인 불가" },
-        { label: "Flash Lite", value: "확인 불가" }
+        { label: "플랜", value: "확인 필요", kind: "plan" },
+        { label: "Gemini 한도", value: "확인 불가", kind: "quota" }
       ],
-      detail: usage.error
+      detail: usage.error,
+      canLogin: true,
+      actionLabel: "사용량 수집 연동"
     };
   }
+
+  const geminiSharedWindow = pickGeminiSharedWindow(usage.models);
+  const sourceLabel = formatAntigravitySource(usage.source);
+  const planLabel = usage.planType ?? "확인 필요";
+  const promptCredits = formatPromptCredits(usage.promptCredits);
 
   return {
     id: "gemini",
     name: "Antigravity",
     source: "Google",
     status: "live",
-    plan: usage.planType ?? "Google OAuth",
-    session: usage.accountEmail ? "Google OAuth 연결됨" : "Google OAuth",
-    used: formatGeminiWindows(usage.primary, usage.secondary, usage.tertiary, "used"),
-    remaining: formatGeminiWindows(usage.primary, usage.secondary, usage.tertiary, "remaining"),
-    reset: formatGeminiResets(usage.primary, usage.secondary, usage.tertiary),
+    plan: planLabel,
+    session: sourceLabel,
+    used: geminiSharedWindow ? `Gemini ${geminiSharedWindow.usedPercent}%` : "데이터 없음",
+    remaining: geminiSharedWindow ? `Gemini ${geminiSharedWindow.remainingPercent}%` : "데이터 없음",
+    reset: geminiSharedWindow?.resetsAt ? formatReset(geminiSharedWindow.resetsAt) : "데이터 없음",
     fields: [
-      { label: "플랜", value: usage.planType ?? "Google OAuth" },
-      { label: "Pro", value: formatGeminiWindowSummary(usage.primary) },
-      { label: "Flash", value: formatGeminiWindowSummary(usage.secondary) },
-      { label: "Flash Lite", value: formatGeminiWindowSummary(usage.tertiary) }
+      { label: "플랜", value: planLabel, kind: "plan" },
+      { label: "Gemini 한도", value: formatGeminiWindowSummary(geminiSharedWindow), kind: "quota" }
     ],
-    detail: `기존 Gemini CLI quota API 기준 최근 갱신 ${formatTime(usage.updatedAt)}`
+    detail: promptCredits ?? `${sourceLabel} 기준 최근 갱신 ${formatTime(usage.updatedAt)}`
   };
+}
+
+function formatAntigravitySource(source: Extract<GeminiUsageResult, { ok: true }>["source"]) {
+  if (source === "antigravity-cli-google") {
+    return "antigravity-usage Google";
+  }
+  if (source === "antigravity-cli-local") {
+    return "antigravity-usage local";
+  }
+  if (source === "antigravity-local") {
+    return "내장 local";
+  }
+  return "Gemini OAuth fallback";
+}
+
+function formatPromptCredits(credits: Extract<GeminiUsageResult, { ok: true }>["promptCredits"]) {
+  if (!credits || credits.available == null || credits.monthly == null || credits.remainingPercent == null) {
+    return null;
+  }
+  return `Prompt Credits ${formatNumber(credits.available)} / ${formatNumber(credits.monthly)} (${credits.remainingPercent}% 남음)`;
 }
 
 function isClaudeCliLoginMissing(sessions: CliSessionResult | null) {
@@ -839,6 +1058,39 @@ function formatGeminiWindowSummary(window: GeminiUsageWindow | null) {
 
   const reset = window.resetsAt ? formatReset(window.resetsAt) : "초기화 시간 없음";
   return `남은 사용량 ${window.remainingPercent}% / 초기화 ${reset}`;
+}
+
+function pickGeminiSharedWindow(models: GeminiQuotaModelView[]): GeminiUsageWindow | null {
+  const candidates = models.filter((model) => {
+    const text = `${model.modelId} ${model.label}`.toLowerCase();
+    return text.includes("gemini") || text.includes("pro") || text.includes("flash");
+  });
+  return quotaModelToWindow("Gemini 공유 한도", pickMostConstrainedModel(candidates));
+}
+
+function pickMostConstrainedModel<T extends { remainingPercent: number }>(models: T[]) {
+  return models.reduce<T | null>((current, model) => {
+    if (!current || model.remainingPercent < current.remainingPercent) {
+      return model;
+    }
+    return current;
+  }, null);
+}
+
+function quotaModelToWindow(
+  label: string,
+  model: { modelId: string; usedPercent: number; remainingPercent: number; resetsAt: string | null } | null
+): GeminiUsageWindow | null {
+  if (!model) {
+    return null;
+  }
+  return {
+    label,
+    modelId: model.modelId,
+    usedPercent: model.usedPercent,
+    remainingPercent: model.remainingPercent,
+    resetsAt: model.resetsAt
+  };
 }
 
 function formatGeminiResets(primary: GeminiUsageWindow | null, secondary: GeminiUsageWindow | null, tertiary: GeminiUsageWindow | null) {

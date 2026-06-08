@@ -460,6 +460,27 @@ async function startClaudeLogin() {
   return { ok: true, command: "npx -y @anthropic-ai/claude-code auth login --claudeai" };
 }
 
+async function startGeminiLogin() {
+  const command = "antigravity-usage login";
+
+  if (process.platform === "win32") {
+    const child = spawn("cmd.exe", ["/c", "start", "Antigravity Usage Login", "cmd.exe", "/k", command], {
+      detached: true,
+      stdio: "ignore",
+      windowsHide: false
+    });
+    child.unref();
+    return { ok: true, command };
+  }
+
+  const child = spawn("antigravity-usage", ["login"], {
+    detached: true,
+    stdio: "ignore"
+  });
+  child.unref();
+  return { ok: true, command };
+}
+
 if (!gotSingleInstanceLock) {
   app.quit();
 } else {
@@ -478,6 +499,7 @@ if (!gotSingleInstanceLock) {
     ipcMain.handle("gemini-usage:read", () => readGeminiUsageShared());
     ipcMain.handle("cli-session:read", (_event, force?: boolean) => readCliSessionShared(Boolean(force)));
     ipcMain.handle("claude-login:start", () => startClaudeLogin());
+    ipcMain.handle("gemini-login:start", () => startGeminiLogin());
     ipcMain.handle("app:minimize-to-tray", () => minimizeMainWindowToTray());
     ipcMain.handle("app:quit", () => quitApp());
     ipcMain.handle("codex-usage:open-dashboard", () => shell.openExternal("https://chatgpt.com/codex/settings/usage"));

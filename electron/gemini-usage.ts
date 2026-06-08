@@ -26,6 +26,36 @@ type GeminiQuotaModel = {
   usedPercent: number;
   remainingPercent: number;
   resetsAt: string | null;
+  isAutocompleteOnly?: boolean;
+};
+
+type GeminiCodeAssistInfo = {
+  projectId: string | null;
+  paidTierId: string | null;
+  paidTierName: string | null;
+  currentTierId: string | null;
+  currentTierName: string | null;
+};
+
+type AntigravityUsageSource = "antigravity-cli-google" | "antigravity-cli-local" | "antigravity-local" | "gemini-cli-oauth";
+
+type PromptCredits = {
+  available: number | null;
+  monthly: number | null;
+  usedPercent: number | null;
+  remainingPercent: number | null;
+};
+
+type AntigravityUsageCliSnapshot = {
+  timestamp?: unknown;
+  method?: unknown;
+  models?: unknown;
+  promptCredits?: {
+    available?: unknown;
+    monthly?: unknown;
+    usedPercentage?: unknown;
+    remainingPercentage?: unknown;
+  };
 };
 
 export type GeminiUsageWindow = {
@@ -39,9 +69,10 @@ export type GeminiUsageWindow = {
 export type GeminiUsageResult =
   | {
       ok: true;
-      source: "antigravity-local" | "gemini-cli-oauth";
+      source: AntigravityUsageSource;
       planType: string | null;
       accountEmail: string | null;
+      promptCredits: PromptCredits | null;
       primary: GeminiUsageWindow | null;
       secondary: GeminiUsageWindow | null;
       tertiary: GeminiUsageWindow | null;
@@ -50,7 +81,7 @@ export type GeminiUsageResult =
     }
   | {
       ok: false;
-      source: "antigravity-local" | "gemini-cli-oauth";
+      source: AntigravityUsageSource;
       error: string;
       updatedAt: string;
     };
@@ -62,8 +93,19 @@ const antigravityUnleashPath = "/exa.language_server_pb.LanguageServerService/Ge
 const antigravityUserStatusPath = "/exa.language_server_pb.LanguageServerService/GetUserStatus";
 const antigravityCommandModelsPath = "/exa.language_server_pb.LanguageServerService/GetCommandModelConfigs";
 const antigravityProbeTimeoutMs = 8_000;
+const antigravityCliTimeoutMs = 20_000;
 
 export async function getGeminiUsage(): Promise<GeminiUsageResult> {
+  const cliGoogleResult = await getAntigravityCliUsage("google");
+  if (cliGoogleResult.ok) {
+    return cliGoogleResult;
+  }
+
+  const cliAutoResult = await getAntigravityCliUsage("auto");
+  if (cliAutoResult.ok) {
+    return cliAutoResult;
+  }
+
   const localResult = await getAntigravityLocalUsage();
   if (localResult.ok) {
     return localResult;
@@ -93,8 +135,9 @@ export async function getGeminiUsage(): Promise<GeminiUsageResult> {
     return {
       ok: true,
       source: "gemini-cli-oauth",
-      planType: planFromTier(assist.tier, claims.hostedDomain),
-      accountEmail: claims.email,
+      planType: planFromCodeAssist(assist, claims.hostedDomain),
+      accountEmail: null,
+      promptCredits: null,
       primary: makeWindow("Gemini Pro", pickModel(models, "pro")),
       secondary: makeWindow("Gemini Flash", pickModel(models, "flash")),
       tertiary: makeWindow("Gemini Flash Lite", pickModel(models, "flash-lite")),
@@ -106,7 +149,7 @@ export async function getGeminiUsage(): Promise<GeminiUsageResult> {
   }
 }
 
-function makeError(error: string, source: "antigravity-local" | "gemini-cli-oauth" = "gemini-cli-oauth"): GeminiUsageResult {
+function makeError(error: string, source: AntigravityUsageSource = "gemini-cli-oauth"): GeminiUsageResult {
   return {
     ok: false,
     source,
@@ -143,8 +186,9 @@ async function getAntigravityLocalUsage(): Promise<GeminiUsageResult> {
     return {
       ok: true,
       source: "antigravity-local",
-      planType: readAntigravityPlan(payload) ?? "Antigravity",
-      accountEmail: readAntigravityEmail(payload),
+      planType: normalizeGeminiPlan(readAntigravityPlan(payload)) ?? "확인 필요",
+      accountEmail: null,
+      promptCredits: null,
       primary: makeWindow("Claude", pickModel(models, "claude")),
       secondary: makeWindow("Gemini Pro", pickModel(models, "pro")),
       tertiary: makeWindow("Gemini Flash", pickModel(models, "flash")),
@@ -329,6 +373,111 @@ function runPowerShell(command: string, timeoutMs: number) {
       }
     });
   });
+}
+
+function runAntigravityUsageCli(args: string[]): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const command = process.platform === "win32" ? "cmd.exe" : "antigravity-usage";
+    const commandArgs = process.platform === "win32" ? ["/d", "/s", "/c", "antigravity-usage", ...args] : args;
+    const child = spawn(command, commandArgs, {
+      windowsHide: true,
+      stdio: ["ignore", "pipe", "pipe"]
+    });
+    let stdout = "";
+    let stderr = "";
+    const timer = setTimeout(() => {
+      child.kill();
+      reject(new Error("antigravity-usage CLI timed out."));
+    }, antigravityCliTimeoutMs);
+
+    child.stdout?.on("data", (chunk: Buffer) => { stdout += chunk.toString("utf8"); });
+    child.stderr?.on("data", (chunk: Buffer) => { stderr += chunk.toString("utf8"); });
+    child.on("error", (error) => {
+      clearTimeout(timer);
+      reject(error);
+    });
+    child.on("close", (code) => {
+      clearTimeout(timer);
+      if (code === 0 && stdout.trim()) {
+        resolve(stdout);
+        return;
+      }
+      reject(new Error(stderr.trim() || stdout.trim() || `antigravity-usage exited with ${code}`));
+    });
+  });
+}
+
+function parseAntigravityUsageCliSnapshot(raw: string): AntigravityUsageCliSnapshot {
+  const trimmed = raw.trim();
+  try {
+    return JSON.parse(trimmed) as AntigravityUsageCliSnapshot;
+  } catch {
+    const start = trimmed.indexOf("{");
+    const end = trimmed.lastIndexOf("}");
+    if (start >= 0 && end > start) {
+      return JSON.parse(trimmed.slice(start, end + 1)) as AntigravityUsageCliSnapshot;
+    }
+    throw new Error("antigravity-usage CLI JSON 응답을 해석할 수 없습니다.");
+  }
+}
+
+function parseAntigravityUsageCliModels(snapshot: AntigravityUsageCliSnapshot): GeminiQuotaModel[] {
+  if (!Array.isArray(snapshot.models)) {
+    return [];
+  }
+
+  return snapshot.models
+    .map((item): GeminiQuotaModel | null => {
+      if (!item || typeof item !== "object") {
+        return null;
+      }
+      const record = item as Record<string, unknown>;
+      const modelId = readString(record.modelId);
+      const label = readString(record.label) ?? modelId;
+      const remaining = readNumber(record.remainingPercentage);
+      if (!modelId || !label || remaining == null) {
+        return null;
+      }
+
+      const remainingPercent = remaining <= 1 ? remaining * 100 : remaining;
+      const model: GeminiQuotaModel = {
+        modelId,
+        label,
+        usedPercent: clampPercent(100 - remainingPercent),
+        remainingPercent: clampPercent(remainingPercent),
+        resetsAt: readResetTime(record.resetTime)
+      };
+      if (typeof record.isAutocompleteOnly === "boolean") {
+        model.isAutocompleteOnly = record.isAutocompleteOnly;
+      }
+      return model;
+    })
+    .filter((model): model is GeminiQuotaModel => Boolean(model));
+}
+
+function parsePromptCredits(value: AntigravityUsageCliSnapshot["promptCredits"]): PromptCredits | null {
+  if (!value) {
+    return null;
+  }
+  return {
+    available: readNumber(value.available),
+    monthly: readNumber(value.monthly),
+    usedPercent: ratioToPercent(readNumber(value.usedPercentage)),
+    remainingPercent: ratioToPercent(readNumber(value.remainingPercentage))
+  };
+}
+
+function ratioToPercent(value: number | null) {
+  if (value == null) {
+    return null;
+  }
+  return clampPercent(value <= 1 ? value * 100 : value);
+}
+
+function sanitizeErrorMessage(value: string) {
+  return value
+    .replace(/[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/gi, "[redacted-email]")
+    .replace(/[A-Za-z0-9_\-]{35,}/g, "[redacted-token]");
 }
 
 function readGeminiAuthType() {
@@ -547,7 +696,7 @@ function escapeRegExp(value: string) {
   return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
 
-async function loadCodeAssist(accessToken: string): Promise<{ tier: string | null; projectId: string | null }> {
+async function loadCodeAssist(accessToken: string): Promise<GeminiCodeAssistInfo> {
   const response = await fetch(loadCodeAssistEndpoint, {
     method: "POST",
     headers: {
@@ -558,14 +707,73 @@ async function loadCodeAssist(accessToken: string): Promise<{ tier: string | nul
   });
 
   if (!response.ok) {
-    return { tier: null, projectId: null };
+    return {
+      projectId: null,
+      paidTierId: null,
+      paidTierName: null,
+      currentTierId: null,
+      currentTierName: null
+    };
   }
 
   const json = (await response.json()) as Record<string, unknown>;
   return {
-    tier: readNestedString(json, ["currentTier", "id"]),
-    projectId: readProjectId(json)
+    projectId: readProjectId(json),
+    paidTierId: readNestedString(json, ["paidTier", "id"]),
+    paidTierName: readNestedString(json, ["paidTier", "name"]),
+    currentTierId: readNestedString(json, ["currentTier", "id"]),
+    currentTierName: readNestedString(json, ["currentTier", "name"])
   };
+}
+
+async function getAntigravityCliUsage(method: "google" | "auto"): Promise<GeminiUsageResult> {
+  const source: AntigravityUsageSource = method === "google" ? "antigravity-cli-google" : "antigravity-cli-local";
+  try {
+    const raw = await runAntigravityUsageCli(["quota", "--json", "--method", method, "--refresh"]);
+    const snapshot = parseAntigravityUsageCliSnapshot(raw);
+    const models = parseAntigravityUsageCliModels(snapshot);
+    if (models.length === 0) {
+      return makeError("antigravity-usage CLI 응답에서 모델별 quota를 찾을 수 없습니다.", source);
+    }
+
+    const resolvedSource: AntigravityUsageSource = readString(snapshot.method) === "google" ? "antigravity-cli-google" : "antigravity-cli-local";
+    const planType = await readGeminiOauthPlanType();
+    return {
+      ok: true,
+      source: resolvedSource,
+      planType,
+      accountEmail: null,
+      promptCredits: parsePromptCredits(snapshot.promptCredits),
+      primary: makeWindow("Claude", pickModel(models, "claude")),
+      secondary: makeWindow("Gemini Pro", pickModel(models, "pro")),
+      tertiary: makeWindow("Gemini Flash", pickModel(models, "flash")),
+      models,
+      updatedAt: readResetTime(snapshot.timestamp) ?? new Date().toISOString()
+    };
+  } catch (error) {
+    return makeError(error instanceof Error ? sanitizeErrorMessage(error.message) : "antigravity-usage CLI 사용량을 읽을 수 없습니다.", source);
+  }
+}
+
+async function readGeminiOauthPlanType(): Promise<string> {
+  try {
+    const authType = readGeminiAuthType();
+    if (authType === "api-key" || authType === "vertex-ai") {
+      return "확인 필요";
+    }
+
+    const credentials = readGeminiCredentials();
+    if (!credentials) {
+      return "확인 필요";
+    }
+
+    const accessToken = await getValidAccessToken(credentials);
+    const claims = parseJwtClaims(readString(credentials.idToken ?? credentials.id_token));
+    const assist = await loadCodeAssist(accessToken);
+    return planFromCodeAssist(assist, claims.hostedDomain);
+  } catch {
+    return "확인 필요";
+  }
 }
 
 async function retrieveUserQuota(accessToken: string, projectId: string | null) {
@@ -672,15 +880,43 @@ function makeWindow(label: string, model: GeminiQuotaModel | null): GeminiUsageW
   };
 }
 
-function planFromTier(tier: string | null, hostedDomain: string | null) {
-  if (tier === "standard-tier") {
-    return "Paid";
+function planFromCodeAssist(assist: GeminiCodeAssistInfo, hostedDomain: string | null) {
+  const paidPlan = normalizeGeminiPlan([assist.paidTierId, assist.paidTierName].filter(Boolean).join(" "));
+  if (paidPlan) {
+    return paidPlan;
   }
-  if (tier === "legacy-tier") {
-    return "Legacy";
+
+  const currentPlan = normalizeGeminiPlan([assist.currentTierId, assist.currentTierName].filter(Boolean).join(" "));
+  if (currentPlan) {
+    return currentPlan;
   }
-  if (tier === "free-tier") {
-    return hostedDomain ? "Workspace" : "Free";
+
+  if (assist.currentTierId === "free-tier") {
+    return "Free";
+  }
+  if (assist.currentTierId === "standard-tier" && hostedDomain) {
+    return "확인 필요";
+  }
+
+  return "확인 필요";
+}
+
+function normalizeGeminiPlan(value: string | null) {
+  const text = value?.toLowerCase() ?? "";
+  if (!text) {
+    return null;
+  }
+  if (text.includes("ultra")) {
+    return "Ultra";
+  }
+  if (text.includes("plus")) {
+    return "Plus";
+  }
+  if (text.includes("pro") || text.includes("g1-pro") || text.includes("google one ai pro")) {
+    return "Pro";
+  }
+  if (text.includes("free") || text.includes("free-tier")) {
+    return "Free";
   }
   return null;
 }

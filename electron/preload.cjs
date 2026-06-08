@@ -7,6 +7,7 @@ contextBridge.exposeInMainWorld("tokenMonitor", {
   getGeminiUsage: () => ipcRenderer.invoke("gemini-usage:read"),
   getCliSessionStatus: (force) => ipcRenderer.invoke("cli-session:read", force),
   startClaudeLogin: () => ipcRenderer.invoke("claude-login:start"),
+  startGeminiLogin: () => ipcRenderer.invoke("gemini-login:start"),
   minimizeToTray: () => ipcRenderer.invoke("app:minimize-to-tray"),
   quitApp: () => ipcRenderer.invoke("app:quit"),
   openCodexUsageDashboard: () => ipcRenderer.invoke("codex-usage:open-dashboard"),

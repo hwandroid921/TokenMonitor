@@ -16,6 +16,7 @@ The app has:
 
 - Keep UI changes aligned with the current compact dashboard style.
 - Do not show account emails, access tokens, refresh tokens, or account IDs in the UI or logs.
+- Write README and user-facing project docs as final-state documentation. Do not list individual task edits or change-by-change notes there; record changes only in version/release sections such as `RELEASE_VERSION_POLICY.md` Release History.
 - Keep portable artifact names in English.
 - Distinguish the project milestone version from the app/exe release version.
 - The project milestone version is managed in the local `RELEASE_VERSION_POLICY.md` document.
@@ -130,7 +131,9 @@ npm run typecheck
 npm run build
 ```
 
-After completing user-requested code or user-facing distributable work, package the app into the portable Windows executable unless the user explicitly asks not to package.
+Package the portable Windows executable only for milestone release versions such as `0.3.0`, `0.4.0`, and later `MINOR.0` or `MAJOR.0` release points, unless the user explicitly requests a portable exe for another version.
+
+For patch-level changes such as `0.3.1`, `0.3.2`, or `0.3.3`, skip portable packaging by default even when code changed. Still run verification commands for code changes.
 
 For documentation-only or instruction-only work, skip packaging unless the user explicitly asks for a new executable.
 

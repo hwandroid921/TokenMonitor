@@ -139,14 +139,19 @@ input {
 .provider-grid {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
+  align-items: start;
   gap: 14px;
   margin-top: 20px;
 }
 
 .provider-card {
   display: grid;
-  gap: 16px;
+  grid-template-rows: 50px minmax(0, 218px) 128px;
+  gap: 12px;
+  height: 460px;
+  min-width: 0;
   padding: 18px;
+  overflow: hidden;
 }
 
 .provider-source,
@@ -207,13 +212,18 @@ h2 {
 
 .usage-fields {
   display: grid;
-  gap: 10px;
+  grid-auto-rows: 47px;
+  gap: 8px;
+  min-width: 0;
+  overflow: hidden;
 }
 
 .usage-fields div {
   display: grid;
-  gap: 4px;
-  padding: 10px;
+  gap: 2px;
+  align-content: start;
+  min-width: 0;
+  padding: 7px 9px;
   background: #f5f7f1;
   border: 1px solid #e6eadf;
   border-radius: 8px;
@@ -221,22 +231,125 @@ h2 {
 
 .usage-fields dt {
   color: #68716a;
-  font-size: 12px;
+  font-size: 11px;
   font-weight: 800;
 }
 
 .usage-fields dd {
   margin: 0;
+  overflow: hidden;
   color: #20231f;
-  font-size: 14px;
+  font-size: 13px;
   font-weight: 750;
-  line-height: 1.35;
+  line-height: 1.2;
+  text-overflow: ellipsis;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
 }
 
 .provider-card p {
   color: #68716a;
   font-size: 13px;
   line-height: 1.45;
+}
+
+.provider-issue {
+  display: grid;
+  gap: 7px;
+  align-self: stretch;
+  align-content: start;
+  min-height: 0;
+  overflow: hidden;
+  padding: 10px 12px;
+  background: #fff7f2;
+  border: 1px solid #f1d6c8;
+  border-radius: 8px;
+}
+
+.provider-issue-heading {
+  display: grid;
+  gap: 2px;
+}
+
+.provider-issue-heading span {
+  color: #9a4b21;
+  font-size: 12px;
+  font-weight: 850;
+}
+
+.provider-issue-heading strong {
+  color: #6f2e16;
+  font-size: 12px;
+  font-weight: 850;
+  line-height: 1.25;
+}
+
+.provider-issue ol {
+  display: grid;
+  gap: 4px;
+  margin: 0;
+  padding-left: 18px;
+  color: #6f4b3d;
+  font-size: 11.5px;
+  line-height: 1.32;
+}
+
+.provider-issue li::marker {
+  color: #b05a2d;
+  font-weight: 850;
+}
+
+.collection-guide {
+  display: grid;
+  gap: 8px;
+  max-height: 154px;
+  min-height: 0;
+  overflow: auto;
+  padding-top: 14px;
+  border-top: 1px solid #e6eadf;
+}
+
+.collection-guide-heading {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.collection-guide-heading span {
+  color: #68716a;
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.collection-guide-heading strong {
+  color: #20231f;
+  font-size: 13px;
+  font-weight: 850;
+  line-height: 1.3;
+  text-align: right;
+}
+
+.collection-guide p {
+  color: #68716a;
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+.collection-guide ol {
+  display: grid;
+  gap: 5px;
+  margin: 0;
+  padding-left: 18px;
+  color: #4e584f;
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+.collection-guide li::marker {
+  color: #7a877b;
+  font-weight: 800;
 }
 
 .provider-action {
@@ -485,9 +598,10 @@ body.overlay-body #root {
 
 .overlay-root {
   --overlay-alpha: 0.92;
-  --overlay-text: rgba(246, 247, 242, var(--overlay-alpha));
-  --overlay-stroke: rgba(14, 18, 14, 0.98);
-  --overlay-stroke-width: 1.25px;
+  --overlay-text: rgba(228, 230, 226, var(--overlay-alpha));
+  --overlay-stroke: rgba(5, 7, 6, 0.98);
+  --overlay-stroke-width: 2.1px;
+  --overlay-shadow: rgba(0, 0, 0, 0.86);
   width: 100vw;
   height: 100vh;
   background: transparent !important;
@@ -524,6 +638,8 @@ body.overlay-body #root {
   background: transparent !important;
   border: 0;
   border-radius: 0;
+  box-shadow: none;
+  backdrop-filter: none;
 }
 
 .overlay-provider strong {
@@ -539,6 +655,10 @@ body.overlay-body #root {
   -webkit-text-stroke: var(--overlay-stroke-width) var(--overlay-stroke);
   paint-order: stroke fill;
   stroke-linejoin: round;
+  text-shadow:
+    0 1px 2px var(--overlay-shadow),
+    0 0 6px rgba(0, 0, 0, 0.62),
+    0 0 12px rgba(0, 0, 0, 0.34);
   font-variant-numeric: tabular-nums;
   font-feature-settings: "tnum" on, "lnum" on;
 }
@@ -556,6 +676,10 @@ body.overlay-body #root {
   -webkit-text-stroke: var(--overlay-stroke-width) var(--overlay-stroke);
   paint-order: stroke fill;
   stroke-linejoin: round;
+  text-shadow:
+    0 1px 2px var(--overlay-shadow),
+    0 0 6px rgba(0, 0, 0, 0.62),
+    0 0 12px rgba(0, 0, 0, 0.34);
   font-variant-numeric: tabular-nums;
   font-feature-settings: "tnum" on, "lnum" on;
 }
