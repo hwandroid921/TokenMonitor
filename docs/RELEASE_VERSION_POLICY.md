@@ -66,7 +66,7 @@ Before `v1.0.0`, do not maintain a fixed version-by-version feature roadmap. Whe
 Current package version:
 
 ```text
-0.3.20
+0.3.22
 ```
 
 Baseline `v0.1.0` includes:
@@ -171,6 +171,53 @@ For each release-worthy version bump, summarize:
 - Known limitations
 
 ## Release History
+
+### 0.3.22 — 2026-06-09 — PATCH
+
+**Change category:** PATCH (Antigravity quota window display guidance)
+
+**User-visible changes:**
+- Antigravity quota display now separates the 5-hour quota row from the weekly quota row
+- The 5-hour row shows model quota remaining percent and reset time when Antigravity CLI/local/API data is available
+- The weekly row is shown separately and remains unavailable unless the source response includes an explicit weekly/7-day quota window
+- README and in-app collection guidance now describe the prerequisites for each Antigravity quota window
+
+**Provider/data-source changes:**
+- Antigravity local API prompt credit parsing now reads available/monthly prompt credits when present
+- No weekly quota is inferred from monthly Prompt Credits
+
+**Packaging notes:**
+- Package version updated to `0.3.22`
+- `win-unpacked` development executable should be refreshed because the app version changed
+- No portable executable packaged because patch releases do not produce portable artifacts by default
+
+**Known limitations:**
+- Antigravity weekly quota requires an explicit weekly/7-day quota window from the CLI, local API, or provider API response
+
+---
+
+### 0.3.21 — 2026-06-09 — PATCH
+
+**Change category:** PATCH (Claude Pro/Max quota prerequisite guidance)
+
+**User-visible changes:**
+- Claude server quota guidance now states that measurement requires a Claude Pro/Max or higher account
+- The dashboard recovery steps now ask users to confirm a Claude Pro/Max or higher account before retrying OAuth setup
+- README setup, provider support, Claude collection, and FAQ sections now reflect the same prerequisite
+
+**Provider/data-source changes:**
+- No quota source changes
+- Claude local JSONL logs remain fallback/history metadata only and are not presented as server quota for lower-plan accounts
+
+**Packaging notes:**
+- Package version updated to `0.3.21`
+- `win-unpacked` development executable should be refreshed because the app version changed
+- No portable executable packaged because patch releases do not produce portable artifacts by default
+
+**Known limitations:**
+- Claude Pro/Max OAuth quota verification still requires access to a qualifying Claude account
+
+---
 
 ### 0.3.20 — 2026-06-09 — PATCH
 

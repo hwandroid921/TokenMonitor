@@ -453,7 +453,7 @@ async function startClaudeLogin() {
     }
 
     const command = `"${npxCommand}" -y @anthropic-ai/claude-code auth login --claudeai`;
-    const child = spawn("cmd.exe", ["/c", "start", "Claude CLI Login", "cmd.exe", "/c", command], {
+    const child = spawn("cmd.exe", ["/c", "start", "Claude CLI Login", "cmd.exe", "/k", command], {
       detached: true,
       stdio: "ignore",
       windowsHide: false

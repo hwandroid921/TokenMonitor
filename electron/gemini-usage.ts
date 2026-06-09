@@ -188,7 +188,7 @@ async function getAntigravityLocalUsage(): Promise<GeminiUsageResult> {
       source: "antigravity-local",
       planType: normalizeGeminiPlan(readAntigravityPlan(payload)) ?? "확인 필요",
       accountEmail: null,
-      promptCredits: null,
+      promptCredits: parseLocalPromptCredits(payload),
       primary: makeWindow("Claude", pickModel(models, "claude")),
       secondary: makeWindow("Gemini Pro", pickModel(models, "pro")),
       tertiary: makeWindow("Gemini Flash", pickModel(models, "flash")),
@@ -522,6 +522,30 @@ function parsePromptCredits(value: AntigravityUsageCliSnapshot["promptCredits"])
     monthly: readNumber(value.monthly),
     usedPercent: ratioToPercent(readNumber(value.usedPercentage)),
     remainingPercent: ratioToPercent(readNumber(value.remainingPercentage))
+  };
+}
+
+function parseLocalPromptCredits(value: unknown): PromptCredits | null {
+  const planStatus = readNestedRecord(value, ["userStatus", "planStatus"]);
+  const planInfo = readNestedRecord(planStatus, ["planInfo"]);
+  const available = readNumber(planStatus?.availablePromptCredits);
+  const monthly = readNumber(planInfo?.monthlyPromptCredits);
+  if (available == null && monthly == null) {
+    return null;
+  }
+
+  const usedPercent = available != null && monthly != null && monthly > 0
+    ? clampPercent((1 - available / monthly) * 100)
+    : null;
+  const remainingPercent = available != null && monthly != null && monthly > 0
+    ? clampPercent(available / monthly * 100)
+    : null;
+
+  return {
+    available,
+    monthly,
+    usedPercent,
+    remainingPercent
   };
 }
 

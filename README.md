@@ -8,7 +8,7 @@ Token Monitor는 로컬 LLM 계정/세션 데이터를 읽어 현재 플랜, 남
 
 ## 현재 버전
 
-- App/exe version: `0.3.20`
+- App/exe version: `0.3.22`
 - Current milestone line: `0.3.x`
 - Portable artifact policy: portable exe packaging is reserved for milestone versions such as `0.3.0`, `0.4.0`, or later `MINOR.0` / `MAJOR.0` release points unless explicitly requested.
 - Output naming policy: build artifact names stay in English.
@@ -44,8 +44,10 @@ Overlay는 primary display의 오른쪽 아래 근처에 표시되는 투명 alw
 | Windows | 필수 | Windows 데스크톱 앱으로 실행됩니다. |
 | Codex Desktop | Codex 사용량 수집 시 필수 | Codex Desktop 설치와 로그인이 필요합니다. |
 | Node.js/npm | Claude, Antigravity CLI 설정 시 필수 | 앱의 `Claude CLI 설치 및 로그인`, `Antigravity CLI 설치 및 로그인` 버튼이 `npx`를 사용합니다. |
-| Claude Code OAuth login | Claude server quota 확인 시 필수 | 앱 버튼 또는 `npx -y @anthropic-ai/claude-code auth login --claudeai` 명령으로 진행합니다. |
+| Claude Pro/Max 이상 계정 | Claude server quota 측정 시 필수 | Pro 이상 플랜 계정에서 Claude Code OAuth usage quota를 읽을 수 있습니다. Pro 미만 계정은 server quota 측정 대상이 아닐 수 있습니다. |
+| Claude Code OAuth login | Claude server quota 확인 시 필수 | Pro 이상 계정으로 앱 버튼 또는 `npx -y @anthropic-ai/claude-code auth login --claudeai` 명령을 진행합니다. |
 | Antigravity 실행 상태 | Antigravity local fallback 사용 시 필요 | CLI 수집이 안 될 때 실행 중인 Antigravity local server를 fallback으로 확인합니다. |
+| Antigravity weekly quota window | Antigravity 주간 한도 표시 시 필요 | CLI, local API, 또는 provider API 응답에 weekly/7-day quota window가 명시되어야 합니다. 없으면 주간 한도는 확인 불가로 표시합니다. |
 
 Node.js/npm이 없으면 Claude 또는 Antigravity 카드에서 안내가 표시되며, 하단의 `Node.js 설치` 버튼으로 공식 Node.js 다운로드 페이지를 열 수 있습니다.
 
@@ -69,7 +71,7 @@ dist-app/win-unpacked/TokenMonitor.exe
 1. `TokenMonitor.exe`를 실행합니다.
 2. 대시보드에서 Codex, Claude, Antigravity 카드를 확인합니다.
 3. Codex 사용량이 필요하면 Codex Desktop 설치와 로그인을 먼저 완료합니다.
-4. Claude server quota가 필요하면 `Claude CLI 설치 및 로그인` 버튼을 누르고 브라우저 인증을 완료합니다.
+4. Claude server quota가 필요하면 Claude Pro/Max 이상 계정으로 `Claude CLI 설치 및 로그인` 버튼을 누르고 브라우저 인증을 완료합니다.
 5. Antigravity quota가 필요하면 `Antigravity CLI 설치 및 로그인` 버튼을 눌러 `antigravity-usage` CLI 설정과 Google 로그인을 진행합니다.
 6. Node.js/npm 안내가 표시되면 `Node.js 설치` 버튼으로 Node.js를 설치한 뒤 앱을 다시 실행합니다.
 7. Settings에서 overlay 표시 여부와 provider별 표시 항목을 조정합니다.
@@ -80,7 +82,7 @@ dist-app/win-unpacked/TokenMonitor.exe
 | Provider | Quota source | Requirement |
 | --- | --- | --- |
 | Codex | Local Codex app/server usage flow | Codex Desktop install and login |
-| Claude | Claude Code CLI OAuth, with local log fallback | Node.js/npm for CLI setup and Claude Code OAuth login |
+| Claude | Claude Code CLI OAuth, with local log fallback | Node.js/npm for CLI setup, Claude Pro/Max or higher account, and Claude Code OAuth login |
 | Antigravity | `antigravity-usage` CLI, with embedded local/Gemini fallback | Node.js/npm for CLI setup, or Antigravity running for local fallback |
 
 ## 사용량 수집 경로
@@ -109,7 +111,7 @@ Displayed fields:
 
 ### Claude
 
-Claude server quota는 Claude Code CLI OAuth가 가능할 때 읽습니다. 서버 quota가 없을 때만 local Claude JSONL logs를 fallback/history metadata로 사용합니다.
+Claude server quota는 Claude Pro/Max 이상 계정에서 Claude Code CLI OAuth가 가능할 때 읽습니다. Pro 미만 계정은 server quota 측정 대상이 아닐 수 있으며, 이 경우 local Claude JSONL logs는 fallback/history metadata로만 사용합니다.
 
 Login command:
 
@@ -133,6 +135,8 @@ Displayed fields:
 ### Antigravity
 
 Antigravity quota는 `antigravity-usage`를 먼저 사용합니다. 앱의 통합 설정 버튼은 Node.js/npm이 필요하며, `npx`를 통해 CLI 설치/실행과 로그인을 시작합니다. CLI 수집이 불가능해도 Antigravity가 실행 중이면 embedded local fallback을 계속 시도합니다.
+
+Antigravity 5시간 한도는 모델별 quota 응답의 `remainingFraction` 또는 `remainingPercentage`와 `resetTime`으로 표시합니다. 주간 한도는 CLI, local API, 또는 provider API 응답에 weekly/7-day quota window가 명시될 때만 남은 사용량과 초기화 시간을 표시합니다. 응답에 주간 window가 없으면 주간 한도는 확인 불가로 표시합니다.
 
 1. `antigravity-usage` Google method
 
@@ -162,7 +166,9 @@ Local paths:
 Displayed fields:
 
 - Plan
-- Gemini quota
+- 5-hour quota
+- Weekly quota, when a weekly/7-day window is available
+- Prompt Credits, when available from `antigravity-usage` or the local Antigravity API
 
 Antigravity/Gemini plan names are normalized from the OAuth or local provider response into four user-facing tiers:
 
@@ -206,7 +212,7 @@ Codex Desktop이 설치되어 있고 로그인되어 있는지 확인하세요. 
 
 ### Claude server quota가 연결되지 않습니다.
 
-Node.js/npm을 설치한 뒤 앱의 `Claude CLI 설치 및 로그인` 버튼을 누르고 브라우저 인증을 완료하세요. 직접 실행할 때는 아래 명령을 사용할 수 있습니다.
+Claude server quota는 Claude Pro/Max 이상 계정에서 측정할 수 있습니다. Node.js/npm을 설치한 뒤 Pro 이상 계정으로 앱의 `Claude CLI 설치 및 로그인` 버튼을 누르고 브라우저 인증을 완료하세요. 직접 실행할 때는 아래 명령을 사용할 수 있습니다.
 
 ```powershell
 npx -y @anthropic-ai/claude-code auth login --claudeai

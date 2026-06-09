@@ -416,9 +416,10 @@ function getProviderCollectionGuide(providerId: ProviderId) {
   if (providerId === "claude") {
     return {
       title: "Claude Code OAuth",
-      summary: "Node.js/npm이 준비된 상태에서 Claude CLI 설치와 OAuth 로그인을 한 번에 진행한 뒤 서버 quota를 읽습니다.",
+      summary: "Node.js/npm이 준비된 상태에서 Claude Pro/Max 이상 계정으로 Claude CLI 설치와 OAuth 로그인을 진행한 뒤 서버 quota를 읽습니다.",
       steps: [
         "Node.js/npm 설치 상태 확인",
+        "Claude Pro/Max 이상 계정 확인",
         "Claude CLI 설치 및 로그인 버튼 실행",
         "OAuth usage endpoint에서 5시간/주간 quota 조회",
         "서버 quota 미연동 시 local log를 보조 정보로 사용"
@@ -428,12 +429,13 @@ function getProviderCollectionGuide(providerId: ProviderId) {
 
   return {
     title: "antigravity-usage CLI",
-    summary: "Node.js/npm이 준비된 상태에서 antigravity-usage CLI 설치와 Google 로그인을 한 번에 진행합니다. 실패해도 실행 중인 Antigravity local server fallback은 유지됩니다.",
+    summary: "Node.js/npm 기반 CLI와 실행 중인 Antigravity local API를 결합해 5시간 한도를 우선 읽고, 주간 한도는 응답에 명시된 window가 있을 때 표시합니다.",
     steps: [
       "Node.js/npm 설치 상태 확인",
       "Antigravity CLI 설치 및 로그인 버튼 실행",
-      "Antigravity 실행 시 local fallback 사용",
-      "대시보드는 이메일 없이 quota와 reset만 표시"
+      "5시간 한도는 모델별 remaining/reset 응답에서 수집",
+      "주간 한도는 weekly window가 제공될 때만 수집",
+      "Antigravity 실행 시 local fallback 유지"
     ]
   };
 }
@@ -461,6 +463,7 @@ function getProviderIssue(provider: ProviderUsage) {
       reason: "Claude OAuth 연동 필요",
       steps: [
         "Node.js LTS 설치 확인",
+        "Claude Pro/Max 이상 계정 확인",
         "Claude CLI 설치 및 로그인 버튼 실행",
         "브라우저 인증 완료",
         "대시보드 새로고침"
@@ -519,10 +522,10 @@ function makeClaudeLoginNotice(claudeUsage: ClaudeUsageResult | null, cliSession
     return `30초 안에 Claude 로그인이 확인되지 않았습니다. ${session.detail}`;
   }
   if (!claudeUsage?.ok) {
-    return `30초 안에 Claude 사용량 연동이 확인되지 않았습니다. ${claudeUsage?.error ?? "Claude OAuth 사용량 응답을 찾을 수 없습니다."}`;
+    return `30초 안에 Claude 사용량 연동이 확인되지 않았습니다. Claude Pro/Max 이상 계정인지 확인하세요. ${claudeUsage?.error ?? "Claude OAuth 사용량 응답을 찾을 수 없습니다."}`;
   }
   if (!claudeUsage.oauth) {
-    return "30초 안에 Claude OAuth 사용량 응답을 찾을 수 없습니다. 브라우저 로그인 완료 후 다시 새로고침하세요.";
+    return "30초 안에 Claude OAuth 사용량 응답을 찾을 수 없습니다. Claude Pro/Max 이상 계정으로 브라우저 로그인 완료 후 다시 새로고침하세요.";
   }
   return "30초 안에 Claude 연동 완료를 확인하지 못했습니다. 브라우저 인증을 마친 뒤 다시 시도하세요.";
 }
@@ -865,7 +868,7 @@ function buildClaudeProvider(usage: ClaudeUsageResult | null, sessions: CliSessi
         { label: "5시간", value: "확인 중", kind: "quota" },
         { label: "주간", value: "확인 중", kind: "quota" }
       ],
-      detail: canLogin ? "Node.js/npm 설치 후 Claude CLI 설치와 로그인을 진행하세요." : "Claude 로컬 사용 로그를 읽고 있습니다.",
+      detail: canLogin ? "Node.js/npm 설치 후 Claude Pro/Max 이상 계정으로 Claude CLI 설치와 로그인을 진행하세요." : "Claude 로컬 사용 로그를 읽고 있습니다.",
       canLogin,
       actionLabel: "Claude CLI 설치 및 로그인"
     };
@@ -887,7 +890,7 @@ function buildClaudeProvider(usage: ClaudeUsageResult | null, sessions: CliSessi
         { label: "5시간", value: "확인 불가", kind: "quota" },
         { label: "주간", value: "확인 불가", kind: "quota" }
       ],
-      detail: canLogin ? "Node.js/npm 설치 후 Claude CLI 설치와 로그인을 진행하세요." : usage.error,
+      detail: canLogin ? "Node.js/npm 설치 후 Claude Pro/Max 이상 계정으로 Claude CLI 설치와 로그인을 진행하세요." : usage.error,
       canLogin,
       actionLabel: "Claude CLI 설치 및 로그인"
     };
@@ -941,7 +944,8 @@ function buildGeminiProvider(usage: GeminiUsageResult | null): ProviderUsage {
       reset: "확인 중",
       fields: [
         { label: "플랜", value: "확인 중", kind: "plan" },
-        { label: "Gemini 한도", value: "확인 중", kind: "quota" }
+        { label: "5시간", value: "확인 중", kind: "quota" },
+        { label: "주간", value: "확인 중", kind: "quota" }
       ],
       detail: "Node.js/npm 기반 antigravity-usage CLI와 local fallback을 확인하고 있습니다.",
       canLogin: true,
@@ -962,7 +966,8 @@ function buildGeminiProvider(usage: GeminiUsageResult | null): ProviderUsage {
       reset: "확인 불가",
       fields: [
         { label: "플랜", value: "확인 필요", kind: "plan" },
-        { label: "Gemini 한도", value: "확인 불가", kind: "quota" }
+        { label: "5시간", value: "확인 불가", kind: "quota" },
+        { label: "주간", value: "확인 불가", kind: "quota" }
       ],
       detail: usage.error,
       canLogin: true,
@@ -970,7 +975,8 @@ function buildGeminiProvider(usage: GeminiUsageResult | null): ProviderUsage {
     };
   }
 
-  const geminiSharedWindow = pickGeminiSharedWindow(usage.models);
+  const fiveHourWindow = pickAntigravityFiveHourWindow(usage.models);
+  const weeklyWindow = pickAntigravityWeeklyWindow(usage.models);
   const sourceLabel = formatAntigravitySource(usage.source);
   const planLabel = usage.planType ?? "확인 필요";
   const promptCredits = formatPromptCredits(usage.promptCredits);
@@ -982,12 +988,13 @@ function buildGeminiProvider(usage: GeminiUsageResult | null): ProviderUsage {
     status: "live",
     plan: planLabel,
     session: sourceLabel,
-    used: geminiSharedWindow ? `Gemini ${geminiSharedWindow.usedPercent}%` : "데이터 없음",
-    remaining: geminiSharedWindow ? `Gemini ${geminiSharedWindow.remainingPercent}%` : "데이터 없음",
-    reset: geminiSharedWindow?.resetsAt ? formatReset(geminiSharedWindow.resetsAt) : "데이터 없음",
+    used: formatGeminiWindows(fiveHourWindow, weeklyWindow, null, "used"),
+    remaining: formatGeminiWindows(fiveHourWindow, weeklyWindow, null, "remaining"),
+    reset: formatGeminiResets(fiveHourWindow, weeklyWindow, null),
     fields: [
       { label: "플랜", value: planLabel, kind: "plan" },
-      { label: "Gemini 한도", value: formatGeminiWindowSummary(geminiSharedWindow), kind: "quota" }
+      { label: "5시간", value: formatGeminiWindowSummary(fiveHourWindow), kind: "quota" },
+      { label: "주간", value: formatAntigravityWeeklySummary(weeklyWindow), kind: "quota" }
     ],
     detail: promptCredits ?? `${sourceLabel} 기준 최근 갱신 ${formatTime(usage.updatedAt)}`
   };
@@ -1131,12 +1138,29 @@ function formatGeminiWindowSummary(window: GeminiUsageWindow | null) {
   return `남은 사용량 ${window.remainingPercent}% / 초기화 ${reset}`;
 }
 
-function pickGeminiSharedWindow(models: GeminiQuotaModelView[]): GeminiUsageWindow | null {
+function formatAntigravityWeeklySummary(window: GeminiUsageWindow | null) {
+  if (window) {
+    return formatGeminiWindowSummary(window);
+  }
+  return "남은 사용량 확인 불가 / 초기화 확인 불가";
+}
+
+function pickAntigravityFiveHourWindow(models: GeminiQuotaModelView[]): GeminiUsageWindow | null {
   const candidates = models.filter((model) => {
     const text = `${model.modelId} ${model.label}`.toLowerCase();
-    return text.includes("gemini") || text.includes("pro") || text.includes("flash");
+    return !model.isAutocompleteOnly && !isWeeklyQuotaModel(model) && !text.includes("autocomplete");
   });
-  return quotaModelToWindow("Gemini 공유 한도", pickMostConstrainedModel(candidates));
+  return quotaModelToWindow("5시간 한도", pickMostConstrainedModel(candidates));
+}
+
+function pickAntigravityWeeklyWindow(models: GeminiQuotaModelView[]): GeminiUsageWindow | null {
+  const candidates = models.filter((model) => !model.isAutocompleteOnly && isWeeklyQuotaModel(model));
+  return quotaModelToWindow("주간 한도", pickMostConstrainedModel(candidates));
+}
+
+function isWeeklyQuotaModel(model: GeminiQuotaModelView) {
+  const text = `${model.modelId} ${model.label}`.toLowerCase();
+  return /\b(weekly|week|seven[-_\s]?day|7[-_\s]?day)\b|주간|7일/.test(text);
 }
 
 function pickMostConstrainedModel<T extends { remainingPercent: number }>(models: T[]) {
