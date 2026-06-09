@@ -382,6 +382,44 @@ h2 {
   display: none;
 }
 
+.provider-action-notice {
+  display: grid;
+  gap: 8px;
+  padding: 9px 11px;
+  color: #6f2e16;
+  background: #fff7f2;
+  border: 1px solid #f1cdbb;
+  border-radius: 8px;
+  font-size: 12px;
+  font-weight: 800;
+  line-height: 1.35;
+}
+
+.provider-action-notice p {
+  margin: 0;
+}
+
+.provider-secondary-action {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  justify-self: start;
+  min-height: 30px;
+  padding: 0 10px;
+  color: #24483b;
+  background: #ffffff;
+  border: 1px solid #d8e1d7;
+  border-radius: 7px;
+  cursor: pointer;
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.provider-secondary-action:hover {
+  background: #f3f7f2;
+}
+
 .provider-header-action {
   justify-self: end;
   max-width: 154px;

@@ -174,6 +174,7 @@ declare global {
       minimizeToTray: () => Promise<void>;
       quitApp: () => Promise<void>;
       openCodexUsageDashboard: () => Promise<void>;
+      openNodeJsDownload: () => Promise<void>;
       getOverlaySettings: () => Promise<OverlaySettings>;
       updateOverlaySettings: (settings: OverlaySettings) => Promise<OverlaySettings>;
       onOverlaySettingsChanged: (callback: (settings: OverlaySettings) => void) => () => void;

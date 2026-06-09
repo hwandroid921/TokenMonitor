@@ -377,8 +377,19 @@ function runPowerShell(command: string, timeoutMs: number) {
 
 function runAntigravityUsageCli(args: string[]): Promise<string> {
   return new Promise((resolve, reject) => {
-    const command = process.platform === "win32" ? "cmd.exe" : "antigravity-usage";
-    const commandArgs = process.platform === "win32" ? ["/d", "/s", "/c", "antigravity-usage", ...args] : args;
+    const npxCommand = findCommandOnPath(process.platform === "win32" ? "npx.cmd" : "npx")
+      ?? findCommandOnPath("npx.exe")
+      ?? findCommandOnPath("npx");
+    const antigravityCommand = findCommandOnPath(process.platform === "win32" ? "antigravity-usage.cmd" : "antigravity-usage")
+      ?? findCommandOnPath("antigravity-usage.exe")
+      ?? findCommandOnPath("antigravity-usage");
+    const commandInfo = makeAntigravityUsageCommand(npxCommand, antigravityCommand, args);
+    if (!commandInfo) {
+      reject(new Error("Node.js/npm 또는 antigravity-usage CLI를 찾을 수 없습니다."));
+      return;
+    }
+
+    const { command, commandArgs } = commandInfo;
     const child = spawn(command, commandArgs, {
       windowsHide: true,
       stdio: ["ignore", "pipe", "pipe"]
@@ -405,6 +416,53 @@ function runAntigravityUsageCli(args: string[]): Promise<string> {
       reject(new Error(stderr.trim() || stdout.trim() || `antigravity-usage exited with ${code}`));
     });
   });
+}
+
+function makeAntigravityUsageCommand(npxCommand: string | null, antigravityCommand: string | null, args: string[]) {
+  if (npxCommand) {
+    if (process.platform === "win32") {
+      return {
+        command: "cmd.exe",
+        commandArgs: ["/d", "/s", "/c", `"${npxCommand}"`, "-y", "antigravity-usage", ...args]
+      };
+    }
+
+    return {
+      command: npxCommand,
+      commandArgs: ["-y", "antigravity-usage", ...args]
+    };
+  }
+
+  if (antigravityCommand) {
+    if (process.platform === "win32") {
+      return {
+        command: "cmd.exe",
+        commandArgs: ["/d", "/s", "/c", `"${antigravityCommand}"`, ...args]
+      };
+    }
+
+    return {
+      command: antigravityCommand,
+      commandArgs: args
+    };
+  }
+
+  return null;
+}
+
+function findCommandOnPath(command: string) {
+  const pathEntries = (process.env.PATH ?? "").split(path.delimiter).filter(Boolean);
+  for (const entry of pathEntries) {
+    const candidate = path.join(entry, command);
+    try {
+      if (fs.statSync(candidate).isFile()) {
+        return candidate;
+      }
+    } catch {
+      // Try the next PATH entry.
+    }
+  }
+  return null;
 }
 
 function parseAntigravityUsageCliSnapshot(raw: string): AntigravityUsageCliSnapshot {

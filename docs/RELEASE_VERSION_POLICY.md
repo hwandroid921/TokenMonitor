@@ -1,6 +1,6 @@
 # Release Version Policy
 
-This local planning document defines the project milestone version and app/exe release version rules for Token Monitor from `0.1.0` to the final `1.0.0` release.
+This local planning document defines the project milestone version and app/exe release version rules for Token Monitor from `v0.1.0` to the initial complete `v1.0.0` release and later Git-managed releases.
 
 This file is tracked in Git and is used as a shared working reference while planning, implementing, and packaging releases.
 
@@ -8,9 +8,10 @@ README and other user-facing project documents should describe the current final
 
 ## Versioning Goal
 
-- `0.1.0` is the first packaged baseline.
-- `1.0.0` is the final complete release target for the initial product scope.
-- Versions before `1.0.0` represent staged milestones toward feature completeness, stability, and release polish.
+- `v0.1.0` is the default starting program version.
+- `v1.0.0` is used when the intended initial feature implementation is complete.
+- Versions before `v1.0.0` represent staged work toward feature completeness, stability, and release polish.
+- Do not predefine fixed feature content for every version up to `v1.0.0`. Record version content when actual implementation, fixes, or documentation work is performed.
 
 ## Version Types
 
@@ -20,17 +21,7 @@ Token Monitor uses two related but separate version concepts.
 
 The project milestone version describes product progress toward `1.0.0`.
 
-Examples:
-
-```text
-0.1  Packaged baseline
-0.2  Overlay usability
-0.3  Provider quota reliability
-0.4  Settings and tray stabilization
-1.0  Initial complete release
-```
-
-Use this version to reason about roadmap stage and completion level.
+Use this version to reason about roadmap stage and completion level. Before `v1.0.0`, keep milestone content flexible and update the release history from actual completed work instead of maintaining a fixed prewritten roadmap.
 
 ### App/Exe Release Version
 
@@ -60,38 +51,25 @@ Use semantic versioning style:
 MAJOR.MINOR.PATCH
 ```
 
-- `MAJOR`: Product-level compatibility or final release boundary.
-- `MINOR`: User-visible feature milestone or meaningful workflow change.
+- `MAJOR`: Product-level compatibility boundary. Before initial completion, `v1.0.0` marks the first complete release. After that, major changes increment by `1.0.0` units.
+- `MINOR`: User-visible feature milestone or meaningful workflow change. Before and after `v1.0.0`, minor changes increment by `0.1.0` units.
 - `PATCH`: Bug fix, UI polish, packaging fix, or narrow code adjustment.
 
 Documentation-only or instruction-only changes do not require an app/exe version bump unless the user explicitly asks for a new executable.
 
 Portable executable packaging is performed only for milestone release versions such as `0.3.0`, `0.4.0`, and later `MINOR.0` or `MAJOR.0` release points. Patch releases such as `0.3.1`, `0.3.2`, and `0.3.3` do not produce a portable executable by default unless explicitly requested.
 
-Before `1.0.0`, use minor versions as milestone gates:
-
-```text
-0.1.x  Packaged baseline and core provider display
-0.2.x  Overlay usability and display refinement
-0.3.x  Provider quota reliability improvements
-0.4.x  Settings and tray behavior stabilization
-0.5.x  Error handling, fallback, and troubleshooting improvements
-0.6.x  Packaging workflow and release artifact consistency
-0.7.x  UI polish and accessibility pass
-0.8.x  Provider data validation and privacy hardening
-0.9.x  Release candidate stabilization
-1.0.0  Final complete initial release
-```
+Before `v1.0.0`, do not maintain a fixed version-by-version feature roadmap. When work is completed, decide whether it is patch, minor, or major according to the actual change and record the completed content in Release History.
 
 ## Current Baseline
 
 Current package version:
 
 ```text
-0.3.13
+0.3.20
 ```
 
-Baseline `0.1.0` includes:
+Baseline `v0.1.0` includes:
 
 - Codex quota display
 - Claude quota display
@@ -113,7 +91,7 @@ Examples:
 
 Do not increment the app/exe version for documentation-only or instruction-only work unless explicitly requested.
 
-Use a minor increment when the work represents a new milestone.
+Use a minor increment when the work represents a new milestone. Minor changes increment by `0.1.0` units.
 
 Examples:
 
@@ -124,7 +102,7 @@ Examples:
 - Major dashboard layout redesign
 - Significant packaging/release workflow change
 
-Reserve `1.0.0` for the final complete initial release after:
+Reserve `v1.0.0` for the final complete initial release after:
 
 - Provider quota display is stable
 - Overlay display is reliable
@@ -132,6 +110,8 @@ Reserve `1.0.0` for the final complete initial release after:
 - Packaging is repeatable
 - README and troubleshooting docs are complete
 - Privacy-sensitive data handling has been reviewed
+
+After `v1.0.0`, release versions should be managed through Git releases and tags. Each post-`v1.0.0` release should have a corresponding Git tag and release entry.
 
 ## Required Workflow For Each Task
 
@@ -143,22 +123,40 @@ Before finishing a task:
    - `package.json`
    - `package-lock.json`
    - any release/output references that include the version string
-4. If the change is documentation-only or instruction-only, do not update `package.json` and do not package a new exe unless explicitly requested.
-5. Run verification when code or packaging-related behavior changed:
+4. If feature additions, fixes, documentation work, or instruction work require a version update after reviewing version history, update the relevant version immediately in the same task.
+5. If the change is documentation-only or instruction-only and does not require a version update, do not update `package.json` and do not package a new exe unless explicitly requested.
+6. Run verification when code or packaging-related behavior changed:
 
    ```powershell
    npm run typecheck
    npm run build
    ```
 
-6. Package the portable executable only when the app/exe release version is a milestone package version such as `0.3.0`, `0.4.0`, or another `MINOR.0` / `MAJOR.0` release point, unless the user explicitly requests packaging for another version:
+7. Package the portable executable only when the app/exe release version is a milestone package version such as `0.3.0`, `0.4.0`, or another `MINOR.0` / `MAJOR.0` release point, unless the user explicitly requests packaging for another version:
 
    ```powershell
    $env:CSC_IDENTITY_AUTO_DISCOVERY='false'
    npx electron-builder --win portable --x64 --publish never --config.win.signAndEditExecutable=false
    ```
 
-7. Verify the generated executable and SHA256 hash when packaging is performed.
+8. Verify the generated executable and SHA256 hash when packaging is performed.
+
+## Git Releases And Tags After v1.0.0
+
+After the project reaches `v1.0.0`, release management should include Git release and tag creation.
+
+Rules:
+
+- Create a Git tag for each release version.
+- Use tag names in the format `vMAJOR.MINOR.PATCH`, for example `v1.0.0` or `v1.1.0`.
+- Create a GitHub release or equivalent remote release entry for each tagged release.
+- Keep the release description concise and focused on:
+  - core work
+  - user-visible changes
+  - differences from the previous release
+  - verification and packaging status
+- Ensure `package.json`, `package-lock.json`, Release History, packaged artifacts, Git tag, and remote release entry all refer to the same version.
+- Before `v1.0.0`, tags and remote releases are optional unless explicitly requested.
 
 ## Release Notes Checklist
 
@@ -173,6 +171,162 @@ For each release-worthy version bump, summarize:
 - Known limitations
 
 ## Release History
+
+### 0.3.20 — 2026-06-09 — PATCH
+
+**Change category:** PATCH (Antigravity CLI collection command alignment)
+
+**User-visible changes:**
+- Antigravity usage collection now matches the in-app setup flow by using `npx -y antigravity-usage` when Node.js/npm is available
+- Users no longer need a separate global `antigravity-usage` install after using the in-app setup/login button
+
+**Provider/data-source changes:**
+- Antigravity CLI collection now prefers `npx -y antigravity-usage quota ...`
+- A globally installed `antigravity-usage` command remains supported as fallback
+- Existing fallback order remains unchanged after CLI attempts: embedded Antigravity local probe, then Gemini CLI OAuth fallback
+
+**Packaging notes:**
+- Package version updated to `0.3.20`
+- `win-unpacked` development executable should be refreshed because the app version changed
+- No portable executable packaged because patch releases do not produce portable artifacts by default
+
+**Known limitations:**
+- Node.js/npm is still required for the integrated `npx` CLI setup and collection path
+
+---
+
+### 0.3.19 — 2026-06-09 — PATCH
+
+**Change category:** PATCH (Node.js prerequisite recovery action)
+
+**User-visible changes:**
+- Claude and Antigravity Node.js/npm prerequisite notices can now show a direct `Node.js 설치` button
+- The install button opens the official Node.js download page from inside the app
+
+**Provider/data-source changes:**
+- No quota source changes
+- Existing Claude and Antigravity CLI setup commands are unchanged
+- Antigravity local fallback remains available when Antigravity is already running
+
+**Packaging notes:**
+- Package version updated to `0.3.19`
+- `win-unpacked` development executable should be refreshed because the app version changed
+- No portable executable packaged because patch releases do not produce portable artifacts by default
+
+**Known limitations:**
+- The app opens the Node.js download page but does not silently install Node.js on behalf of the user
+
+---
+
+### 0.3.18 — 2026-06-09 — PATCH
+
+**Change category:** PATCH (Antigravity CLI setup flow)
+
+**User-visible changes:**
+- Antigravity setup now uses a combined CLI install/login action through `npx -y antigravity-usage login`
+- Antigravity guidance now states that Node.js/npm is required for the integrated CLI setup button
+- Antigravity local fallback remains available when Antigravity is already running, even if CLI setup is not available
+
+**Provider/data-source changes:**
+- Antigravity login startup now checks for `npx` before opening the CLI setup command
+- Existing collection order is preserved: `antigravity-usage` Google, `antigravity-usage` auto, embedded Antigravity local probe, then Gemini CLI OAuth fallback
+
+**Packaging notes:**
+- Package version updated to `0.3.18`
+- `win-unpacked` development executable should be refreshed because the app version changed
+- No portable executable packaged because patch releases do not produce portable artifacts by default
+
+**Known limitations:**
+- Users must install Node.js/npm before the app can run the `antigravity-usage` CLI setup command
+
+---
+
+### 0.3.17 — 2026-06-09 — PATCH
+
+**Change category:** PATCH (Codex prerequisite wording)
+
+**User-visible changes:**
+- Codex setup guidance now states that Codex Desktop installation and login are required before usage collection
+- Codex troubleshooting copy now directs users to verify Codex Desktop before setting `CODEX_CLI_PATH`
+
+**Provider/data-source changes:**
+- No provider source changes
+
+**Packaging notes:**
+- Package version updated to `0.3.17`
+- `win-unpacked` development executable should be refreshed because the app version changed
+- No portable executable packaged because patch releases do not produce portable artifacts by default
+
+**Known limitations:**
+- Codex quota collection still requires a Codex app-server compatible executable and authenticated Codex session
+
+---
+
+### 0.3.16 — 2026-06-09 — PATCH
+
+**Change category:** PATCH (Claude setup flow clarification)
+
+**User-visible changes:**
+- Claude setup now treats Node.js/npm as the required prerequisite before attempting usage collection
+- The Claude action button now presents a combined "Claude CLI install and login" flow
+- Claude guidance now explains that the app runs the `npx` Claude Code OAuth command when Node.js/npm is available
+
+**Provider/data-source changes:**
+- Claude login startup now uses the integrated `npx -y @anthropic-ai/claude-code auth login --claudeai` path instead of preferring an already installed `claude` command
+- Claude usage collection still uses the existing OAuth usage API plus local log fallback
+
+**Packaging notes:**
+- Package version updated to `0.3.16`
+- `win-unpacked` development executable should be refreshed because the app version changed
+- No portable executable packaged because patch releases do not produce portable artifacts by default
+
+**Known limitations:**
+- Users must install Node.js/npm before the app can run the Claude CLI setup command
+
+---
+
+### 0.3.15 — 2026-06-08 — PATCH
+
+**Change category:** PATCH (Claude login feedback and timeout)
+
+**User-visible changes:**
+- Claude usage linking now stops the pending state after 30 seconds instead of waiting up to 20 minutes
+- The dashboard now shows an in-app reason when Claude CLI or `npx` cannot be found, or when OAuth usage linking does not complete in time
+
+**Provider/data-source changes:**
+- Claude login startup now checks for `claude` or `npx` on PATH before opening the login command
+- Claude usage collection still uses the existing OAuth usage API plus local log fallback
+
+**Packaging notes:**
+- Package version updated to `0.3.15`
+- `win-unpacked` development executable should be refreshed because the app version changed
+- No portable executable packaged because patch releases do not produce portable artifacts by default
+
+**Known limitations:**
+- Claude server quota still requires Claude Code OAuth credentials and an OAuth usage response after browser authentication
+
+---
+
+### 0.3.14 — 2026-06-08 — PATCH
+
+**Change category:** PATCH (Codex CLI discovery reliability)
+
+**User-visible changes:**
+- Codex quota collection now works across more Windows Codex install layouts without requiring `CODEX_CLI_PATH`
+- Codex connection errors now report a clearer missing executable message when no usable CLI is found
+
+**Provider/data-source changes:**
+- Codex executable discovery now checks `CODEX_CLI_PATH`, the legacy direct local path, hashed local install folders, WindowsApps bundled resources, and PATH candidates in order
+- The app still uses the existing Codex `app-server` quota source after resolving the executable path
+
+**Packaging notes:**
+- Package version updated to `0.3.14`
+- No portable executable packaged because patch releases do not produce portable artifacts by default
+
+**Known limitations:**
+- Codex quota collection still requires a Codex CLI/app-server version that supports account rate limit reads and an authenticated Codex session
+
+---
 
 ### 0.3.13 — 2026-06-03 — PATCH
 
