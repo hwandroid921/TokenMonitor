@@ -11,6 +11,7 @@ contextBridge.exposeInMainWorld("tokenMonitor", {
   minimizeToTray: () => ipcRenderer.invoke("app:minimize-to-tray"),
   quitApp: () => ipcRenderer.invoke("app:quit"),
   openCodexUsageDashboard: () => ipcRenderer.invoke("codex-usage:open-dashboard"),
+  openNodeJsDownload: () => ipcRenderer.invoke("nodejs:open-download"),
   getOverlaySettings: () => ipcRenderer.invoke("overlay-settings:read"),
   updateOverlaySettings: (settings) => ipcRenderer.invoke("overlay-settings:update", settings),
   onOverlaySettingsChanged: (callback) => {

@@ -442,7 +442,17 @@ async function startClaudeLogin() {
   }
 
   if (process.platform === "win32") {
-    const command = "npx -y @anthropic-ai/claude-code auth login --claudeai";
+    const npxCommand = findCommandOnPath("npx.cmd") ?? findCommandOnPath("npx.exe") ?? findCommandOnPath("npx");
+
+    if (!npxCommand) {
+      return {
+        ok: false,
+        command: "npx -y @anthropic-ai/claude-code auth login --claudeai",
+        detail: "Claude 연동에는 Node.js/npm이 필요합니다. Node.js LTS 설치 후 Token Monitor를 다시 실행하세요."
+      };
+    }
+
+    const command = `"${npxCommand}" -y @anthropic-ai/claude-code auth login --claudeai`;
     const child = spawn("cmd.exe", ["/c", "start", "Claude CLI Login", "cmd.exe", "/c", command], {
       detached: true,
       stdio: "ignore",
@@ -460,8 +470,35 @@ async function startClaudeLogin() {
   return { ok: true, command: "npx -y @anthropic-ai/claude-code auth login --claudeai" };
 }
 
+function findCommandOnPath(command: string) {
+  const pathEntries = (process.env.PATH ?? "").split(path.delimiter).filter(Boolean);
+  for (const entry of pathEntries) {
+    const candidate = path.join(entry, command);
+    try {
+      if (fs.statSync(candidate).isFile()) {
+        return candidate;
+      }
+    } catch {
+      // Try the next PATH entry.
+    }
+  }
+  return null;
+}
+
 async function startGeminiLogin() {
-  const command = "antigravity-usage login";
+  const npxCommand = findCommandOnPath(process.platform === "win32" ? "npx.cmd" : "npx")
+    ?? findCommandOnPath("npx.exe")
+    ?? findCommandOnPath("npx");
+
+  if (!npxCommand) {
+    return {
+      ok: false,
+      command: "npx -y antigravity-usage login",
+      detail: "Antigravity CLI 설정에는 Node.js/npm이 필요합니다. Node.js LTS 설치 후 Token Monitor를 다시 실행하세요. Antigravity가 이미 실행 중이면 local fallback 수집은 계속 시도됩니다."
+    };
+  }
+
+  const command = `"${npxCommand}" -y antigravity-usage login`;
 
   if (process.platform === "win32") {
     const child = spawn("cmd.exe", ["/c", "start", "Antigravity Usage Login", "cmd.exe", "/k", command], {
@@ -473,7 +510,7 @@ async function startGeminiLogin() {
     return { ok: true, command };
   }
 
-  const child = spawn("antigravity-usage", ["login"], {
+  const child = spawn(npxCommand, ["-y", "antigravity-usage", "login"], {
     detached: true,
     stdio: "ignore"
   });
@@ -503,6 +540,7 @@ if (!gotSingleInstanceLock) {
     ipcMain.handle("app:minimize-to-tray", () => minimizeMainWindowToTray());
     ipcMain.handle("app:quit", () => quitApp());
     ipcMain.handle("codex-usage:open-dashboard", () => shell.openExternal("https://chatgpt.com/codex/settings/usage"));
+    ipcMain.handle("nodejs:open-download", () => shell.openExternal("https://nodejs.org/ko/download"));
     ipcMain.handle("overlay-settings:read", () => overlaySettings);
     ipcMain.handle("overlay-settings:update", (_event, nextSettings: OverlaySettings) => {
       applyOverlaySettings(nextSettings);

@@ -1,4 +1,5 @@
 import { type ChildProcess, spawn } from "node:child_process";
+import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 
@@ -112,6 +113,12 @@ class JsonRpcClient {
 
   constructor() {
     registerChildProcess(this.child);
+    this.child.on("error", (error) => {
+      for (const resolver of this.pending.values()) {
+        resolver({ error: { message: error.message } });
+      }
+      this.pending.clear();
+    });
     this.child.stdout.on("data", (chunk: Buffer) => {
       this.buffer += chunk.toString("utf8");
 
@@ -189,9 +196,10 @@ class JsonRpcClient {
 }
 
 export async function getCodexUsage(): Promise<CodexUsageResult> {
-  const rpc = new JsonRpcClient();
+  let rpc: JsonRpcClient | null = null;
 
   try {
+    rpc = new JsonRpcClient();
     await rpc.request("initialize", { clientInfo: { name: "token-monitor", version: _appVersion } }, 12000);
     rpc.notify("initialized");
 
@@ -218,7 +226,7 @@ export async function getCodexUsage(): Promise<CodexUsageResult> {
       updatedAt: new Date().toISOString()
     };
   } finally {
-    rpc.close();
+    rpc?.close();
   }
 }
 
@@ -255,14 +263,101 @@ function clampPercent(value: number) {
 }
 
 function resolveCodexExecutable() {
-  if (process.env.CODEX_CLI_PATH) {
-    return process.env.CODEX_CLI_PATH;
+  const configuredPath = process.env.CODEX_CLI_PATH?.trim();
+  if (configuredPath) {
+    if (isExecutableFile(configuredPath)) {
+      return configuredPath;
+    }
+    throw new Error(`CODEX_CLI_PATH is set but codex.exe was not found: ${configuredPath}`);
   }
 
   if (process.platform === "win32") {
-    const localAppData = process.env.LOCALAPPDATA ?? path.join(os.homedir(), "AppData", "Local");
-    return path.join(localAppData, "OpenAI", "Codex", "bin", "codex.exe");
+    const resolved = resolveWindowsCodexExecutable();
+    if (resolved) {
+      return resolved;
+    }
+    throw new Error("Codex CLI executable was not found. Install or run Codex, or set CODEX_CLI_PATH to codex.exe.");
   }
 
   return "codex";
+}
+
+function resolveWindowsCodexExecutable() {
+  const localAppData = process.env.LOCALAPPDATA ?? path.join(os.homedir(), "AppData", "Local");
+  const directPath = path.join(localAppData, "OpenAI", "Codex", "bin", "codex.exe");
+  if (isExecutableFile(directPath)) {
+    return directPath;
+  }
+
+  const localBin = path.join(localAppData, "OpenAI", "Codex", "bin");
+  const localCandidate = findNewestCodexExecutableInSubdirs(localBin);
+  if (localCandidate) {
+    return localCandidate;
+  }
+
+  const windowsAppsCandidate = findNewestCodexWindowsAppsExecutable();
+  if (windowsAppsCandidate) {
+    return windowsAppsCandidate;
+  }
+
+  return findCommandOnPath("codex.exe") ?? findCommandOnPath("codex.cmd") ?? findCommandOnPath("codex");
+}
+
+function findNewestCodexExecutableInSubdirs(root: string) {
+  try {
+    const candidates = fs.readdirSync(root, { withFileTypes: true })
+      .filter((entry) => entry.isDirectory())
+      .map((entry) => path.join(root, entry.name, "codex.exe"))
+      .filter(isExecutableFile);
+    return newestFile(candidates);
+  } catch {
+    return null;
+  }
+}
+
+function findNewestCodexWindowsAppsExecutable() {
+  const windowsAppsRoot = path.join(process.env.ProgramFiles ?? "C:\\Program Files", "WindowsApps");
+  try {
+    const candidates = fs.readdirSync(windowsAppsRoot, { withFileTypes: true })
+      .filter((entry) => entry.isDirectory() && entry.name.startsWith("OpenAI.Codex_"))
+      .map((entry) => path.join(windowsAppsRoot, entry.name, "app", "resources", "codex.exe"))
+      .filter(isExecutableFile);
+    return newestFile(candidates);
+  } catch {
+    return null;
+  }
+}
+
+function findCommandOnPath(command: string) {
+  const pathEntries = (process.env.PATH ?? "").split(path.delimiter).filter(Boolean);
+  for (const entry of pathEntries) {
+    const candidate = path.join(entry, command);
+    if (isExecutableFile(candidate)) {
+      return candidate;
+    }
+  }
+  return null;
+}
+
+function newestFile(candidates: string[]) {
+  return candidates
+    .map((candidate) => ({ candidate, mtime: safeMtime(candidate) }))
+    .filter((item) => item.mtime != null)
+    .sort((a, b) => b.mtime! - a.mtime!)[0]?.candidate ?? null;
+}
+
+function isExecutableFile(candidate: string) {
+  try {
+    return fs.statSync(candidate).isFile();
+  } catch {
+    return false;
+  }
+}
+
+function safeMtime(candidate: string) {
+  try {
+    return fs.statSync(candidate).mtimeMs;
+  } catch {
+    return null;
+  }
 }

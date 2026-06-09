@@ -66,7 +66,7 @@ const defaultOverlaySettings: OverlaySettings = {
 };
 
 const claudeLoginPollIntervalMs = 2500;
-const claudeLoginPollTimeoutMs = 20 * 60_000;
+const claudeLoginPollTimeoutMs = 30_000;
 
 function App() {
   const [codexUsage, setCodexUsage] = useState<CodexUsageResult | null>(null);
@@ -79,6 +79,8 @@ function App() {
   const [showExitConfirm, setShowExitConfirm] = useState(false);
   const [isClaudeLoginPending, setIsClaudeLoginPending] = useState(false);
   const [isGeminiLoginPending, setIsGeminiLoginPending] = useState(false);
+  const [claudeLoginNotice, setClaudeLoginNotice] = useState<string | null>(null);
+  const [geminiLoginNotice, setGeminiLoginNotice] = useState<string | null>(null);
 
   const providers = useMemo(() => buildProviderUsage(codexUsage, claudeUsage, geminiUsage, cliSessions), [codexUsage, claudeUsage, geminiUsage, cliSessions]);
 
@@ -129,15 +131,32 @@ function App() {
     }
 
     setIsClaudeLoginPending(true);
+    setClaudeLoginNotice(null);
     try {
-      await window.tokenMonitor?.startClaudeLogin();
-      await waitForClaudeLoginCompletion({
+      const startResult = await window.tokenMonitor?.startClaudeLogin();
+      if (!startResult?.ok) {
+        setClaudeLoginNotice(startResult?.detail ?? "Claude 연동에는 Node.js/npm 설치가 필요합니다.");
+        await refreshUsage();
+        return;
+      }
+
+      if (startResult.skipped) {
+        await refreshUsage();
+        return;
+      }
+
+      const result = await waitForClaudeLoginCompletion({
         onUpdate: ({ claudeUsage, cliSessions }) => {
           setClaudeUsage(claudeUsage);
           setCliSessions(cliSessions);
         }
       });
+      if (!result.completed) {
+        setClaudeLoginNotice(makeClaudeLoginNotice(result.claudeUsage, result.cliSessions));
+      }
       await refreshUsage();
+    } catch (error) {
+      setClaudeLoginNotice(error instanceof Error ? error.message : "Claude 연동 확인을 시작할 수 없습니다.");
     } finally {
       setIsClaudeLoginPending(false);
     }
@@ -149,13 +168,20 @@ function App() {
     }
 
     setIsGeminiLoginPending(true);
+    setGeminiLoginNotice(null);
     try {
-      await window.tokenMonitor?.startGeminiLogin();
+      const startResult = await window.tokenMonitor?.startGeminiLogin();
+      if (!startResult?.ok) {
+        setGeminiLoginNotice(startResult?.detail ?? "Antigravity CLI 설정에는 Node.js/npm 설치가 필요합니다.");
+        await refreshUsage();
+        return;
+      }
       window.setTimeout(() => {
         void refreshUsage();
         setIsGeminiLoginPending(false);
       }, 5000);
-    } catch {
+    } catch (error) {
+      setGeminiLoginNotice(error instanceof Error ? error.message : "Antigravity CLI 설치 및 로그인을 시작할 수 없습니다.");
       setIsGeminiLoginPending(false);
     }
   }
@@ -226,6 +252,7 @@ function App() {
                 provider={provider}
                 isClaudeLoginPending={isClaudeLoginPending}
                 isGeminiLoginPending={isGeminiLoginPending}
+                actionNotice={provider.id === "claude" ? claudeLoginNotice : provider.id === "gemini" ? geminiLoginNotice : null}
                 onClaudeLogin={handleClaudeLogin}
                 onGeminiLogin={handleGeminiLogin}
               />
@@ -265,18 +292,24 @@ function ProviderCard({
   provider,
   isClaudeLoginPending,
   isGeminiLoginPending,
+  actionNotice,
   onClaudeLogin,
   onGeminiLogin
 }: {
   provider: ProviderUsage;
   isClaudeLoginPending: boolean;
   isGeminiLoginPending: boolean;
+  actionNotice: string | null;
   onClaudeLogin: () => void;
   onGeminiLogin: () => void;
 }) {
   const isActionPending = provider.id === "claude" && isClaudeLoginPending || provider.id === "gemini" && isGeminiLoginPending;
   const actionLabel = isActionPending ? "연동 확인 중" : (provider.actionLabel ?? "사용량 수집 연동");
   const handleAction = provider.id === "gemini" ? onGeminiLogin : onClaudeLogin;
+  const showNodeInstallAction = Boolean(actionNotice?.includes("Node.js/npm"));
+  const handleNodeInstall = () => {
+    void window.tokenMonitor?.openNodeJsDownload();
+  };
 
   return (
     <article className="provider-card">
@@ -310,6 +343,17 @@ function ProviderCard({
         ))}
       </dl>
 
+      {actionNotice ? (
+        <div className="provider-action-notice">
+          <p>{actionNotice}</p>
+          {showNodeInstallAction ? (
+            <button className="provider-secondary-action" type="button" onClick={handleNodeInstall}>
+              <ExternalLink size={14} aria-hidden="true" />
+              <span>Node.js 설치</span>
+            </button>
+          ) : null}
+        </div>
+      ) : null}
       <ProviderIssueNotice provider={provider} />
     </article>
   );
@@ -359,10 +403,11 @@ function getProviderCollectionGuide(providerId: ProviderId) {
   if (providerId === "codex") {
     return {
       title: "Codex 로컬 앱 서버",
-      summary: "Codex 설치 경로의 로컬 실행 흐름을 통해 5시간/주간 quota를 확인합니다.",
+      summary: "Codex Desktop 설치와 로그인이 완료된 상태에서 로컬 실행 흐름을 통해 5시간/주간 quota를 확인합니다.",
       steps: [
-        "Codex desktop 또는 local CLI 세션 확인",
-        "기본 경로 또는 CODEX_CLI_PATH의 codex.exe 실행",
+        "Codex Desktop 설치 필수",
+        "Codex Desktop 로그인 상태 확인",
+        "Codex Desktop 설치 경로 또는 CODEX_CLI_PATH의 codex.exe 실행",
         "표시용 plan, remaining, reset 값만 대시보드에 반영"
       ]
     };
@@ -371,21 +416,22 @@ function getProviderCollectionGuide(providerId: ProviderId) {
   if (providerId === "claude") {
     return {
       title: "Claude Code OAuth",
-      summary: "Claude Code CLI OAuth가 연결되면 서버 quota를 읽고, 불가할 때만 local log를 보조 정보로 사용합니다.",
+      summary: "Node.js/npm이 준비된 상태에서 Claude CLI 설치와 OAuth 로그인을 한 번에 진행한 뒤 서버 quota를 읽습니다.",
       steps: [
-        "Claude CLI 설치와 로그인 상태 확인",
+        "Node.js/npm 설치 상태 확인",
+        "Claude CLI 설치 및 로그인 버튼 실행",
         "OAuth usage endpoint에서 5시간/주간 quota 조회",
-        "서버 quota 미연동 시 Claude CLI 연동 버튼으로 로그인 진행"
+        "서버 quota 미연동 시 local log를 보조 정보로 사용"
       ]
     };
   }
 
   return {
     title: "antigravity-usage CLI",
-    summary: "전역 CLI가 Google API를 우선 사용하고, 실패하면 실행 중인 Antigravity local server에서 quota를 읽습니다.",
+    summary: "Node.js/npm이 준비된 상태에서 antigravity-usage CLI 설치와 Google 로그인을 한 번에 진행합니다. 실패해도 실행 중인 Antigravity local server fallback은 유지됩니다.",
     steps: [
-      "antigravity-usage 전역 설치 확인",
-      "사용량 수집 연동으로 Google 로그인",
+      "Node.js/npm 설치 상태 확인",
+      "Antigravity CLI 설치 및 로그인 버튼 실행",
       "Antigravity 실행 시 local fallback 사용",
       "대시보드는 이메일 없이 quota와 reset만 표시"
     ]
@@ -402,7 +448,8 @@ function getProviderIssue(provider: ProviderUsage) {
     return {
       reason: "Codex 연결 확인 필요",
       steps: [
-        "Codex desktop 실행",
+        "Codex Desktop 설치 확인",
+        "Codex Desktop 로그인 완료",
         "codex.exe 경로 확인",
         "필요 시 CODEX_CLI_PATH 설정"
       ]
@@ -413,7 +460,8 @@ function getProviderIssue(provider: ProviderUsage) {
     return {
       reason: "Claude OAuth 연동 필요",
       steps: [
-        "Claude CLI 로그인 버튼 실행",
+        "Node.js LTS 설치 확인",
+        "Claude CLI 설치 및 로그인 버튼 실행",
         "브라우저 인증 완료",
         "대시보드 새로고침"
       ]
@@ -424,8 +472,8 @@ function getProviderIssue(provider: ProviderUsage) {
     reason: "Antigravity CLI 수집 확인 필요",
     steps: [
       "대시보드 새로고침",
-      "antigravity-usage 설치 확인",
-      "사용량 수집 연동 버튼 실행",
+      "Node.js LTS 설치 확인",
+      "Antigravity CLI 설치 및 로그인 버튼 실행",
       "Antigravity 실행 또는 Google 로그인 완료"
     ]
   };
@@ -433,6 +481,8 @@ function getProviderIssue(provider: ProviderUsage) {
 
 async function waitForClaudeLoginCompletion({ onUpdate }: { onUpdate: (usage: { claudeUsage: ClaudeUsageResult; cliSessions: CliSessionResult }) => void }) {
   const startedAt = Date.now();
+  let latestClaudeUsage: ClaudeUsageResult | null = null;
+  let latestCliSessions: CliSessionResult | null = null;
 
   while (Date.now() - startedAt < claudeLoginPollTimeoutMs) {
     const [claudeUsage, cliSessions] = await Promise.all([
@@ -441,19 +491,40 @@ async function waitForClaudeLoginCompletion({ onUpdate }: { onUpdate: (usage: { 
     ]);
 
     if (claudeUsage && cliSessions) {
+      latestClaudeUsage = claudeUsage;
+      latestCliSessions = cliSessions;
       onUpdate({ claudeUsage, cliSessions });
 
       if (isClaudeUsageLinked(claudeUsage, cliSessions)) {
-        return;
+        return { completed: true, claudeUsage, cliSessions };
       }
     }
 
     await delay(claudeLoginPollIntervalMs);
   }
+
+  return { completed: false, claudeUsage: latestClaudeUsage, cliSessions: latestCliSessions };
 }
 
 function isClaudeUsageLinked(claudeUsage: ClaudeUsageResult, cliSessions: CliSessionResult) {
   return Boolean(cliSessions.claude.loggedIn && claudeUsage.ok && claudeUsage.oauth);
+}
+
+function makeClaudeLoginNotice(claudeUsage: ClaudeUsageResult | null, cliSessions: CliSessionResult | null) {
+  const session = cliSessions?.claude;
+  if (session && !session.installed) {
+    return `Claude 연동에는 Node.js/npm 설치가 필요합니다. ${session.detail}`;
+  }
+  if (session && !session.loggedIn) {
+    return `30초 안에 Claude 로그인이 확인되지 않았습니다. ${session.detail}`;
+  }
+  if (!claudeUsage?.ok) {
+    return `30초 안에 Claude 사용량 연동이 확인되지 않았습니다. ${claudeUsage?.error ?? "Claude OAuth 사용량 응답을 찾을 수 없습니다."}`;
+  }
+  if (!claudeUsage.oauth) {
+    return "30초 안에 Claude OAuth 사용량 응답을 찾을 수 없습니다. 브라우저 로그인 완료 후 다시 새로고침하세요.";
+  }
+  return "30초 안에 Claude 연동 완료를 확인하지 못했습니다. 브라우저 인증을 마친 뒤 다시 시도하세요.";
 }
 
 function delay(ms: number) {
@@ -732,7 +803,7 @@ function buildCodexProvider(usage: CodexUsageResult | null, sessions: CliSession
         { label: "5시간", value: "확인 중", kind: "quota" },
         { label: "주간", value: "확인 중", kind: "quota" }
       ],
-      detail: "Codex 로컬 앱 서버에서 사용량을 읽고 있습니다."
+      detail: "Codex Desktop 로컬 앱 서버에서 사용량을 읽고 있습니다."
     };
   }
 
@@ -794,9 +865,9 @@ function buildClaudeProvider(usage: ClaudeUsageResult | null, sessions: CliSessi
         { label: "5시간", value: "확인 중", kind: "quota" },
         { label: "주간", value: "확인 중", kind: "quota" }
       ],
-      detail: canLogin ? "Claude CLI 로그인이 필요합니다." : "Claude 로컬 사용 로그를 읽고 있습니다.",
+      detail: canLogin ? "Node.js/npm 설치 후 Claude CLI 설치와 로그인을 진행하세요." : "Claude 로컬 사용 로그를 읽고 있습니다.",
       canLogin,
-      actionLabel: "Claude CLI 로그인 시작"
+      actionLabel: "Claude CLI 설치 및 로그인"
     };
   }
 
@@ -816,9 +887,9 @@ function buildClaudeProvider(usage: ClaudeUsageResult | null, sessions: CliSessi
         { label: "5시간", value: "확인 불가", kind: "quota" },
         { label: "주간", value: "확인 불가", kind: "quota" }
       ],
-      detail: canLogin ? "Claude CLI 로그인 후 사용량을 다시 확인할 수 있습니다." : usage.error,
+      detail: canLogin ? "Node.js/npm 설치 후 Claude CLI 설치와 로그인을 진행하세요." : usage.error,
       canLogin,
-      actionLabel: "Claude CLI 로그인 시작"
+      actionLabel: "Claude CLI 설치 및 로그인"
     };
   }
 
@@ -852,7 +923,7 @@ function buildClaudeProvider(usage: ClaudeUsageResult | null, sessions: CliSessi
     ],
     detail: extraUsage ?? `최근 갱신 ${formatTime(usage.updatedAt)}`,
     canLogin: canLogin || needsCliUsageLink,
-    actionLabel: canLogin ? "Claude CLI 로그인 시작" : "Claude CLI 연동"
+    actionLabel: canLogin ? "Claude CLI 설치 및 로그인" : "Claude CLI 재연동"
   };
 }
 
@@ -872,9 +943,9 @@ function buildGeminiProvider(usage: GeminiUsageResult | null): ProviderUsage {
         { label: "플랜", value: "확인 중", kind: "plan" },
         { label: "Gemini 한도", value: "확인 중", kind: "quota" }
       ],
-      detail: "antigravity-usage CLI와 local fallback을 확인하고 있습니다.",
+      detail: "Node.js/npm 기반 antigravity-usage CLI와 local fallback을 확인하고 있습니다.",
       canLogin: true,
-      actionLabel: "사용량 수집 연동"
+      actionLabel: "Antigravity CLI 설치 및 로그인"
     };
   }
 
@@ -895,7 +966,7 @@ function buildGeminiProvider(usage: GeminiUsageResult | null): ProviderUsage {
       ],
       detail: usage.error,
       canLogin: true,
-      actionLabel: "사용량 수집 연동"
+      actionLabel: "Antigravity CLI 설치 및 로그인"
     };
   }
 

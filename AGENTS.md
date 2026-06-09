@@ -1,32 +1,133 @@
 # AGENTS.md
 
-Project-specific instructions for Codex agents working in this repository.
+Project-specific instructions for AI coding agents working in this repository.
 
 ## Project Overview
 
 Token Monitor is a Windows Electron + React desktop app for checking Codex, Claude, and Antigravity quota status.
 
-The app has:
+Primary users are Windows users who want to quickly inspect local LLM plan, quota, remaining usage, and reset time. The app must preserve provider usage collection, the compact dashboard, the transparent overlay, system tray behavior, and the privacy rule that sensitive account data is never shown in UI or logs.
 
-- Electron main process code in `electron/`
-- React renderer code in `src/`
-- Windows packaging output in `dist-app/`
+## Tech Stack
 
-## Implementation Guidelines
+- Language: TypeScript, JavaScript
+- Framework: React, Electron
+- Build tool: Vite, electron-builder
+- Runtime: Node.js, Electron
+- Package manager: npm
+- Verification: TypeScript typecheck and production build
 
+## Repository Map
+
+- `electron/`: Electron main process, IPC, tray, overlay, settings, and provider usage collectors
+- `src/`: React renderer, dashboard, settings, overlay UI, and shared renderer types
+- `build/`: Windows app and tray icon assets
+- `dist/`: Vite renderer build output
+- `dist-electron/`: Electron TypeScript build output
+- `dist-app/`: Windows packaging output
+- `README.md`: user-facing final-state documentation
+- `docs/RELEASE_VERSION_POLICY.md`: milestone/app version policy and release history
+- `package.json`: app/exe release version and npm scripts
+- `package-lock.json`: npm dependency lockfile
+
+## Development Commands
+
+- Install: `npm ci`
+- Dev: `npm run dev`
+- Typecheck: `npm run typecheck`
+- Build: `npm run build`
+
+Portable package:
+
+```powershell
+$env:CSC_IDENTITY_AUTO_DISCOVERY='false'
+npx electron-builder --win portable --x64 --publish never --config.win.signAndEditExecutable=false
+```
+
+Unpacked package:
+
+```powershell
+$env:CSC_IDENTITY_AUTO_DISCOVERY='false'
+npx electron-builder --win dir --x64 --publish never --config.win.signAndEditExecutable=false
+```
+
+## Working Rules
+
+- Read relevant files before editing and follow existing project patterns.
+- Keep changes scoped to the user request. Do not perform unrelated refactors.
+- Keep changes small and verifiable.
 - Keep UI changes aligned with the current compact dashboard style.
 - Do not show account emails, access tokens, refresh tokens, or account IDs in the UI or logs.
-- Write README and user-facing project docs as final-state documentation. Do not list individual task edits or change-by-change notes there; record changes only in version/release sections such as `RELEASE_VERSION_POLICY.md` Release History.
+- Write README and user-facing project docs as final-state documentation. Do not list individual task edits or change-by-change notes there.
+- Record version-level changes only in `docs/RELEASE_VERSION_POLICY.md` Release History.
 - Keep portable artifact names in English.
 - Distinguish the project milestone version from the app/exe release version.
-- The project milestone version is managed in the local `RELEASE_VERSION_POLICY.md` document.
+- The project milestone version is managed in `docs/RELEASE_VERSION_POLICY.md`.
 - The app/exe release version is managed by `package.json` and is used in packaged executable names.
-- Before finishing user-requested work, review `RELEASE_VERSION_POLICY.md` and decide whether the work affects the project milestone, the app/exe release version, both, or neither.
+- Before finishing user-requested work, review `docs/RELEASE_VERSION_POLICY.md` and decide whether the work affects the project milestone version, the app/exe release version, both, or neither.
 - Only update `package.json`, `package-lock.json`, and versioned output references when code changes or user-facing distributable changes require a new app/exe version.
-- For documentation-only or instruction-only changes, do not update `package.json` and do not package a new exe unless the user explicitly asks.
+- For documentation-only or instruction-only changes, do not update `package.json` and do not package a new executable unless the user explicitly asks.
 - Manage version units automatically according to the local release policy unless the user gives a different versioning instruction.
 
-## Build And Packaging Process
+## Versioning Rules
+
+- Each standalone document version starts at `v1.0.0` by default.
+- The overall program/project milestone version starts at `v0.1.0`.
+- The overall project should move to `v1.0.0` when the intended initial feature implementation is complete.
+- Do not predefine fixed feature content for every version up to `v1.0.0`; record version content when actual work is completed.
+- Minor project changes increment by `0.1.0` units, for example `0.1.0` to `0.2.0`.
+- Major project changes increment by `1.0.0` units, for example `1.0.0` to `2.0.0`.
+- For feature additions, feature fixes, documentation work, and instruction work, review the relevant version history before finishing.
+- If the work requires a version update, perform the version update immediately as part of the same task.
+- After `v1.0.0`, manage releases with matching Git tags and remote release entries.
+- Keep document versioning, project milestone versioning, and app/exe release versioning distinct.
+- The app/exe release version remains managed by `package.json` and `package-lock.json`.
+- The project milestone version and release history remain managed by `docs/RELEASE_VERSION_POLICY.md`.
+
+## Coding Rules
+
+- Follow existing naming, folder structure, import style, and error handling conventions.
+- Use existing helpers, services, utilities, and provider collectors before adding new abstractions.
+- Add a new abstraction only when it removes real duplication or meaningful complexity.
+- Electron main process changes should follow the existing IPC, cache, collector, and child process patterns in `electron/`.
+- React UI changes should follow the existing compact dashboard and settings patterns in `src/main.tsx` and `src/styles.css`.
+- Provider usage collectors must return only display-safe data needed by the renderer.
+- External CLI execution should follow the existing command discovery, timeout, and user-facing error detail patterns.
+- Write Windows paths and packaging examples for PowerShell unless another shell is explicitly requested.
+
+## Frontend Rules
+
+- Preserve the dashboard card, settings panel, and overlay density.
+- Button labels must describe the action visible to the user.
+- Provider error and recovery guidance should stay compact inside provider cards.
+- Ensure text does not overflow buttons, cards, or compact panels.
+- Preserve accessibility attributes, disabled states, pending states, and focus behavior.
+- Never display account emails, tokens, account IDs, or other credential-derived identifiers.
+
+## Provider Rules
+
+- Codex usage assumes Codex Desktop is installed and signed in.
+- Codex executable discovery should consider `CODEX_CLI_PATH`, known local install paths, hashed install folders, Windows app resource paths, and PATH candidates.
+- Claude server quota should prefer Claude Code CLI OAuth. Local Claude JSONL logs are fallback/history metadata only.
+- Claude CLI setup should use the Node.js/npm prerequisite and the `npx -y @anthropic-ai/claude-code auth login --claudeai` flow.
+- Claude login completion checks should keep short user-visible feedback when setup cannot complete.
+- Antigravity usage collection order should remain:
+  - `antigravity-usage` Google method
+  - `antigravity-usage` auto/local method
+  - embedded Antigravity local probe
+  - Gemini CLI OAuth fallback
+- Antigravity CLI setup should use the Node.js/npm prerequisite and the `npx -y antigravity-usage login` flow.
+- Antigravity local fallback must remain available when Antigravity is already running.
+
+## Security and Privacy
+
+- Do not hardcode secrets, API keys, OAuth tokens, refresh tokens, account IDs, or account emails.
+- Do not modify `.env`, credential, or production config files unless the user explicitly asks and the change is safe.
+- Do not log raw provider payloads that may include sensitive data.
+- Do not include secrets or account identifiers in README examples, screenshots, test fixtures, issues, PR descriptions, or build logs.
+- When documenting local file paths, use generic path patterns and do not include real account identifiers.
+
+## Build and Packaging Process
 
 Before running build or packaging tasks, check whether related processes are already running.
 
@@ -57,6 +158,58 @@ Stop stale processes by process id:
 Get-Process -Id <PID> -ErrorAction SilentlyContinue | Stop-Process -Force
 ```
 
+## Packaging Rules
+
+- Package the portable Windows executable only for milestone release versions such as `0.3.0`, `0.4.0`, and later `MINOR.0` or `MAJOR.0` release points, unless the user explicitly requests a portable exe for another version.
+- For patch-level changes such as `0.3.1`, `0.3.2`, or `0.3.3`, skip portable packaging by default even when code changed.
+- For documentation-only or instruction-only work, skip packaging unless the user explicitly asks for a new executable.
+- When the app/exe version changes and the user requested unpacked exe refreshes, regenerate `dist-app/win-unpacked`.
+- When creating a portable executable for a higher version, remove older versioned executables first so `dist-app/` keeps only the latest portable exe.
+
+PowerShell cleanup example:
+
+```powershell
+$currentVersion = (Get-Content -Raw package.json | ConvertFrom-Json).version
+Get-ChildItem -Path dist-app -Filter "TokenMonitor-*-x64.exe" -File |
+  Where-Object { $_.Name -ne "TokenMonitor-$currentVersion-x64.exe" } |
+  Remove-Item -Force
+```
+
+After packaging, verify the executable and hash:
+
+```powershell
+Get-ChildItem -Force dist-app\TokenMonitor-*-x64.exe
+Get-FileHash dist-app\TokenMonitor-*-x64.exe -Algorithm SHA256
+```
+
+For unpacked packaging, verify `dist-app\win-unpacked\TokenMonitor.exe` and its SHA256 hash.
+
+## Verification Rules
+
+- Run these before finalizing code changes:
+
+  ```powershell
+  npm run typecheck
+  npm run build
+  ```
+
+- For packaging changes:
+  - Check stale packaging processes first.
+  - Run the requested packaging command.
+  - Verify executable path and SHA256 hash.
+- For documentation-only or instruction-only changes:
+  - Skip build and packaging unless the user explicitly requests them.
+  - Verify changed documents for current version numbers, command accuracy, and obvious broken references.
+- If a verification command cannot be run, report why and describe the substitute verification.
+
+## Documentation Rules
+
+- README and user-facing docs should describe the final current behavior, not task-by-task edits.
+- New commands, prerequisites, provider collection flows, packaging behavior, or user-visible behavior changes should update the relevant docs.
+- Version/release changes belong in `docs/RELEASE_VERSION_POLICY.md` Release History.
+- Documentation-only or instruction-only changes do not require an app/exe version bump.
+- Keep artifact names in English.
+
 ## Git Workflow
 
 Before starting implementation work, create or switch to the correct feature branch.
@@ -75,24 +228,38 @@ Rules:
 - Create `dev` from `main` when a development branch is needed.
 - Create each implementation branch from `dev`.
 - Use `feature/<short-feature-name>` for feature branch names.
-- For implementation work, create one `feature/<short-feature-name>` branch per feature or functional unit instead of mixing unrelated changes in one branch.
 - Keep feature branch names lowercase and descriptive.
 - Do not commit directly to `main` for implementation work unless the user explicitly asks.
+- Do not revert unrelated user changes.
 
-Commit message format:
+Commit message format for ordinary local commits:
 
 ```text
 [YYYY-MM-DD] implemented feature
 ```
 
-When the user asks for remote upload work, commit and push the current feature branch. Write the commit message in the format above, but keep the summary brief and focused on the changed items rather than a broad or generic description.
-
-Korean commit messages are allowed. Examples:
+Korean commit messages are allowed when they are clearer. Examples:
 
 ```text
 [2026-05-25] README 문서 구조 개선
 [2026-05-25] overlay opacity 설정 추가
 ```
+
+When the user asks for remote upload work, proceed through commit, push, and pull request creation.
+
+Remote upload commit message format:
+
+```text
+[YYYY.MM.DD] feature feature_name
+```
+
+Example:
+
+```text
+[2026.06.09] feature claude-cli-login
+```
+
+Use a short `feature_name` that reflects the main changed item.
 
 After committing, push the feature branch when the user asks for push/PR work:
 
@@ -100,14 +267,17 @@ After committing, push the feature branch when the user asks for push/PR work:
 git push -u origin feature/<feature-name>
 ```
 
-After pushing, do not create the pull request directly unless the user explicitly asks. Instead, prepare a concise PR description for the user in a markdown code block. Focus on what changed, key implementation notes, and differences from the previous behavior.
+After pushing remote upload work, create the pull request as part of the same requested workflow.
+
+When creating a PR, keep the PR description concise. Focus on the core work and the difference from the previous project behavior.
 
 PR description format:
 
 ```markdown
 ## Summary
 
-- Briefly describe the implemented feature or change.
+- Briefly describe the core work.
+- Briefly describe what changed compared with the previous project behavior.
 
 ## Verification
 
@@ -122,42 +292,25 @@ PR description format:
 
 Tell the user the branch name, commit hash, push result, and PR description draft after finishing the Git workflow.
 
-## Verification
+## Do Not Touch
 
-Run these before finalizing code changes:
+- Do not revert unrelated user changes.
+- Do not edit generated build output such as `dist/`, `dist-electron/`, or `dist-app/` unless build/packaging output is explicitly part of the task.
+- Do not remove older packaged executables unless packaging policy says to keep only the latest versioned artifact or the user asks.
+- Do not change `package.json` or `package-lock.json` for documentation-only or instruction-only tasks.
+- Do not expose or copy local credential files from `.claude`, `.gemini`, Codex, Claude, Antigravity, or OAuth storage paths.
 
-```powershell
-npm run typecheck
-npm run build
-```
+## Agent Response Rules
 
-Package the portable Windows executable only for milestone release versions such as `0.3.0`, `0.4.0`, and later `MINOR.0` or `MAJOR.0` release points, unless the user explicitly requests a portable exe for another version.
+- Completed work reports should include changed files, the core change, verification commands run, and results.
+- If verification was skipped or could not be run, clearly state why.
+- If packaging was performed, report output path and SHA256 hash.
+- If git work was performed, report branch name, commit hash, and push result.
+- Suggest only high-priority follow-up work that directly builds on the user request.
 
-For patch-level changes such as `0.3.1`, `0.3.2`, or `0.3.3`, skip portable packaging by default even when code changed. Still run verification commands for code changes.
+## Instruction Priority
 
-For documentation-only or instruction-only work, skip packaging unless the user explicitly asks for a new executable.
-
-When packaging during development, prefer the portable-only command:
-
-```powershell
-$env:CSC_IDENTITY_AUTO_DISCOVERY='false'
-npx electron-builder --win portable --x64 --publish never --config.win.signAndEditExecutable=false
-```
-
-When creating an executable for a higher version, remove older versioned executables first so `dist-app/` keeps only the latest portable exe.
-
-PowerShell cleanup example:
-
-```powershell
-$currentVersion = (Get-Content -Raw package.json | ConvertFrom-Json).version
-Get-ChildItem -Path dist-app -Filter "TokenMonitor-*-x64.exe" -File |
-  Where-Object { $_.Name -ne "TokenMonitor-$currentVersion-x64.exe" } |
-  Remove-Item -Force
-```
-
-After packaging, verify the executable and hash:
-
-```powershell
-Get-ChildItem -Force dist-app\TokenMonitor-*-x64.exe
-Get-FileHash dist-app\TokenMonitor-*-x64.exe -Algorithm SHA256
-```
+- Direct user requests have priority.
+- The closest applicable `AGENTS.md` has priority over a parent directory `AGENTS.md`.
+- If instructions conflict, follow the more specific instruction.
+- Safety, security, privacy, and secret-protection rules always take priority.
