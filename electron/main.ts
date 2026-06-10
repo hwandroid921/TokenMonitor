@@ -452,13 +452,12 @@ async function startClaudeLogin() {
       };
     }
 
-    const command = `"${npxCommand}" -y @anthropic-ai/claude-code auth login --claudeai`;
-    const child = spawn("cmd.exe", ["/c", "start", "Claude CLI Login", "cmd.exe", "/k", command], {
-      detached: true,
-      stdio: "ignore",
-      windowsHide: false
-    });
-    child.unref();
+    const { command, launcherPath } = writeWindowsCliLauncher(
+      "claude-login",
+      npxCommand,
+      ["-y", "@anthropic-ai/claude-code", "auth", "login", "--claudeai"]
+    );
+    launchWindowsCliWindow(launcherPath);
     return { ok: true, command };
   }
 
@@ -485,6 +484,37 @@ function findCommandOnPath(command: string) {
   return null;
 }
 
+function quoteCmdArg(value: string) {
+  if (/^[A-Za-z0-9_\-./:@]+$/.test(value)) {
+    return value;
+  }
+  return `"${value.replace(/"/g, "\"\"")}"`;
+}
+
+function writeWindowsCliLauncher(name: string, commandPath: string, args: string[]) {
+  const launcherPath = path.join(app.getPath("temp"), `token-monitor-${name}.cmd`);
+  const command = [`call "${commandPath}"`, ...args.map(quoteCmdArg)].join(" ");
+  const content = [
+    "@echo off",
+    command,
+    "set TOKEN_MONITOR_EXIT_CODE=%ERRORLEVEL%",
+    "echo.",
+    "if not \"%TOKEN_MONITOR_EXIT_CODE%\"==\"0\" echo Command exited with code %TOKEN_MONITOR_EXIT_CODE%.",
+    "echo You can close this window after login finishes."
+  ].join("\r\n");
+  fs.writeFileSync(launcherPath, content, "utf8");
+  return { command, launcherPath };
+}
+
+function launchWindowsCliWindow(launcherPath: string) {
+  const child = spawn("cmd.exe", ["/k", launcherPath], {
+    detached: true,
+    stdio: "ignore",
+    windowsHide: false
+  });
+  child.unref();
+}
+
 async function startGeminiLogin() {
   const npxCommand = findCommandOnPath(process.platform === "win32" ? "npx.cmd" : "npx")
     ?? findCommandOnPath("npx.exe")
@@ -498,15 +528,9 @@ async function startGeminiLogin() {
     };
   }
 
-  const command = `"${npxCommand}" -y antigravity-usage login`;
-
   if (process.platform === "win32") {
-    const child = spawn("cmd.exe", ["/c", "start", "Antigravity Usage Login", "cmd.exe", "/k", command], {
-      detached: true,
-      stdio: "ignore",
-      windowsHide: false
-    });
-    child.unref();
+    const { command, launcherPath } = writeWindowsCliLauncher("antigravity-login", npxCommand, ["-y", "antigravity-usage", "login"]);
+    launchWindowsCliWindow(launcherPath);
     return { ok: true, command };
   }
 
@@ -515,7 +539,7 @@ async function startGeminiLogin() {
     stdio: "ignore"
   });
   child.unref();
-  return { ok: true, command };
+  return { ok: true, command: "npx -y antigravity-usage login" };
 }
 
 if (!gotSingleInstanceLock) {

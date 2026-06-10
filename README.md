@@ -8,7 +8,7 @@ Token Monitor는 로컬 LLM 계정/세션 데이터를 읽어 현재 플랜, 남
 
 ## 현재 버전
 
-- App/exe version: `0.3.22`
+- App/exe version: `0.3.26`
 - Current milestone line: `0.3.x`
 - Portable artifact policy: portable exe packaging is reserved for milestone versions such as `0.3.0`, `0.4.0`, or later `MINOR.0` / `MAJOR.0` release points unless explicitly requested.
 - Output naming policy: build artifact names stay in English.

@@ -66,7 +66,7 @@ Before `v1.0.0`, do not maintain a fixed version-by-version feature roadmap. Whe
 Current package version:
 
 ```text
-0.3.22
+0.3.26
 ```
 
 Baseline `v0.1.0` includes:
@@ -171,6 +171,92 @@ For each release-worthy version bump, summarize:
 - Known limitations
 
 ## Release History
+
+### 0.3.26 — 2026-06-10 — PATCH
+
+**Change category:** PATCH (Antigravity CLI collector shell command fix)
+
+**User-visible changes:**
+- Antigravity usage now links after `antigravity-usage login` when Node.js is installed under `C:\Program Files\nodejs`
+- The collector no longer falls through to Gemini CLI OAuth when `antigravity-usage quota` is available and authenticated
+
+**Provider/data-source changes:**
+- Antigravity CLI quota collection on Windows now executes the fully quoted `npx.cmd` command as one shell string
+- Existing fallback order remains unchanged after CLI attempts
+
+**Packaging notes:**
+- Package version updated to `0.3.26`
+- `win-unpacked` development executable should be refreshed because the app version changed
+- No portable executable packaged because patch releases do not produce portable artifacts by default
+
+**Known limitations:**
+- Antigravity weekly quota still requires an explicit weekly/7-day quota window from the provider response
+
+---
+
+### 0.3.25 — 2026-06-10 — PATCH
+
+**Change category:** PATCH (Antigravity CLI quota command quoting fix)
+
+**User-visible changes:**
+- Antigravity usage can link after login when Node.js is installed under `C:\Program Files\nodejs`
+- The quota collector now launches `antigravity-usage quota` through `call "npx.cmd"` to avoid Windows command quoting failures
+
+**Provider/data-source changes:**
+- Antigravity CLI Google and auto/local quota collection commands now use a single Windows command string with `call`
+- Existing fallback order remains unchanged
+
+**Packaging notes:**
+- Package version updated to `0.3.25`
+- `win-unpacked` development executable should be refreshed because the app version changed
+- No portable executable packaged because patch releases do not produce portable artifacts by default
+
+**Known limitations:**
+- Antigravity weekly quota still requires an explicit weekly/7-day quota window from the provider response
+
+---
+
+### 0.3.24 — 2026-06-10 — PATCH
+
+**Change category:** PATCH (Windows CLI launcher quoting fix)
+
+**User-visible changes:**
+- Antigravity and Claude CLI install/login buttons now run through a generated launcher script instead of nested `start cmd /k` quoting
+- The launcher script avoids the `"C:\Program Files\nodejs\npx.cmd"` command-not-found error caused by nested Windows command quoting
+
+**Provider/data-source changes:**
+- No quota source changes
+
+**Packaging notes:**
+- Package version updated to `0.3.24`
+- `win-unpacked` development executable should be refreshed because the app version changed
+- No portable executable packaged because patch releases do not produce portable artifacts by default
+
+**Known limitations:**
+- Users still need Node.js/npm installed and available on PATH for integrated CLI setup buttons
+
+---
+
+### 0.3.23 — 2026-06-10 — PATCH
+
+**Change category:** PATCH (Windows CLI login command quoting fix)
+
+**User-visible changes:**
+- Antigravity CLI install/login button now launches `npx.cmd` through `call` so paths under `C:\Program Files\nodejs` work correctly
+- Claude CLI install/login uses the same safer Windows command wrapper
+
+**Provider/data-source changes:**
+- No quota source changes
+
+**Packaging notes:**
+- Package version updated to `0.3.23`
+- `win-unpacked` development executable should be refreshed because the app version changed
+- No portable executable packaged because patch releases do not produce portable artifacts by default
+
+**Known limitations:**
+- Users still need Node.js/npm installed and available on PATH for integrated CLI setup buttons
+
+---
 
 ### 0.3.22 — 2026-06-09 — PATCH
 

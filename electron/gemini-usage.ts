@@ -389,8 +389,9 @@ function runAntigravityUsageCli(args: string[]): Promise<string> {
       return;
     }
 
-    const { command, commandArgs } = commandInfo;
+    const { command, commandArgs, shell } = commandInfo;
     const child = spawn(command, commandArgs, {
+      shell,
       windowsHide: true,
       stdio: ["ignore", "pipe", "pipe"]
     });
@@ -422,32 +423,43 @@ function makeAntigravityUsageCommand(npxCommand: string | null, antigravityComma
   if (npxCommand) {
     if (process.platform === "win32") {
       return {
-        command: "cmd.exe",
-        commandArgs: ["/d", "/s", "/c", `"${npxCommand}"`, "-y", "antigravity-usage", ...args]
+        command: [`"${npxCommand}"`, "-y", "antigravity-usage", ...args.map(quoteWindowsCmdArg)].join(" "),
+        commandArgs: [],
+        shell: true
       };
     }
 
     return {
       command: npxCommand,
-      commandArgs: ["-y", "antigravity-usage", ...args]
+      commandArgs: ["-y", "antigravity-usage", ...args],
+      shell: false
     };
   }
 
   if (antigravityCommand) {
     if (process.platform === "win32") {
       return {
-        command: "cmd.exe",
-        commandArgs: ["/d", "/s", "/c", `"${antigravityCommand}"`, ...args]
+        command: [`"${antigravityCommand}"`, ...args.map(quoteWindowsCmdArg)].join(" "),
+        commandArgs: [],
+        shell: true
       };
     }
 
     return {
       command: antigravityCommand,
-      commandArgs: args
+      commandArgs: args,
+      shell: false
     };
   }
 
   return null;
+}
+
+function quoteWindowsCmdArg(value: string) {
+  if (/^[A-Za-z0-9_\-./:@]+$/.test(value)) {
+    return value;
+  }
+  return `"${value.replace(/"/g, "\"\"")}"`;
 }
 
 function findCommandOnPath(command: string) {
