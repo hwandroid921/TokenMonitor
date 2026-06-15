@@ -43,7 +43,7 @@ async function getCodexSession(usageResult?: CodexUsageResult): Promise<CliSessi
     installed: true,
     loggedIn: usage.hasAccountEmail || Boolean(usage.accountType || usage.planType),
     authMethod: usage.accountType,
-    detail: usage.planType ? `플랜 ${usage.planType}` : "Codex 계정 확인됨",
+    detail: usage.planType ? `플랜 ${usage.planType}` : "ChatGPT 계정 확인됨",
     checkedAt
   };
 }

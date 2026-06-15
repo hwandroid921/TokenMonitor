@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import { createRoot } from "react-dom/client";
 import { ExternalLink, LayoutDashboard, Link, RefreshCw, Settings, Zap } from "lucide-react";
 import "./styles.css";
@@ -8,6 +8,8 @@ import type {
   CliSessionResult,
   CodexUsageResult,
   CodexUsageWindow,
+  GeminiAppsUsage,
+  GeminiAppsUsageWindow,
   GeminiUsageResult,
   GeminiUsageWindow,
   OverlaySettings,
@@ -28,6 +30,7 @@ type ProviderUsage = {
   detail: string;
   canLogin?: boolean;
   actionLabel?: string;
+  issues?: ProviderIssue[];
 };
 
 type ProviderField = {
@@ -36,12 +39,17 @@ type ProviderField = {
   kind: "plan" | "quota" | "usage" | "remaining" | "reset";
 };
 
+type ProviderIssue = {
+  reason: string;
+  steps: string[];
+};
+
 type GeminiQuotaModelView = Extract<GeminiUsageResult, { ok: true }>["models"][number];
 
 const providerLabels: Record<ProviderId, string> = {
-  codex: "Codex",
+  codex: "ChatGPT",
   claude: "Claude",
-  gemini: "Antigravity"
+  gemini: "Gemini"
 };
 
 const defaultOverlaySettings: OverlaySettings = {
@@ -67,8 +75,11 @@ const defaultOverlaySettings: OverlaySettings = {
 
 const claudeLoginPollIntervalMs = 2500;
 const claudeLoginPollTimeoutMs = 30_000;
+const geminiUsagePollIntervalMs = 2500;
+const geminiUsagePollTimeoutMs = 60_000;
 
 function App() {
+  const geminiPanelRef = useRef<HTMLDivElement | null>(null);
   const [codexUsage, setCodexUsage] = useState<CodexUsageResult | null>(null);
   const [claudeUsage, setClaudeUsage] = useState<ClaudeUsageResult | null>(null);
   const [geminiUsage, setGeminiUsage] = useState<GeminiUsageResult | null>(null);
@@ -79,8 +90,12 @@ function App() {
   const [showExitConfirm, setShowExitConfirm] = useState(false);
   const [isClaudeLoginPending, setIsClaudeLoginPending] = useState(false);
   const [isGeminiLoginPending, setIsGeminiLoginPending] = useState(false);
+  const [isGeminiAppsLoginPending, setIsGeminiAppsLoginPending] = useState(false);
+  const [isGeminiUsageCheckBlocking, setIsGeminiUsageCheckBlocking] = useState(false);
+  const [isGeminiPanelOpen, setIsGeminiPanelOpen] = useState(false);
   const [claudeLoginNotice, setClaudeLoginNotice] = useState<string | null>(null);
   const [geminiLoginNotice, setGeminiLoginNotice] = useState<string | null>(null);
+  const [geminiAppsLoginNotice, setGeminiAppsLoginNotice] = useState<string | null>(null);
 
   const providers = useMemo(() => buildProviderUsage(codexUsage, claudeUsage, geminiUsage, cliSessions), [codexUsage, claudeUsage, geminiUsage, cliSessions]);
 
@@ -97,7 +112,7 @@ function App() {
       const [latestCodex, latestClaude, latestGemini, latestSessions] = await Promise.all([
         window.tokenMonitor.getCodexUsage(),
         window.tokenMonitor.getClaudeUsage(),
-        window.tokenMonitor.getGeminiUsage(),
+        window.tokenMonitor.getGeminiUsage(true),
         window.tokenMonitor.getCliSessionStatus()
       ]);
       setCodexUsage(latestCodex);
@@ -120,6 +135,28 @@ function App() {
     setOverlaySettings(saved);
   }
 
+  function getGeminiPanelBounds() {
+    const rect = geminiPanelRef.current?.getBoundingClientRect();
+    if (!rect) {
+      return undefined;
+    }
+
+    return {
+      x: rect.x,
+      y: rect.y,
+      width: rect.width,
+      height: rect.height
+    };
+  }
+
+  async function syncGeminiPanelBounds() {
+    const bounds = getGeminiPanelBounds();
+    if (bounds) {
+      await window.tokenMonitor?.updateGeminiViewBounds(bounds);
+    }
+    return bounds;
+  }
+
   async function handleMinimizeToTray() {
     setShowExitConfirm(false);
     await window.tokenMonitor?.minimizeToTray();
@@ -137,6 +174,9 @@ function App() {
       if (!startResult?.ok) {
         setClaudeLoginNotice(startResult?.detail ?? "Claude 연동에는 Node.js/npm 설치가 필요합니다.");
         await refreshUsage();
+        setIsGeminiAppsLoginPending(false);
+        setIsGeminiAppsLoginPending(false);
+        setIsGeminiPanelOpen(false);
         return;
       }
 
@@ -186,6 +226,74 @@ function App() {
     }
   }
 
+  async function handleGeminiAppsLogin() {
+    if (isGeminiAppsLoginPending) {
+      return;
+    }
+
+    const isUsageCheck = Boolean(geminiUsage?.geminiAppsSession.loggedIn);
+    const previousGeminiAppsUpdatedAt = geminiUsage?.ok ? geminiUsage.geminiApps?.updatedAt ?? null : null;
+    setIsGeminiAppsLoginPending(true);
+    setIsGeminiUsageCheckBlocking(isUsageCheck);
+    setIsGeminiPanelOpen(true);
+    setGeminiAppsLoginNotice(null);
+    try {
+      await new Promise((resolve) => window.requestAnimationFrame(resolve));
+      const bounds = await syncGeminiPanelBounds();
+      const startResult = await window.tokenMonitor?.startGeminiAppsLogin(bounds);
+      if (!startResult?.ok) {
+        setGeminiAppsLoginNotice(startResult?.detail ?? "Gemini 작업을 시작할 수 없습니다.");
+        return;
+      }
+
+      setGeminiAppsLoginNotice(startResult.detail ?? (isUsageCheck ? "Gemini 사용량을 확인하고 있습니다." : "Gemini 로그인 상태를 확인하고 있습니다."));
+      if (isUsageCheck) {
+        const result = await waitForGeminiAppsUsageCompletion(previousGeminiAppsUpdatedAt, setGeminiUsage);
+        setGeminiAppsLoginNotice(result.completed ? null : "Usage Limits 화면에서 남은 사용량 %를 확인하지 못했습니다. 사용량 확인 버튼으로 다시 시도하세요.");
+        return;
+      }
+
+      window.setTimeout(() => {
+        void refreshUsage();
+        setIsGeminiAppsLoginPending(false);
+      }, 5000);
+      return;
+    } catch (error) {
+      setGeminiAppsLoginNotice(error instanceof Error ? error.message : "Gemini 작업을 시작할 수 없습니다.");
+      return;
+    } finally {
+      if (isUsageCheck) {
+        setIsGeminiUsageCheckBlocking(false);
+        setIsGeminiAppsLoginPending(false);
+      } else {
+        setIsGeminiUsageCheckBlocking(false);
+        setIsGeminiAppsLoginPending(false);
+      }
+    }
+/*
+    setIsGeminiAppsLoginPending(true);
+    setGeminiAppsLoginNotice(null);
+    try {
+      const startResult = await window.tokenMonitor?.startGeminiAppsLogin();
+      if (!startResult?.ok) {
+        setGeminiAppsLoginNotice(startResult?.detail ?? "Gemini 로그인 창을 열 수 없습니다.");
+        return;
+      }
+
+      setGeminiAppsLoginNotice(startResult.detail ?? "Gemini 로그인 후 Usage Limits 화면이 보이면 자동으로 한도를 저장합니다.");
+      window.setTimeout(() => {
+        void refreshUsage();
+        setIsGeminiAppsLoginPending(false);
+      }, 5000);
+    } catch (error) {
+      setGeminiAppsLoginNotice(error instanceof Error ? error.message : "Gemini 로그인을 시작할 수 없습니다.");
+      setIsGeminiAppsLoginPending(false);
+    }
+  }
+*/
+
+  }
+
   useEffect(() => {
     void refreshUsage();
     void window.tokenMonitor?.getOverlaySettings().then(setOverlaySettings);
@@ -199,6 +307,31 @@ function App() {
   useEffect(() => {
     const unsubscribe = window.tokenMonitor?.onUsageRefreshRequested(() => {
       void refreshUsage();
+    });
+    return () => unsubscribe?.();
+  }, []);
+
+  useEffect(() => {
+    if (!isGeminiPanelOpen) {
+      return;
+    }
+
+    void syncGeminiPanelBounds();
+    const handleResize = () => {
+      void syncGeminiPanelBounds();
+    };
+    window.addEventListener("resize", handleResize);
+    return () => window.removeEventListener("resize", handleResize);
+  }, [isGeminiPanelOpen]);
+
+  useEffect(() => {
+    const unsubscribe = window.tokenMonitor?.onGeminiViewClosed((payload) => {
+      setIsGeminiPanelOpen(false);
+      setIsGeminiUsageCheckBlocking(false);
+      setIsGeminiAppsLoginPending(false);
+      if (payload.reason === "login-complete" || payload.reason === "usage-complete") {
+        void refreshUsage();
+      }
     });
     return () => unsubscribe?.();
   }, []);
@@ -225,8 +358,8 @@ function App() {
               className="icon-button"
               type="button"
               onClick={() => void window.tokenMonitor?.openCodexUsageDashboard()}
-              aria-label="Codex 사용량 대시보드 열기"
-              title="Codex 사용량 대시보드 열기"
+              aria-label="ChatGPT 사용량 대시보드 열기"
+              title="ChatGPT 사용량 대시보드 열기"
             >
               <ExternalLink size={17} aria-hidden="true" />
             </button>
@@ -245,23 +378,49 @@ function App() {
         </nav>
 
         {activeTab === "dashboard" ? (
+          <>
           <section className="provider-grid" aria-label="서비스별 사용량">
             {providers.map((provider) => (
               <ProviderCard
                 key={provider.id}
                 provider={provider}
+                geminiUsage={geminiUsage}
                 isClaudeLoginPending={isClaudeLoginPending}
                 isGeminiLoginPending={isGeminiLoginPending}
-                actionNotice={provider.id === "claude" ? claudeLoginNotice : provider.id === "gemini" ? geminiLoginNotice : null}
+                isGeminiAppsLoginPending={isGeminiAppsLoginPending}
+                actionNotice={provider.id === "claude" ? claudeLoginNotice : provider.id === "gemini" ? [geminiLoginNotice, geminiAppsLoginNotice].filter(Boolean).join(" ") || null : null}
                 onClaudeLogin={handleClaudeLogin}
                 onGeminiLogin={handleGeminiLogin}
+                onGeminiAppsLogin={handleGeminiAppsLogin}
               />
             ))}
           </section>
+          </>
         ) : (
           <SettingsPanel settings={overlaySettings} onChange={updateOverlaySettings} />
         )}
       </section>
+
+      {isGeminiPanelOpen ? (
+        <section className="gemini-browser-panel" aria-label="Gemini 브라우저">
+          <div className="gemini-browser-panel-header">
+            <strong>{geminiUsage?.geminiAppsSession.loggedIn ? "Gemini 사용량 확인" : "Gemini 로그인"}</strong>
+            <button
+              className="provider-secondary-action"
+              type="button"
+              onClick={() => {
+                setIsGeminiPanelOpen(false);
+                setIsGeminiUsageCheckBlocking(false);
+                setIsGeminiAppsLoginPending(false);
+                void window.tokenMonitor?.closeGeminiView();
+              }}
+            >
+              닫기
+            </button>
+          </div>
+          <div ref={geminiPanelRef} className="gemini-browser-view-host" />
+        </section>
+      ) : null}
 
       {showExitConfirm ? (
         <div className="app-dialog-backdrop" role="presentation">
@@ -290,22 +449,33 @@ function App() {
 
 function ProviderCard({
   provider,
+  geminiUsage,
   isClaudeLoginPending,
   isGeminiLoginPending,
+  isGeminiAppsLoginPending,
   actionNotice,
   onClaudeLogin,
-  onGeminiLogin
+  onGeminiLogin,
+  onGeminiAppsLogin
 }: {
   provider: ProviderUsage;
+  geminiUsage: GeminiUsageResult | null;
   isClaudeLoginPending: boolean;
   isGeminiLoginPending: boolean;
+  isGeminiAppsLoginPending: boolean;
   actionNotice: string | null;
   onClaudeLogin: () => void;
   onGeminiLogin: () => void;
+  onGeminiAppsLogin: () => void;
 }) {
   const isActionPending = provider.id === "claude" && isClaudeLoginPending || provider.id === "gemini" && isGeminiLoginPending;
   const actionLabel = isActionPending ? "연동 확인 중" : (provider.actionLabel ?? "사용량 수집 연동");
+  const isGeminiAppsLoggedIn = provider.id === "gemini" && Boolean(geminiUsage?.geminiAppsSession.loggedIn);
+  const geminiAppsActionLabel = isGeminiAppsLoginPending
+    ? isGeminiAppsLoggedIn ? "사용량 확인 중" : "Gemini 로그인 확인 중"
+    : isGeminiAppsLoggedIn ? "사용량 확인" : "Gemini 로그인";
   const handleAction = provider.id === "gemini" ? onGeminiLogin : onClaudeLogin;
+  const showHeaderActions = Boolean(provider.canLogin || provider.id === "gemini");
   const showNodeInstallAction = Boolean(actionNotice?.includes("Node.js/npm"));
   const handleNodeInstall = () => {
     void window.tokenMonitor?.openNodeJsDownload();
@@ -318,19 +488,37 @@ function ProviderCard({
           <span className="provider-source">{provider.source}</span>
           <h2>{provider.name}</h2>
         </div>
-        {provider.canLogin ? (
-          <button
-            className="provider-action provider-header-action"
-            type="button"
-            onClick={handleAction}
-            disabled={isActionPending}
-            aria-busy={isActionPending}
-            aria-label={actionLabel}
-            title={actionLabel}
-          >
-            {isActionPending ? <RefreshCw size={15} aria-hidden="true" className="spinning" /> : <Link size={15} aria-hidden="true" />}
-            <span>{actionLabel}</span>
-          </button>
+        {showHeaderActions ? (
+          <div className="provider-header-actions">
+            {provider.id === "gemini" ? (
+              <button
+                className="provider-action provider-header-action provider-header-action-secondary"
+                type="button"
+                onClick={onGeminiAppsLogin}
+                disabled={isGeminiAppsLoginPending}
+                aria-busy={isGeminiAppsLoginPending}
+                aria-label={geminiAppsActionLabel}
+                title={geminiAppsActionLabel}
+              >
+                {isGeminiAppsLoginPending ? <RefreshCw size={15} aria-hidden="true" className="spinning" /> : <ExternalLink size={15} aria-hidden="true" />}
+                <span>{geminiAppsActionLabel}</span>
+              </button>
+            ) : null}
+            {provider.canLogin ? (
+              <button
+                className="provider-action provider-header-action"
+                type="button"
+                onClick={handleAction}
+                disabled={isActionPending}
+                aria-busy={isActionPending}
+                aria-label={actionLabel}
+                title={actionLabel}
+              >
+                {isActionPending ? <RefreshCw size={15} aria-hidden="true" className="spinning" /> : <Link size={15} aria-hidden="true" />}
+                <span>{actionLabel}</span>
+              </button>
+            ) : null}
+          </div>
         ) : null}
       </div>
 
@@ -360,23 +548,27 @@ function ProviderCard({
 }
 
 function ProviderIssueNotice({ provider }: { provider: ProviderUsage }) {
-  const issue = getProviderIssue(provider);
-  if (!issue) {
+  const issues = provider.issues ?? getProviderIssues(provider);
+  if (issues.length === 0) {
     return null;
   }
 
   return (
-    <section className="provider-issue" aria-label={`${provider.name} 사용량 확인 필요`}>
-      <div className="provider-issue-heading">
-        <span>필요한 조치</span>
-        <strong>{issue.reason}</strong>
-      </div>
-      <ol>
-        {issue.steps.map((step) => (
-          <li key={step}>{step}</li>
-        ))}
-      </ol>
-    </section>
+    <div className="provider-issues" aria-label={`${provider.name} 사용량 확인 필요`}>
+      {issues.map((issue) => (
+        <section className="provider-issue" key={issue.reason}>
+          <div className="provider-issue-heading">
+            <span>필요한 조치</span>
+            <strong>{issue.reason}</strong>
+          </div>
+          <ol>
+            {issue.steps.map((step) => (
+              <li key={step}>{step}</li>
+            ))}
+          </ol>
+        </section>
+      ))}
+    </div>
   );
 }
 
@@ -402,8 +594,8 @@ function ProviderCollectionGuide({ providerId }: { providerId: ProviderId }) {
 function getProviderCollectionGuide(providerId: ProviderId) {
   if (providerId === "codex") {
     return {
-      title: "Codex 로컬 앱 서버",
-      summary: "Codex Desktop 설치와 로그인이 완료된 상태에서 로컬 실행 흐름을 통해 5시간/주간 quota를 확인합니다.",
+      title: "ChatGPT 로컬 앱 서버",
+      summary: "Codex Desktop 설치와 로그인이 완료된 상태에서 ChatGPT 5시간/주간 quota를 확인합니다.",
       steps: [
         "Codex Desktop 설치 필수",
         "Codex Desktop 로그인 상태 확인",
@@ -416,9 +608,10 @@ function getProviderCollectionGuide(providerId: ProviderId) {
   if (providerId === "claude") {
     return {
       title: "Claude Code OAuth",
-      summary: "Node.js/npm이 준비된 상태에서 Claude CLI 설치와 OAuth 로그인을 한 번에 진행한 뒤 서버 quota를 읽습니다.",
+      summary: "Node.js/npm이 준비된 상태에서 Claude Pro/Max 이상 계정으로 Claude CLI 설치와 OAuth 로그인을 진행한 뒤 서버 quota를 읽습니다.",
       steps: [
         "Node.js/npm 설치 상태 확인",
+        "Claude Pro/Max 이상 계정 확인",
         "Claude CLI 설치 및 로그인 버튼 실행",
         "OAuth usage endpoint에서 5시간/주간 quota 조회",
         "서버 quota 미연동 시 local log를 보조 정보로 사용"
@@ -427,15 +620,63 @@ function getProviderCollectionGuide(providerId: ProviderId) {
   }
 
   return {
-    title: "antigravity-usage CLI",
-    summary: "Node.js/npm이 준비된 상태에서 antigravity-usage CLI 설치와 Google 로그인을 한 번에 진행합니다. 실패해도 실행 중인 Antigravity local server fallback은 유지됩니다.",
+    title: "Gemini Usage Limits + Antigravity CLI",
+    summary: "Gemini Apps 한도는 Gemini 웹 Usage Limits 화면에서, Antigravity 한도는 CLI 또는 local fallback에서 분리해 표시합니다.",
     steps: [
-      "Node.js/npm 설치 상태 확인",
-      "Antigravity CLI 설치 및 로그인 버튼 실행",
-      "Antigravity 실행 시 local fallback 사용",
-      "대시보드는 이메일 없이 quota와 reset만 표시"
+      "Gemini 로그인 버튼 실행",
+      "로그인 완료 후 사용량 확인 버튼 실행",
+      "Antigravity 한도가 필요하면 Node.js LTS 설치",
+      "Antigravity CLI 설치 및 로그인 버튼 실행"
     ]
   };
+
+  return {
+    title: "Gemini Usage Limits + Antigravity CLI",
+    summary: "Google AI 플랜은 공통으로 표시하고, Gemini Apps 한도는 gemini.google.com Usage Limits 기준으로 분리합니다. Antigravity 5시간 한도는 Node.js/npm 기반 CLI와 local fallback에서 수집합니다.",
+    steps: [
+      "Gemini Apps 5시간/주간 한도는 gemini.google.com의 Usage Limits 데이터가 필요",
+      "Google 플랜은 OAuth 또는 local provider 응답의 Free/Plus/Pro/Ultra 값을 표시",
+      "Antigravity 5시간 한도는 Antigravity CLI 설치 및 로그인 버튼 실행 후 수집",
+      "Antigravity 실행 시 local fallback 유지",
+      "계정 이메일과 OAuth token은 UI와 로그에 표시하지 않음"
+    ]
+  };
+}
+
+function getProviderIssues(provider: ProviderUsage): ProviderIssue[] {
+  const hasUnavailableField = (provider.fields ?? defaultProviderFields(provider)).some((field) => isUnavailableValue(field.value));
+  if (provider.status !== "error" && !hasUnavailableField) {
+    return [];
+  }
+
+  if (provider.id === "codex") {
+    return [{
+      reason: "ChatGPT 로그인 필요",
+      steps: [
+        "Codex Desktop 설치",
+        "Codex Desktop 로그인",
+        "필요 시 CODEX_CLI_PATH 설정"
+      ]
+    }];
+  }
+
+  if (provider.id === "claude") {
+    return [{
+      reason: "Claude CLI 로그인 필요",
+      steps: [
+        "Node.js LTS 설치",
+        "Claude Pro/Max 이상 계정 준비",
+        "Claude CLI 설치 및 로그인 버튼 실행",
+        "브라우저 인증 완료"
+      ]
+    }];
+  }
+
+  return [];
+}
+
+function isUnavailableValue(value: string) {
+  return /확인 불가|확인 필요|미연동|연동 필요|데이터 없음|서버 한도 미연동/.test(value);
 }
 
 function getProviderIssue(provider: ProviderUsage) {
@@ -446,7 +687,40 @@ function getProviderIssue(provider: ProviderUsage) {
 
   if (provider.id === "codex") {
     return {
-      reason: "Codex 연결 확인 필요",
+      reason: "ChatGPT 로그인 필요",
+      steps: [
+        "Codex Desktop 설치",
+        "Codex Desktop 로그인",
+        "필요 시 CODEX_CLI_PATH 설정"
+      ]
+    };
+  }
+
+  if (provider.id === "claude") {
+    return {
+      reason: "Claude CLI 로그인 필요",
+      steps: [
+        "Node.js LTS 설치",
+        "Claude Pro/Max 이상 계정 준비",
+        "Claude CLI 설치 및 로그인 버튼 실행",
+        "브라우저 인증 완료"
+      ]
+    };
+  }
+
+  return {
+    reason: "Gemini 또는 Antigravity 로그인 필요",
+    steps: [
+      "Gemini 로그인 버튼 실행",
+      "로그인 완료 후 사용량 확인 버튼 실행",
+      "Antigravity 한도가 필요하면 Node.js LTS 설치",
+      "Antigravity CLI 설치 및 로그인 버튼 실행"
+    ]
+  };
+
+  if (provider.id === "codex") {
+    return {
+      reason: "ChatGPT 연결 확인 필요",
       steps: [
         "Codex Desktop 설치 확인",
         "Codex Desktop 로그인 완료",
@@ -461,6 +735,7 @@ function getProviderIssue(provider: ProviderUsage) {
       reason: "Claude OAuth 연동 필요",
       steps: [
         "Node.js LTS 설치 확인",
+        "Claude Pro/Max 이상 계정 확인",
         "Claude CLI 설치 및 로그인 버튼 실행",
         "브라우저 인증 완료",
         "대시보드 새로고침"
@@ -469,9 +744,10 @@ function getProviderIssue(provider: ProviderUsage) {
   }
 
   return {
-    reason: "Antigravity CLI 수집 확인 필요",
+    reason: "Google 사용량 수집 확인 필요",
     steps: [
       "대시보드 새로고침",
+      "Gemini Apps 한도는 gemini.google.com Usage Limits에서 확인",
       "Node.js LTS 설치 확인",
       "Antigravity CLI 설치 및 로그인 버튼 실행",
       "Antigravity 실행 또는 Google 로그인 완료"
@@ -519,16 +795,36 @@ function makeClaudeLoginNotice(claudeUsage: ClaudeUsageResult | null, cliSession
     return `30초 안에 Claude 로그인이 확인되지 않았습니다. ${session.detail}`;
   }
   if (!claudeUsage?.ok) {
-    return `30초 안에 Claude 사용량 연동이 확인되지 않았습니다. ${claudeUsage?.error ?? "Claude OAuth 사용량 응답을 찾을 수 없습니다."}`;
+    return `30초 안에 Claude 사용량 연동이 확인되지 않았습니다. Claude Pro/Max 이상 계정인지 확인하세요. ${claudeUsage?.error ?? "Claude OAuth 사용량 응답을 찾을 수 없습니다."}`;
   }
   if (!claudeUsage.oauth) {
-    return "30초 안에 Claude OAuth 사용량 응답을 찾을 수 없습니다. 브라우저 로그인 완료 후 다시 새로고침하세요.";
+    return "30초 안에 Claude OAuth 사용량 응답을 찾을 수 없습니다. Claude Pro/Max 이상 계정으로 브라우저 로그인 완료 후 다시 새로고침하세요.";
   }
   return "30초 안에 Claude 연동 완료를 확인하지 못했습니다. 브라우저 인증을 마친 뒤 다시 시도하세요.";
 }
 
 function delay(ms: number) {
   return new Promise((resolve) => window.setTimeout(resolve, ms));
+}
+
+async function waitForGeminiAppsUsageCompletion(
+  previousUpdatedAt: string | null,
+  onUpdate: (usage: GeminiUsageResult) => void
+) {
+  const startedAt = Date.now();
+  while (Date.now() - startedAt < geminiUsagePollTimeoutMs) {
+    const latestGemini = await window.tokenMonitor?.getGeminiUsage(true);
+    if (latestGemini) {
+      onUpdate(latestGemini);
+      if (latestGemini.ok && latestGemini.geminiApps?.updatedAt && latestGemini.geminiApps.updatedAt !== previousUpdatedAt) {
+        return { completed: true, geminiUsage: latestGemini };
+      }
+    }
+
+    await delay(geminiUsagePollIntervalMs);
+  }
+
+  return { completed: false, geminiUsage: null };
 }
 
 function defaultProviderFields(provider: ProviderUsage): ProviderField[] {
@@ -790,7 +1086,7 @@ function buildCodexProvider(usage: CodexUsageResult | null, sessions: CliSession
   if (usage == null) {
     return {
       id: "codex",
-      name: "Codex",
+      name: "ChatGPT",
       source: "OpenAI",
       status: "loading",
       plan: "확인 중",
@@ -803,14 +1099,14 @@ function buildCodexProvider(usage: CodexUsageResult | null, sessions: CliSession
         { label: "5시간", value: "확인 중", kind: "quota" },
         { label: "주간", value: "확인 중", kind: "quota" }
       ],
-      detail: "Codex Desktop 로컬 앱 서버에서 사용량을 읽고 있습니다."
+      detail: "Codex Desktop 로컬 앱 서버에서 ChatGPT 사용량을 읽고 있습니다."
     };
   }
 
   if (!usage.ok) {
     return {
       id: "codex",
-      name: "Codex",
+      name: "ChatGPT",
       source: "OpenAI",
       status: "error",
       plan: "확인 불가",
@@ -829,7 +1125,7 @@ function buildCodexProvider(usage: CodexUsageResult | null, sessions: CliSession
 
   return {
     id: "codex",
-    name: "Codex",
+    name: "ChatGPT",
     source: "OpenAI",
     status: "live",
     plan: usage.planType ?? "로그인됨",
@@ -865,7 +1161,7 @@ function buildClaudeProvider(usage: ClaudeUsageResult | null, sessions: CliSessi
         { label: "5시간", value: "확인 중", kind: "quota" },
         { label: "주간", value: "확인 중", kind: "quota" }
       ],
-      detail: canLogin ? "Node.js/npm 설치 후 Claude CLI 설치와 로그인을 진행하세요." : "Claude 로컬 사용 로그를 읽고 있습니다.",
+      detail: canLogin ? "Node.js/npm 설치 후 Claude Pro/Max 이상 계정으로 Claude CLI 설치와 로그인을 진행하세요." : "Claude 로컬 사용 로그를 읽고 있습니다.",
       canLogin,
       actionLabel: "Claude CLI 설치 및 로그인"
     };
@@ -887,7 +1183,7 @@ function buildClaudeProvider(usage: ClaudeUsageResult | null, sessions: CliSessi
         { label: "5시간", value: "확인 불가", kind: "quota" },
         { label: "주간", value: "확인 불가", kind: "quota" }
       ],
-      detail: canLogin ? "Node.js/npm 설치 후 Claude CLI 설치와 로그인을 진행하세요." : usage.error,
+      detail: canLogin ? "Node.js/npm 설치 후 Claude Pro/Max 이상 계정으로 Claude CLI 설치와 로그인을 진행하세요." : usage.error,
       canLogin,
       actionLabel: "Claude CLI 설치 및 로그인"
     };
@@ -931,7 +1227,7 @@ function buildGeminiProvider(usage: GeminiUsageResult | null): ProviderUsage {
   if (usage == null) {
     return {
       id: "gemini",
-      name: "Antigravity",
+      name: "Gemini",
       source: "Google",
       status: "loading",
       plan: "확인 중",
@@ -941,56 +1237,98 @@ function buildGeminiProvider(usage: GeminiUsageResult | null): ProviderUsage {
       reset: "확인 중",
       fields: [
         { label: "플랜", value: "확인 중", kind: "plan" },
-        { label: "Gemini 한도", value: "확인 중", kind: "quota" }
+        { label: "Gemini 5시간", value: "확인 중", kind: "quota" },
+        { label: "Gemini 주간", value: "확인 중", kind: "quota" },
+        { label: "Antigravity 5시간", value: "확인 중", kind: "quota" }
       ],
-      detail: "Node.js/npm 기반 antigravity-usage CLI와 local fallback을 확인하고 있습니다.",
+      detail: "Gemini Apps 한도와 Antigravity 5시간 한도 수집 상태를 확인하고 있습니다.",
       canLogin: true,
       actionLabel: "Antigravity CLI 설치 및 로그인"
     };
   }
 
   if (!usage.ok) {
+    const planLabel = usage.geminiApps?.plan ?? "확인 필요";
     return {
       id: "gemini",
-      name: "Antigravity",
+      name: "Gemini",
       source: "Google",
       status: "error",
-      plan: "확인 필요",
+      plan: planLabel,
       session: "CLI 확인 필요",
       used: "확인 불가",
       remaining: "확인 불가",
       reset: "확인 불가",
       fields: [
-        { label: "플랜", value: "확인 필요", kind: "plan" },
-        { label: "Gemini 한도", value: "확인 불가", kind: "quota" }
+        { label: "플랜", value: planLabel, kind: "plan" },
+        { label: "Gemini 5시간", value: formatGeminiAppsWebUsageSummary(usage.geminiApps?.fiveHour ?? null), kind: "quota" },
+        { label: "Gemini 주간", value: formatGeminiAppsWebUsageSummary(usage.geminiApps?.weekly ?? null), kind: "quota" },
+        { label: "Antigravity 5시간", value: "남은 사용량 확인 불가 / 초기화 확인 불가", kind: "quota" }
       ],
       detail: usage.error,
       canLogin: true,
-      actionLabel: "Antigravity CLI 설치 및 로그인"
+      actionLabel: "Antigravity CLI 설치 및 로그인",
+      issues: buildGeminiIssues(usage.geminiApps, null)
     };
   }
 
-  const geminiSharedWindow = pickGeminiSharedWindow(usage.models);
+  const antigravityFiveHourWindow = pickAntigravityFiveHourWindow(usage.models);
   const sourceLabel = formatAntigravitySource(usage.source);
-  const planLabel = usage.planType ?? "확인 필요";
+  const planLabel = usage.geminiApps?.plan ?? usage.planType ?? "확인 필요";
   const promptCredits = formatPromptCredits(usage.promptCredits);
 
   return {
     id: "gemini",
-    name: "Antigravity",
+    name: "Gemini",
     source: "Google",
     status: "live",
     plan: planLabel,
     session: sourceLabel,
-    used: geminiSharedWindow ? `Gemini ${geminiSharedWindow.usedPercent}%` : "데이터 없음",
-    remaining: geminiSharedWindow ? `Gemini ${geminiSharedWindow.remainingPercent}%` : "데이터 없음",
-    reset: geminiSharedWindow?.resetsAt ? formatReset(geminiSharedWindow.resetsAt) : "데이터 없음",
+    used: formatGeminiWindows(antigravityFiveHourWindow, null, null, "used"),
+    remaining: formatGeminiWindows(antigravityFiveHourWindow, null, null, "remaining"),
+    reset: formatGeminiResets(antigravityFiveHourWindow, null, null),
     fields: [
       { label: "플랜", value: planLabel, kind: "plan" },
-      { label: "Gemini 한도", value: formatGeminiWindowSummary(geminiSharedWindow), kind: "quota" }
+      { label: "Gemini 5시간", value: formatGeminiAppsWebUsageSummary(usage.geminiApps?.fiveHour ?? null), kind: "quota" },
+      { label: "Gemini 주간", value: formatGeminiAppsWebUsageSummary(usage.geminiApps?.weekly ?? null), kind: "quota" },
+      { label: "Antigravity 5시간", value: formatGeminiWindowSummary(antigravityFiveHourWindow), kind: "quota" }
     ],
-    detail: promptCredits ?? `${sourceLabel} 기준 최근 갱신 ${formatTime(usage.updatedAt)}`
+    detail: promptCredits ?? formatGeminiDetail(usage.geminiApps?.updatedAt ?? null, usage.geminiApps?.detail ?? null, sourceLabel, usage.updatedAt),
+    issues: buildGeminiIssues(usage.geminiApps, antigravityFiveHourWindow)
   };
+}
+
+function formatGeminiDetail(geminiAppsUpdatedAt: string | null, parsedGeminiAppsDetail: string | null, antigravitySource: string, antigravityUpdatedAt: string) {
+  const updateDetail = geminiAppsUpdatedAt ? `Gemini Apps 최근 갱신 ${formatTime(geminiAppsUpdatedAt)}` : "Gemini Apps Usage Limits 연동 필요";
+  const parsedDetail = parsedGeminiAppsDetail ? ` / ${parsedGeminiAppsDetail}` : "";
+  return `${updateDetail}${parsedDetail} / Antigravity ${antigravitySource} 기준 최근 갱신 ${formatTime(antigravityUpdatedAt)}`;
+}
+
+function buildGeminiIssues(geminiApps: GeminiAppsUsage | null, antigravityFiveHourWindow: GeminiUsageWindow | null): ProviderIssue[] {
+  const issues: ProviderIssue[] = [];
+  if (!geminiApps?.plan || !geminiApps.fiveHour || !geminiApps.weekly) {
+    issues.push({
+      reason: "Gemini 앱 사용량 확인 필요",
+      steps: [
+        "Gemini 로그인 버튼 실행",
+        "로그인 완료 후 사용량 확인 버튼 실행",
+        "gemini.google.com/usage 페이지에서 플랜, 5시간, 주간 한도 확인"
+      ]
+    });
+  }
+
+  if (!antigravityFiveHourWindow) {
+    issues.push({
+      reason: "Antigravity 사용량 연동 필요",
+      steps: [
+        "Node.js LTS 설치",
+        "Antigravity CLI 설치 및 로그인 버튼 실행",
+        "Google 인증 완료 후 대시보드 새로고침"
+      ]
+    });
+  }
+
+  return issues;
 }
 
 function formatAntigravitySource(source: Extract<GeminiUsageResult, { ok: true }>["source"]) {
@@ -1041,6 +1379,8 @@ function makeGeminiError(error: string): GeminiUsageResult {
     ok: false,
     source: "gemini-cli-oauth",
     error,
+    geminiApps: null,
+    geminiAppsSession: { loggedIn: false, checkedAt: null },
     updatedAt: new Date().toISOString()
   };
 }
@@ -1131,12 +1471,37 @@ function formatGeminiWindowSummary(window: GeminiUsageWindow | null) {
   return `남은 사용량 ${window.remainingPercent}% / 초기화 ${reset}`;
 }
 
-function pickGeminiSharedWindow(models: GeminiQuotaModelView[]): GeminiUsageWindow | null {
+function formatGeminiAppsWebUsageSummary(window: GeminiAppsUsageWindow | null) {
+  if (!window) {
+    return "남은 사용량 미연동 / 초기화 미연동";
+  }
+
+  return `남은 사용량 ${window.remaining ?? "확인 필요"} / 초기화 ${window.reset ?? "확인 필요"}`;
+}
+
+function formatGeminiAppsUsageSummary(window: GeminiAppsUsageWindow | null) {
+  if (!window) {
+    return "남은 사용량 미연동 / 초기화 미연동";
+  }
+  return "남은 사용량 미연동 / 초기화 미연동";
+}
+
+function pickAntigravityFiveHourWindow(models: GeminiQuotaModelView[]): GeminiUsageWindow | null {
   const candidates = models.filter((model) => {
     const text = `${model.modelId} ${model.label}`.toLowerCase();
-    return text.includes("gemini") || text.includes("pro") || text.includes("flash");
+    return !model.isAutocompleteOnly && !isWeeklyQuotaModel(model) && !text.includes("autocomplete");
   });
-  return quotaModelToWindow("Gemini 공유 한도", pickMostConstrainedModel(candidates));
+  return quotaModelToWindow("5시간 한도", pickMostConstrainedModel(candidates));
+}
+
+function pickAntigravityWeeklyWindow(models: GeminiQuotaModelView[]): GeminiUsageWindow | null {
+  const candidates = models.filter((model) => !model.isAutocompleteOnly && isWeeklyQuotaModel(model));
+  return quotaModelToWindow("주간 한도", pickMostConstrainedModel(candidates));
+}
+
+function isWeeklyQuotaModel(model: GeminiQuotaModelView) {
+  const text = `${model.modelId} ${model.label}`.toLowerCase();
+  return /\b(weekly|week|seven[-_\s]?day|7[-_\s]?day)\b|주간|7일/.test(text);
 }
 
 function pickMostConstrainedModel<T extends { remainingPercent: number }>(models: T[]) {

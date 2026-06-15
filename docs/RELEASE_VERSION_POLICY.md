@@ -54,10 +54,13 @@ MAJOR.MINOR.PATCH
 - `MAJOR`: Product-level compatibility boundary. Before initial completion, `v1.0.0` marks the first complete release. After that, major changes increment by `1.0.0` units.
 - `MINOR`: User-visible feature milestone or meaningful workflow change. Before and after `v1.0.0`, minor changes increment by `0.1.0` units.
 - `PATCH`: Bug fix, UI polish, packaging fix, or narrow code adjustment.
+- Prerelease versions such as `0.7.0-beta.0` may be used for beta validation before a milestone release is promoted to a stable `MINOR.0` or `MAJOR.0` version.
 
 Documentation-only or instruction-only changes do not require an app/exe version bump unless the user explicitly asks for a new executable.
 
 Portable executable packaging is performed only for milestone release versions such as `0.3.0`, `0.4.0`, and later `MINOR.0` or `MAJOR.0` release points. Patch releases such as `0.3.1`, `0.3.2`, and `0.3.3` do not produce a portable executable by default unless explicitly requested.
+
+Beta/prerelease versions may produce portable artifacts when the user explicitly requests tag/release work or when the beta is intended for external validation.
 
 Before `v1.0.0`, do not maintain a fixed version-by-version feature roadmap. When work is completed, decide whether it is patch, minor, or major according to the actual change and record the completed content in Release History.
 
@@ -66,12 +69,12 @@ Before `v1.0.0`, do not maintain a fixed version-by-version feature roadmap. Whe
 Current package version:
 
 ```text
-0.3.20
+0.7.0-beta.0
 ```
 
 Baseline `v0.1.0` includes:
 
-- Codex quota display
+- ChatGPT quota display through the Codex Desktop local usage flow
 - Claude quota display
 - Antigravity quota display through the Gemini CLI OAuth quota path
 - Transparent overlay
@@ -112,6 +115,24 @@ Reserve `v1.0.0` for the final complete initial release after:
 - Privacy-sensitive data handling has been reviewed
 
 After `v1.0.0`, release versions should be managed through Git releases and tags. Each post-`v1.0.0` release should have a corresponding Git tag and release entry.
+
+## Post-v1.0.0 Future Feature Backlog
+
+These items are candidates for releases after the initial complete `v1.0.0` milestone. They are not required for `v1.0.0` and should be scoped, versioned, and recorded only when implementation work actually begins or ships.
+
+- Notification support:
+  - Notify the user when a provider quota/reset window is refreshed or initialized.
+  - Notify the user when remaining usage drops below a user-configured threshold.
+- Account information on provider dashboards:
+  - Show display-safe account information for each model/provider card where available.
+  - Continue to exclude account emails, access tokens, refresh tokens, account IDs, and credential-derived identifiers from UI and logs.
+- Additional usage and credits:
+  - Track whether providers expose display-safe additional usage, purchased credits, or flexible usage balances.
+  - Show extra usage/credit status only when the source clearly distinguishes it from base plan quota.
+  - Do not display billing identifiers, payment details, invoice data, or credential-derived account identifiers.
+- macOS migration:
+  - Add macOS support after the Windows release path is stable.
+  - Review tray, overlay, packaging, provider CLI discovery, local app paths, and platform-specific privacy handling separately for macOS.
 
 ## Required Workflow For Each Task
 
@@ -171,6 +192,490 @@ For each release-worthy version bump, summarize:
 - Known limitations
 
 ## Release History
+
+### 0.7.0-beta.0 — 2026-06-15 — BETA
+
+**Change category:** MINOR prerelease (Gemini and Antigravity beta validation)
+
+**User-visible changes:**
+- Gemini card separates Gemini Apps usage from Antigravity usage and prioritizes the Gemini usage page plan when available
+- Gemini login and usage-check actions open the embedded Gemini browser flow and direct usage page
+- Antigravity setup remains a separate CLI login action for Antigravity 5-hour quota collection
+- Provider recovery guidance separates Gemini Apps actions from Antigravity CLI actions
+
+**Provider/data-source changes:**
+- Gemini subscription plan, Gemini Apps 5-hour quota, weekly quota, and reset text are sourced from `https://gemini.google.com/usage`
+- Antigravity 5-hour quota remains sourced from `antigravity-usage` CLI or local fallback
+- Cached Gemini web usage remains displayable when Antigravity CLI collection fails
+
+**Packaging notes:**
+- Package version updated to `0.7.0-beta.0`
+- Portable beta executable should be packaged for release validation
+- `win-unpacked` development executable should also be refreshed
+
+**Known limitations:**
+- Gemini web parsing remains best-effort and depends on Google page text and DOM behavior
+- Claude server quota verification still requires a Claude Pro/Max or higher account with OAuth access
+
+---
+
+### 0.6.5 — 2026-06-10 — PATCH
+
+**Change category:** PATCH (Gemini and Antigravity collection separation)
+
+**User-visible changes:**
+- Gemini card now prioritizes the plan parsed from the Gemini usage page over Antigravity/CLI-derived plan labels
+- Cached Gemini web plan and 5-hour/weekly usage remain visible even when Antigravity CLI collection fails
+- Gemini recovery guidance is split into separate Gemini Apps usage and Antigravity usage actions when both are needed
+
+**Provider/data-source changes:**
+- Gemini plan and Gemini Apps 5-hour/weekly quota remain sourced from `https://gemini.google.com/usage`
+- Antigravity 5-hour quota remains sourced from `antigravity-usage` CLI or local fallback
+- Antigravity CLI model names such as `Gemini Pro` are not treated as the user's subscription plan
+
+**Packaging notes:**
+- Package version updated to `0.6.5`
+- `win-unpacked` development executable should be refreshed because the app version changed
+- No portable executable packaged because patch releases do not produce portable artifacts by default
+
+**Known limitations:**
+- Gemini web parsing remains best-effort and depends on the visible usage page text
+
+---
+
+### 0.6.4 — 2026-06-10 — PATCH
+
+**Change category:** PATCH (Gemini usage direct page parsing)
+
+**User-visible changes:**
+- Gemini usage checks now open `https://gemini.google.com/usage` directly when the Gemini web session is already logged in
+- Gemini Apps parsing recognizes the direct usage page text patterns for current usage, reset text such as `오후 6:08에 초기화`, weekly quota reset text such as `6월 15일 오전 11:08에 초기화`, and `Pro` plan candidates
+- When the CLI/API plan is unavailable, the Gemini card can use the display-safe plan candidate parsed from the Gemini usage page
+
+**Provider/data-source changes:**
+- No new external API source
+- Gemini Apps web parsing now treats `현재 사용량`, `주간 한도`, and `초기화` as first-class usage-page markers
+- The parser still stores only display-safe usage, reset, and plan summary data
+
+**Packaging notes:**
+- Package version updated to `0.6.4`
+- `win-unpacked` development executable should be refreshed because the app version changed
+- No portable executable packaged because patch releases do not produce portable artifacts by default
+
+**Known limitations:**
+- Gemini usage parsing remains best-effort because the web page DOM and displayed copy can change without notice
+
+---
+
+### 0.6.3 — 2026-06-10 — PATCH
+
+**Change category:** PATCH (Gemini Usage Limits parser visibility)
+
+**User-visible changes:**
+- Gemini Apps parsing now uses page text plus display/accessibility attributes such as `aria-label`, `title`, progress values, and value attributes
+- Parsed percentage candidates are shown in the Gemini card detail after successful collection
+- A display-safe parse debug file records percentage candidates and keyword snippets for troubleshooting
+
+**Provider/data-source changes:**
+- No new quota source
+- Gemini Apps parser can fall back to detected percentage candidates when strict 5-hour/weekly nearby parsing is unavailable
+- Parse debug output masks email/token-like strings and does not store raw provider tokens
+
+**Packaging notes:**
+- Package version updated to `0.6.3`
+- `win-unpacked` development executable should be refreshed because the app version changed
+- No portable executable packaged because patch releases do not produce portable artifacts by default
+
+**Known limitations:**
+- If Google renders quota values outside visible/accessibility text and value attributes, parsing may still require another selector-specific update
+
+---
+
+### 0.6.2 — 2026-06-10 — PATCH
+
+**Change category:** PATCH (Gemini usage page overlay window)
+
+**User-visible changes:**
+- Gemini usage-check progress now appears as an Electron overlay above the Usage Limits page itself
+- The overlay blocks interaction with the usage page while collection is running
+- The overlay closes with the embedded Gemini panel when collection completes or the panel is closed
+
+**Provider/data-source changes:**
+- No quota source changes
+
+**Packaging notes:**
+- Package version updated to `0.6.2`
+- `win-unpacked` development executable should be refreshed because the app version changed
+- No portable executable packaged because patch releases do not produce portable artifacts by default
+
+**Known limitations:**
+- Usage Limits navigation remains best-effort because Google does not provide a confirmed stable direct URL for the Gemini Apps Usage Limits screen
+
+---
+
+### 0.6.1 — 2026-06-10 — PATCH
+
+**Change category:** PATCH (Gemini overlay placement)
+
+**User-visible changes:**
+- Gemini login and usage-check panel now overlays the dashboard instead of appearing below the provider cards
+- Usage-check progress overlay no longer hides the Gemini Usage Limits page; it blocks interaction while keeping the page visible
+
+**Provider/data-source changes:**
+- No quota source changes
+
+**Packaging notes:**
+- Package version updated to `0.6.1`
+- `win-unpacked` development executable should be refreshed because the app version changed
+- No portable executable packaged because patch releases do not produce portable artifacts by default
+
+**Known limitations:**
+- Usage Limits navigation remains best-effort because Google does not provide a confirmed stable direct URL for the Gemini Apps Usage Limits screen
+
+---
+
+### 0.6.0 — 2026-06-10 — MINOR
+
+**Change category:** MINOR (embedded Gemini browser panel)
+
+**User-visible changes:**
+- Gemini login and usage-check pages now open inside the dashboard area instead of a separate Electron window
+- The embedded Gemini panel keeps the same persistent Gemini web session
+- Login completion closes the embedded panel and switches the action to `사용량 확인`
+- Usage capture completion closes the embedded panel, refreshes the dashboard, and clears the blocking overlay
+
+**Provider/data-source changes:**
+- Gemini Apps Usage Limits collection still stores only display-safe percentage/reset summaries
+- No provider secrets, account emails, tokens, or raw page payloads are stored or shown
+
+**Packaging notes:**
+- Package version updated to `0.6.0`
+- `win-unpacked` development executable should be refreshed because the app version changed
+- Portable Windows executable should be packaged because `0.6.0` is a milestone minor release
+
+**Known limitations:**
+- Usage Limits navigation remains best-effort because Google does not provide a confirmed stable direct URL for the Gemini Apps Usage Limits screen
+
+---
+
+### 0.5.5 — 2026-06-10 — PATCH
+
+**Change category:** PATCH (Gemini usage-check blocking state)
+
+**User-visible changes:**
+- Gemini `사용량 확인` now blocks dashboard interaction with an opaque progress overlay while Usage Limits data is being checked
+- The blocking overlay is cleared only after usage data is refreshed or the check times out
+- Gemini Apps remaining usage is accepted only when it can be parsed as a percentage value
+
+**Provider/data-source changes:**
+- No new quota source
+- Gemini Apps Usage Limits parsing now requires a display-safe `%` remaining-usage value before treating collection as successful
+
+**Packaging notes:**
+- Package version updated to `0.5.5`
+- `win-unpacked` development executable should be refreshed because the app version changed
+- No portable executable packaged because patch releases do not produce portable artifacts by default
+
+**Known limitations:**
+- Usage Limits direct navigation remains best-effort because Google does not provide a confirmed stable direct URL for the Gemini Apps Usage Limits screen
+
+---
+
+### 0.5.4 — 2026-06-10 — PATCH
+
+**Change category:** PATCH (Gemini login and usage-check state flow)
+
+**User-visible changes:**
+- Gemini Apps web button now follows a login-aware flow: `Gemini 로그인` before login and `사용량 확인` after login is detected
+- Gemini login window closes automatically after login state is detected
+- Usage-check window closes automatically after Usage Limits data is captured
+
+**Provider/data-source changes:**
+- Added a display-safe Gemini Apps session status cache that stores only login status and check time
+- No new quota source
+
+**Packaging notes:**
+- Package version updated to `0.5.4`
+- `win-unpacked` development executable should be refreshed because the app version changed
+- No portable executable packaged because patch releases do not produce portable artifacts by default
+
+**Known limitations:**
+- Usage Limits direct navigation is best-effort because Google does not provide a confirmed stable direct URL for the Gemini Apps Usage Limits screen
+
+---
+
+### 0.5.3 — 2026-06-10 — PATCH
+
+**Change category:** PATCH (Gemini login action and refresh capture)
+
+**User-visible changes:**
+- Gemini Apps web action label changed from `Gemini 한도 연동` to `Gemini 로그인`
+- Dashboard refresh now forces a Gemini Apps Usage Limits capture when the Gemini login window is already open
+- README now describes that the in-app Gemini login session can be reused while the Electron session remains valid
+
+**Provider/data-source changes:**
+- No new quota source
+- Gemini Apps Usage Limits collection still reads only display-safe text from the app-opened Gemini web session
+
+**Packaging notes:**
+- Package version updated to `0.5.3`
+- `win-unpacked` development executable should be refreshed because the app version changed
+- No portable executable packaged because patch releases do not produce portable artifacts by default
+
+**Known limitations:**
+- If the Gemini login window is closed, dashboard refresh uses the latest cached Gemini Apps Usage Limits value until the user opens the Gemini login window and displays Usage Limits again
+
+---
+
+### 0.5.2 — 2026-06-10 — PATCH
+
+**Change category:** PATCH (Gemini card action layout and recovery guide)
+
+**User-visible changes:**
+- Gemini card action buttons now have matched widths and enough card height when both Gemini and Antigravity actions are visible
+- Provider recovery guidance now shows only user actions such as install, login, and opening Usage Limits
+- Guide sections have enough vertical space to avoid clipping action steps
+
+**Provider/data-source changes:**
+- No quota source changes
+
+**Packaging notes:**
+- Package version updated to `0.5.2`
+- `win-unpacked` development executable should be refreshed because the app version changed
+- No portable executable packaged because patch releases do not produce portable artifacts by default
+
+**Known limitations:**
+- Gemini Apps collection still requires the user to complete Google login and display the Usage Limits screen in the app-opened Gemini window
+
+---
+
+### 0.5.1 — 2026-06-10 — PATCH
+
+**Change category:** PATCH (Gemini Apps link action visibility)
+
+**User-visible changes:**
+- Gemini card keeps the Gemini Apps web action visible even when the card is already live through Antigravity data
+- Users can recover from `Gemini Apps Usage Limits` unlinked states without needing the whole Google provider card to be in an error state
+
+**Provider/data-source changes:**
+- No quota source changes
+- Gemini Apps Usage Limits collection still uses the app-opened `gemini.google.com` web session
+
+**Packaging notes:**
+- Package version updated to `0.5.1`
+- `win-unpacked` development executable should be refreshed because the app version changed
+- No portable executable packaged because patch releases do not produce portable artifacts by default
+
+**Known limitations:**
+- Gemini Apps collection still requires the user to complete Google login and display the Usage Limits screen in the app-opened Gemini window
+
+---
+
+### 0.5.0 — 2026-06-10 — MINOR
+
+**Change category:** MINOR (Gemini Apps web Usage Limits collection)
+
+**User-visible changes:**
+- Gemini card includes a separate Gemini Apps web action for Usage Limits
+- Gemini 5-hour and weekly rows can show display-safe remaining usage and reset text collected from the logged-in Gemini web Usage Limits screen
+- Antigravity CLI setup remains a separate action and continues to drive the Antigravity 5-hour row
+
+**Provider/data-source changes:**
+- Added a persistent Electron web session for `gemini.google.com` Usage Limits collection
+- Gemini Apps collection stores only display-safe quota summary text, update time, and source metadata
+- Gemini CLI, Gemini API, Code Assist, and Antigravity CLI quota data are still not substituted as Gemini Apps quota
+
+**Packaging notes:**
+- Package version updated to `0.5.0`
+- `win-unpacked` development executable should be refreshed because the app version changed
+- Portable Windows executable should be packaged because `0.5.0` is a milestone minor release
+
+**Known limitations:**
+- Gemini Apps collection requires the user to complete Google login and display the Usage Limits screen in the app-opened Gemini window
+- The parser is best-effort because Google does not provide a confirmed public Gemini Apps Usage Limits API
+
+---
+
+### 0.4.1 — 2026-06-10 — PATCH
+
+**Change category:** PATCH (OpenAI provider label alignment)
+
+**User-visible changes:**
+- OpenAI provider card, settings label, tray label, and overlay label now display `ChatGPT` instead of `Codex`
+- README provider wording now refers to the user-facing OpenAI item as `ChatGPT`
+
+**Provider/data-source changes:**
+- No quota source changes
+- Internal Codex Desktop executable discovery and local app-server collection remain unchanged
+
+**Packaging notes:**
+- Package version updated to `0.4.1`
+- `win-unpacked` development executable should be refreshed because the app version changed
+- No portable executable packaged because patch releases do not produce portable artifacts by default
+
+**Known limitations:**
+- ChatGPT usage collection still depends on a Codex Desktop/Codex CLI-compatible local usage flow
+
+---
+
+### 0.4.0 — 2026-06-10 — MINOR
+
+**Change category:** MINOR (Google/Gemini usage card separation)
+
+**User-visible changes:**
+- Google provider card title changed from `Antigravity` to `Gemini`
+- Google card now separates Google AI plan, Gemini Apps 5-hour quota, Gemini Apps weekly quota, and Antigravity 5-hour quota
+- Gemini quota rows use the `remaining usage / reset time` display format for both 5-hour and weekly windows
+- Antigravity 5-hour quota remains visible as a separate row instead of being mixed with Gemini Apps quota
+
+**Provider/data-source changes:**
+- Gemini Apps quota is treated as a separate Usage Limits source from `gemini.google.com`
+- Gemini CLI, Gemini API, Code Assist, and Antigravity CLI quota data are not substituted as Gemini Apps quota
+- Existing Antigravity collection order remains unchanged for the Antigravity 5-hour row: `antigravity-usage` Google, `antigravity-usage` auto/local, embedded Antigravity local probe, then Gemini CLI OAuth fallback
+
+**Packaging notes:**
+- Package version updated to `0.4.0`
+- `win-unpacked` development executable should be refreshed because the app version changed
+- Portable Windows executable should be packaged because `0.4.0` is a milestone minor release
+
+**Known limitations:**
+- Gemini Apps Usage Limits automatic collection still requires a verified web-session collection path
+- Until that path is implemented, Gemini Apps 5-hour and weekly rows are shown as unlinked instead of reusing Antigravity quota
+
+---
+
+### 0.3.26 — 2026-06-10 — PATCH
+
+**Change category:** PATCH (Antigravity CLI collector shell command fix)
+
+**User-visible changes:**
+- Antigravity usage now links after `antigravity-usage login` when Node.js is installed under `C:\Program Files\nodejs`
+- The collector no longer falls through to Gemini CLI OAuth when `antigravity-usage quota` is available and authenticated
+
+**Provider/data-source changes:**
+- Antigravity CLI quota collection on Windows now executes the fully quoted `npx.cmd` command as one shell string
+- Existing fallback order remains unchanged after CLI attempts
+
+**Packaging notes:**
+- Package version updated to `0.3.26`
+- `win-unpacked` development executable should be refreshed because the app version changed
+- No portable executable packaged because patch releases do not produce portable artifacts by default
+
+**Known limitations:**
+- Antigravity weekly quota still requires an explicit weekly/7-day quota window from the provider response
+
+---
+
+### 0.3.25 — 2026-06-10 — PATCH
+
+**Change category:** PATCH (Antigravity CLI quota command quoting fix)
+
+**User-visible changes:**
+- Antigravity usage can link after login when Node.js is installed under `C:\Program Files\nodejs`
+- The quota collector now launches `antigravity-usage quota` through `call "npx.cmd"` to avoid Windows command quoting failures
+
+**Provider/data-source changes:**
+- Antigravity CLI Google and auto/local quota collection commands now use a single Windows command string with `call`
+- Existing fallback order remains unchanged
+
+**Packaging notes:**
+- Package version updated to `0.3.25`
+- `win-unpacked` development executable should be refreshed because the app version changed
+- No portable executable packaged because patch releases do not produce portable artifacts by default
+
+**Known limitations:**
+- Antigravity weekly quota still requires an explicit weekly/7-day quota window from the provider response
+
+---
+
+### 0.3.24 — 2026-06-10 — PATCH
+
+**Change category:** PATCH (Windows CLI launcher quoting fix)
+
+**User-visible changes:**
+- Antigravity and Claude CLI install/login buttons now run through a generated launcher script instead of nested `start cmd /k` quoting
+- The launcher script avoids the `"C:\Program Files\nodejs\npx.cmd"` command-not-found error caused by nested Windows command quoting
+
+**Provider/data-source changes:**
+- No quota source changes
+
+**Packaging notes:**
+- Package version updated to `0.3.24`
+- `win-unpacked` development executable should be refreshed because the app version changed
+- No portable executable packaged because patch releases do not produce portable artifacts by default
+
+**Known limitations:**
+- Users still need Node.js/npm installed and available on PATH for integrated CLI setup buttons
+
+---
+
+### 0.3.23 — 2026-06-10 — PATCH
+
+**Change category:** PATCH (Windows CLI login command quoting fix)
+
+**User-visible changes:**
+- Antigravity CLI install/login button now launches `npx.cmd` through `call` so paths under `C:\Program Files\nodejs` work correctly
+- Claude CLI install/login uses the same safer Windows command wrapper
+
+**Provider/data-source changes:**
+- No quota source changes
+
+**Packaging notes:**
+- Package version updated to `0.3.23`
+- `win-unpacked` development executable should be refreshed because the app version changed
+- No portable executable packaged because patch releases do not produce portable artifacts by default
+
+**Known limitations:**
+- Users still need Node.js/npm installed and available on PATH for integrated CLI setup buttons
+
+---
+
+### 0.3.22 — 2026-06-09 — PATCH
+
+**Change category:** PATCH (Antigravity quota window display guidance)
+
+**User-visible changes:**
+- Antigravity quota display now separates the 5-hour quota row from the weekly quota row
+- The 5-hour row shows model quota remaining percent and reset time when Antigravity CLI/local/API data is available
+- The weekly row is shown separately and remains unavailable unless the source response includes an explicit weekly/7-day quota window
+- README and in-app collection guidance now describe the prerequisites for each Antigravity quota window
+
+**Provider/data-source changes:**
+- Antigravity local API prompt credit parsing now reads available/monthly prompt credits when present
+- No weekly quota is inferred from monthly Prompt Credits
+
+**Packaging notes:**
+- Package version updated to `0.3.22`
+- `win-unpacked` development executable should be refreshed because the app version changed
+- No portable executable packaged because patch releases do not produce portable artifacts by default
+
+**Known limitations:**
+- Antigravity weekly quota requires an explicit weekly/7-day quota window from the CLI, local API, or provider API response
+
+---
+
+### 0.3.21 — 2026-06-09 — PATCH
+
+**Change category:** PATCH (Claude Pro/Max quota prerequisite guidance)
+
+**User-visible changes:**
+- Claude server quota guidance now states that measurement requires a Claude Pro/Max or higher account
+- The dashboard recovery steps now ask users to confirm a Claude Pro/Max or higher account before retrying OAuth setup
+- README setup, provider support, Claude collection, and FAQ sections now reflect the same prerequisite
+
+**Provider/data-source changes:**
+- No quota source changes
+- Claude local JSONL logs remain fallback/history metadata only and are not presented as server quota for lower-plan accounts
+
+**Packaging notes:**
+- Package version updated to `0.3.21`
+- `win-unpacked` development executable should be refreshed because the app version changed
+- No portable executable packaged because patch releases do not produce portable artifacts by default
+
+**Known limitations:**
+- Claude Pro/Max OAuth quota verification still requires access to a qualifying Claude account
+
+---
 
 ### 0.3.20 — 2026-06-09 — PATCH
 

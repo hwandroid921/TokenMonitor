@@ -5,6 +5,7 @@ import https from "node:https";
 import os from "node:os";
 import path from "node:path";
 import type { RequestOptions } from "node:https";
+import { readGeminiAppsSessionStatus, readGeminiAppsUsageCache, type GeminiAppsSessionStatus, type GeminiAppsUsage } from "./gemini-apps-usage.js";
 
 // Cached once per process — Gemini CLI install location doesn't change at runtime.
 let oauthClientCache: { clientId: string; clientSecret: string } | null | undefined;
@@ -73,6 +74,8 @@ export type GeminiUsageResult =
       planType: string | null;
       accountEmail: string | null;
       promptCredits: PromptCredits | null;
+      geminiApps: GeminiAppsUsage | null;
+      geminiAppsSession: GeminiAppsSessionStatus;
       primary: GeminiUsageWindow | null;
       secondary: GeminiUsageWindow | null;
       tertiary: GeminiUsageWindow | null;
@@ -83,6 +86,8 @@ export type GeminiUsageResult =
       ok: false;
       source: AntigravityUsageSource;
       error: string;
+      geminiApps: GeminiAppsUsage | null;
+      geminiAppsSession: GeminiAppsSessionStatus;
       updatedAt: string;
     };
 
@@ -138,6 +143,8 @@ export async function getGeminiUsage(): Promise<GeminiUsageResult> {
       planType: planFromCodeAssist(assist, claims.hostedDomain),
       accountEmail: null,
       promptCredits: null,
+      geminiApps: readGeminiAppsUsageCache(),
+      geminiAppsSession: readGeminiAppsSessionStatus(),
       primary: makeWindow("Gemini Pro", pickModel(models, "pro")),
       secondary: makeWindow("Gemini Flash", pickModel(models, "flash")),
       tertiary: makeWindow("Gemini Flash Lite", pickModel(models, "flash-lite")),
@@ -154,6 +161,8 @@ function makeError(error: string, source: AntigravityUsageSource = "gemini-cli-o
     ok: false,
     source,
     error,
+    geminiApps: readGeminiAppsUsageCache(),
+    geminiAppsSession: readGeminiAppsSessionStatus(),
     updatedAt: new Date().toISOString()
   };
 }
@@ -188,7 +197,9 @@ async function getAntigravityLocalUsage(): Promise<GeminiUsageResult> {
       source: "antigravity-local",
       planType: normalizeGeminiPlan(readAntigravityPlan(payload)) ?? "확인 필요",
       accountEmail: null,
-      promptCredits: null,
+      promptCredits: parseLocalPromptCredits(payload),
+      geminiApps: readGeminiAppsUsageCache(),
+      geminiAppsSession: readGeminiAppsSessionStatus(),
       primary: makeWindow("Claude", pickModel(models, "claude")),
       secondary: makeWindow("Gemini Pro", pickModel(models, "pro")),
       tertiary: makeWindow("Gemini Flash", pickModel(models, "flash")),
@@ -389,8 +400,9 @@ function runAntigravityUsageCli(args: string[]): Promise<string> {
       return;
     }
 
-    const { command, commandArgs } = commandInfo;
+    const { command, commandArgs, shell } = commandInfo;
     const child = spawn(command, commandArgs, {
+      shell,
       windowsHide: true,
       stdio: ["ignore", "pipe", "pipe"]
     });
@@ -422,32 +434,43 @@ function makeAntigravityUsageCommand(npxCommand: string | null, antigravityComma
   if (npxCommand) {
     if (process.platform === "win32") {
       return {
-        command: "cmd.exe",
-        commandArgs: ["/d", "/s", "/c", `"${npxCommand}"`, "-y", "antigravity-usage", ...args]
+        command: [`"${npxCommand}"`, "-y", "antigravity-usage", ...args.map(quoteWindowsCmdArg)].join(" "),
+        commandArgs: [],
+        shell: true
       };
     }
 
     return {
       command: npxCommand,
-      commandArgs: ["-y", "antigravity-usage", ...args]
+      commandArgs: ["-y", "antigravity-usage", ...args],
+      shell: false
     };
   }
 
   if (antigravityCommand) {
     if (process.platform === "win32") {
       return {
-        command: "cmd.exe",
-        commandArgs: ["/d", "/s", "/c", `"${antigravityCommand}"`, ...args]
+        command: [`"${antigravityCommand}"`, ...args.map(quoteWindowsCmdArg)].join(" "),
+        commandArgs: [],
+        shell: true
       };
     }
 
     return {
       command: antigravityCommand,
-      commandArgs: args
+      commandArgs: args,
+      shell: false
     };
   }
 
   return null;
+}
+
+function quoteWindowsCmdArg(value: string) {
+  if (/^[A-Za-z0-9_\-./:@]+$/.test(value)) {
+    return value;
+  }
+  return `"${value.replace(/"/g, "\"\"")}"`;
 }
 
 function findCommandOnPath(command: string) {
@@ -522,6 +545,30 @@ function parsePromptCredits(value: AntigravityUsageCliSnapshot["promptCredits"])
     monthly: readNumber(value.monthly),
     usedPercent: ratioToPercent(readNumber(value.usedPercentage)),
     remainingPercent: ratioToPercent(readNumber(value.remainingPercentage))
+  };
+}
+
+function parseLocalPromptCredits(value: unknown): PromptCredits | null {
+  const planStatus = readNestedRecord(value, ["userStatus", "planStatus"]);
+  const planInfo = readNestedRecord(planStatus, ["planInfo"]);
+  const available = readNumber(planStatus?.availablePromptCredits);
+  const monthly = readNumber(planInfo?.monthlyPromptCredits);
+  if (available == null && monthly == null) {
+    return null;
+  }
+
+  const usedPercent = available != null && monthly != null && monthly > 0
+    ? clampPercent((1 - available / monthly) * 100)
+    : null;
+  const remainingPercent = available != null && monthly != null && monthly > 0
+    ? clampPercent(available / monthly * 100)
+    : null;
+
+  return {
+    available,
+    monthly,
+    usedPercent,
+    remainingPercent
   };
 }
 
@@ -802,6 +849,8 @@ async function getAntigravityCliUsage(method: "google" | "auto"): Promise<Gemini
       planType,
       accountEmail: null,
       promptCredits: parsePromptCredits(snapshot.promptCredits),
+      geminiApps: readGeminiAppsUsageCache(),
+      geminiAppsSession: readGeminiAppsSessionStatus(),
       primary: makeWindow("Claude", pickModel(models, "claude")),
       secondary: makeWindow("Gemini Pro", pickModel(models, "pro")),
       tertiary: makeWindow("Gemini Flash", pickModel(models, "flash")),

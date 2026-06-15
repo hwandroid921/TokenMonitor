@@ -108,7 +108,7 @@ npx electron-builder --win dir --x64 --publish never --config.win.signAndEditExe
 
 - Codex usage assumes Codex Desktop is installed and signed in.
 - Codex executable discovery should consider `CODEX_CLI_PATH`, known local install paths, hashed install folders, Windows app resource paths, and PATH candidates.
-- Claude server quota should prefer Claude Code CLI OAuth. Local Claude JSONL logs are fallback/history metadata only.
+- Claude server quota should require a Claude Pro/Max or higher account with Claude Code CLI OAuth. Local Claude JSONL logs are fallback/history metadata only and must not be presented as server quota for lower-plan accounts.
 - Claude CLI setup should use the Node.js/npm prerequisite and the `npx -y @anthropic-ai/claude-code auth login --claudeai` flow.
 - Claude login completion checks should keep short user-visible feedback when setup cannot complete.
 - Antigravity usage collection order should remain:
@@ -118,6 +118,7 @@ npx electron-builder --win dir --x64 --publish never --config.win.signAndEditExe
   - Gemini CLI OAuth fallback
 - Antigravity CLI setup should use the Node.js/npm prerequisite and the `npx -y antigravity-usage login` flow.
 - Antigravity local fallback must remain available when Antigravity is already running.
+- Antigravity 5-hour quota may be displayed from model quota `remainingFraction`/`remainingPercentage` plus `resetTime`. Weekly quota must only be displayed when an explicit weekly/7-day window is present; do not infer weekly quota from monthly Prompt Credits.
 
 ## Security and Privacy
 
