@@ -1,4 +1,4 @@
-import { app, BrowserWindow, Menu, Tray, ipcMain, screen, shell } from "electron";
+import { app, BrowserView, BrowserWindow, Menu, Tray, ipcMain, screen, shell } from "electron";
 import { spawn } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
@@ -6,6 +6,13 @@ import { fileURLToPath } from "node:url";
 import { getClaudeUsage } from "./claude-usage.js";
 import { getCliSessionStatus } from "./cli-session.js";
 import { getCodexUsage, killAllActiveChildProcesses, setAppVersion } from "./codex-usage.js";
+import {
+  parseGeminiAppsUsageText,
+  readGeminiAppsSessionStatus,
+  writeGeminiAppsParseDebug,
+  writeGeminiAppsSessionStatus,
+  writeGeminiAppsUsageCache
+} from "./gemini-apps-usage.js";
 import { getGeminiUsage } from "./gemini-usage.js";
 import { defaultOverlaySettings, normalizeOverlaySettings, type OverlaySettings, type ProviderId } from "./overlay-settings.js";
 
@@ -26,15 +33,20 @@ let claudeUsageCacheTime = 0;
 let geminiUsagePromise: ReturnType<typeof getGeminiUsage> | null = null;
 let geminiUsageCache: Awaited<ReturnType<typeof getGeminiUsage>> | null = null;
 let geminiUsageCacheTime = 0;
+let geminiBrowserView: BrowserView | null = null;
+let geminiBrowserMode: "login" | "usage" | null = null;
+let geminiBrowserTimer: NodeJS.Timeout | null = null;
+let geminiBlockingWindow: BrowserWindow | null = null;
+let geminiBrowserBounds: GeminiViewBounds | null = null;
 let cliSessionPromise: ReturnType<typeof getCliSessionStatus> | null = null;
 let cliSessionCache: Awaited<ReturnType<typeof getCliSessionStatus>> | null = null;
 let cliSessionCacheTime = 0;
 const gotSingleInstanceLock = app.requestSingleInstanceLock();
 const initialOverlayDelayMs = 1200;
 const trayProviderLabels: Record<ProviderId, string> = {
-  codex: "Codex",
+  codex: "ChatGPT",
   claude: "Claude",
-  gemini: "Antigravity"
+  gemini: "Gemini"
 };
 
 function installKoreanMenu() {
@@ -99,6 +111,7 @@ function closeOverlayWindow() {
   if (overlayWindow && !overlayWindow.isDestroyed()) {
     overlayWindow.close();
   }
+  closeEmbeddedGeminiView("hidden");
 }
 
 function updateTrayMenu() {
@@ -383,14 +396,17 @@ function scheduleInitialOverlayLoad() {
   }, initialOverlayDelayMs);
 }
 
-function readGeminiUsageShared() {
+function readGeminiUsageShared(force = false) {
   const now = Date.now();
-  if (geminiUsageCache && now - geminiUsageCacheTime < 15_000) {
+  if (!force && geminiUsageCache && now - geminiUsageCacheTime < 15_000) {
     return Promise.resolve(geminiUsageCache);
   }
 
   if (!geminiUsagePromise) {
-    geminiUsagePromise = getGeminiUsage()
+    geminiUsagePromise = Promise.resolve()
+      .then(async () => {
+        return getGeminiUsage();
+      })
       .then((result) => {
         geminiUsageCache = result;
         geminiUsageCacheTime = Date.now();
@@ -542,6 +558,369 @@ async function startGeminiLogin() {
   return { ok: true, command: "npx -y antigravity-usage login" };
 }
 
+type GeminiViewBounds = {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+};
+
+function startGeminiAppsLogin(bounds?: Partial<GeminiViewBounds>) {
+  const mode: "login" | "usage" = readGeminiAppsSessionStatus().loggedIn ? "usage" : "login";
+  return openEmbeddedGeminiView(mode, bounds);
+}
+
+function openEmbeddedGeminiView(mode: "login" | "usage", bounds?: Partial<GeminiViewBounds>) {
+  if (!mainWindow || mainWindow.isDestroyed()) {
+    return { ok: false, detail: "Token Monitor 대시보드 창을 찾을 수 없습니다." };
+  }
+
+  geminiBrowserMode = mode;
+  if (!geminiBrowserView) {
+    geminiBrowserView = new BrowserView({
+      webPreferences: {
+        partition: "persist:gemini-usage",
+        contextIsolation: true,
+        nodeIntegration: false,
+        sandbox: true
+      }
+    });
+    mainWindow.addBrowserView(geminiBrowserView);
+    configureGeminiBrowserView(geminiBrowserView);
+  } else if (!mainWindow.getBrowserViews().includes(geminiBrowserView)) {
+    mainWindow.addBrowserView(geminiBrowserView);
+  }
+
+  mainWindow.setTopBrowserView(geminiBrowserView);
+  updateEmbeddedGeminiBounds(bounds);
+  startGeminiBrowserTimer();
+  void geminiBrowserView.webContents.loadURL(mode === "usage" ? "https://gemini.google.com/usage" : "https://gemini.google.com/app");
+  if (mode === "usage") {
+    showGeminiBlockingWindow();
+  } else {
+    closeGeminiBlockingWindow();
+  }
+
+  return {
+    ok: true,
+    detail: mode === "usage"
+      ? "대시보드 안에서 Gemini 사용량 확인 화면을 열었습니다."
+      : "대시보드 안에서 Gemini 로그인 화면을 열었습니다."
+  };
+}
+
+function configureGeminiBrowserView(view: BrowserView) {
+  view.webContents.setWindowOpenHandler(({ url }) => {
+    if (isGoogleOrGeminiUrl(url)) {
+      void view.webContents.loadURL(url);
+      return { action: "deny" };
+    }
+
+    void shell.openExternal(url);
+    return { action: "deny" };
+  });
+
+  view.webContents.on("did-finish-load", () => {
+    void inspectEmbeddedGeminiView();
+  });
+  view.webContents.on("did-navigate", () => {
+    void inspectEmbeddedGeminiView();
+  });
+  view.webContents.on("did-navigate-in-page", () => {
+    void inspectEmbeddedGeminiView();
+  });
+}
+
+function updateEmbeddedGeminiBounds(bounds?: Partial<GeminiViewBounds>) {
+  if (!mainWindow || mainWindow.isDestroyed() || !geminiBrowserView) {
+    return { ok: false };
+  }
+
+  const contentBounds = mainWindow.getContentBounds();
+  const next = normalizeGeminiBounds(bounds, contentBounds.width, contentBounds.height);
+  geminiBrowserBounds = next;
+  geminiBrowserView.setBounds(next);
+  updateGeminiBlockingWindowBounds();
+  return { ok: true };
+}
+
+function normalizeGeminiBounds(bounds: Partial<GeminiViewBounds> | undefined, width: number, height: number): GeminiViewBounds {
+  const fallback = {
+    x: 24,
+    y: 140,
+    width: Math.max(640, width - 48),
+    height: Math.max(480, height - 170)
+  };
+
+  const next = {
+    x: Math.round(Number.isFinite(bounds?.x) ? Number(bounds?.x) : fallback.x),
+    y: Math.round(Number.isFinite(bounds?.y) ? Number(bounds?.y) : fallback.y),
+    width: Math.round(Number.isFinite(bounds?.width) ? Number(bounds?.width) : fallback.width),
+    height: Math.round(Number.isFinite(bounds?.height) ? Number(bounds?.height) : fallback.height)
+  };
+
+  next.x = Math.max(0, Math.min(next.x, width - 120));
+  next.y = Math.max(0, Math.min(next.y, height - 120));
+  next.width = Math.max(320, Math.min(next.width, width - next.x));
+  next.height = Math.max(320, Math.min(next.height, height - next.y));
+  return next;
+}
+
+function startGeminiBrowserTimer() {
+  if (geminiBrowserTimer) {
+    clearInterval(geminiBrowserTimer);
+  }
+
+  geminiBrowserTimer = setInterval(() => {
+    void inspectEmbeddedGeminiView();
+  }, 2500);
+}
+
+async function inspectEmbeddedGeminiView() {
+  if (!geminiBrowserView || !geminiBrowserMode || geminiBrowserView.webContents.isDestroyed()) {
+    return;
+  }
+
+  const state = await readEmbeddedGeminiState(geminiBrowserView);
+  if (geminiBrowserMode === "login" && state.loggedIn) {
+    writeGeminiAppsSessionStatus({ loggedIn: true, checkedAt: new Date().toISOString() });
+    closeEmbeddedGeminiView("login-complete");
+    requestUsageRefresh();
+    return;
+  }
+
+  if (geminiBrowserMode === "usage") {
+    if (state.usage) {
+      writeGeminiAppsUsageCache(state.usage);
+      closeEmbeddedGeminiView("usage-complete");
+      requestUsageRefresh();
+      return;
+    }
+
+    if (state.loggedIn) {
+      await focusUsageLimitsInEmbeddedView(geminiBrowserView);
+    }
+  }
+}
+
+async function readEmbeddedGeminiState(view: BrowserView) {
+  try {
+    const text = await view.webContents.executeJavaScript(geminiReadableTextScript(), true) as string;
+    writeGeminiAppsParseDebug(text);
+    return {
+      loggedIn: isGeminiLoggedInText(text),
+      usage: parseGeminiAppsUsageText(text)
+    };
+  } catch {
+    return { loggedIn: false, usage: null };
+  }
+}
+
+function geminiReadableTextScript() {
+  return `
+    (() => {
+      const values = [];
+      const push = (value) => {
+        if (value == null) return;
+        const text = String(value).replace(/\\s+/g, " ").trim();
+        if (text) values.push(text);
+      };
+      push(document.body && document.body.innerText ? document.body.innerText : "");
+      const nodes = Array.from(document.querySelectorAll("*"));
+      for (const node of nodes) {
+        push(node.getAttribute && node.getAttribute("aria-label"));
+        push(node.getAttribute && node.getAttribute("aria-valuetext"));
+        push(node.getAttribute && node.getAttribute("title"));
+        push(node.getAttribute && node.getAttribute("alt"));
+        push(node.getAttribute && node.getAttribute("data-test-id"));
+        push(node.getAttribute && node.getAttribute("data-testid"));
+        push(node.getAttribute && node.getAttribute("data-value"));
+        push(node.getAttribute && node.getAttribute("value"));
+        push(node.getAttribute && node.getAttribute("aria-valuenow"));
+        push(node.getAttribute && node.getAttribute("aria-valuemax"));
+        push(node.getAttribute && node.getAttribute("aria-valuemin"));
+      }
+      return Array.from(new Set(values)).join("\\n");
+    })()
+  `;
+}
+
+function isGeminiLoggedInText(text: string) {
+  const hasLoginPrompt = /sign in|log in|로그인|계정 선택/i.test(text);
+  const hasGeminiSurface = /gemini|usage limits|사용량|new chat|새 채팅/i.test(text);
+  return Boolean(hasGeminiSurface && !hasLoginPrompt);
+}
+
+async function focusUsageLimitsInEmbeddedView(view: BrowserView) {
+  try {
+    await view.webContents.executeJavaScript(`
+      (() => {
+        const normalize = (value) => (value || "").replace(/\\s+/g, " ").trim().toLowerCase();
+        const candidates = Array.from(document.querySelectorAll("a, button, [role='button'], [role='menuitem']"));
+        const usage = candidates.find((item) => /usage limits|usage limit|사용량 한도|사용량 제한/.test(normalize(item.innerText || item.getAttribute("aria-label"))));
+        if (usage) {
+          usage.click();
+          return "usage";
+        }
+        const settings = candidates.find((item) => /settings|설정|help|도움말/.test(normalize(item.innerText || item.getAttribute("aria-label"))));
+        if (settings) {
+          settings.click();
+          return "settings";
+        }
+        return "none";
+      })()
+    `, true);
+  } catch {
+    // Keep the embedded page visible so the user can open Usage Limits manually.
+  }
+}
+
+function showGeminiBlockingWindow() {
+  if (!mainWindow || mainWindow.isDestroyed()) {
+    return;
+  }
+
+  if (!geminiBlockingWindow || geminiBlockingWindow.isDestroyed()) {
+    geminiBlockingWindow = new BrowserWindow({
+      parent: mainWindow,
+      modal: false,
+      frame: false,
+      resizable: false,
+      movable: false,
+      minimizable: false,
+      maximizable: false,
+      closable: false,
+      skipTaskbar: true,
+      show: false,
+      transparent: true,
+      backgroundColor: "#00000000",
+      webPreferences: {
+        contextIsolation: true,
+        nodeIntegration: false,
+        sandbox: true
+      }
+    });
+    geminiBlockingWindow.setMenu(null);
+    void geminiBlockingWindow.loadURL(`data:text/html;charset=utf-8,${encodeURIComponent(geminiBlockingHtml())}`);
+  }
+
+  updateGeminiBlockingWindowBounds();
+  geminiBlockingWindow.showInactive();
+}
+
+function updateGeminiBlockingWindowBounds() {
+  if (!mainWindow || mainWindow.isDestroyed() || !geminiBlockingWindow || geminiBlockingWindow.isDestroyed() || !geminiBrowserBounds) {
+    return;
+  }
+
+  const contentBounds = mainWindow.getContentBounds();
+  geminiBlockingWindow.setBounds({
+    x: contentBounds.x + geminiBrowserBounds.x,
+    y: contentBounds.y + geminiBrowserBounds.y,
+    width: geminiBrowserBounds.width,
+    height: geminiBrowserBounds.height
+  });
+}
+
+function closeGeminiBlockingWindow() {
+  if (geminiBlockingWindow && !geminiBlockingWindow.isDestroyed()) {
+    geminiBlockingWindow.destroy();
+  }
+  geminiBlockingWindow = null;
+}
+
+function geminiBlockingHtml() {
+  return `
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8" />
+  <style>
+    html, body {
+      width: 100%;
+      height: 100%;
+      margin: 0;
+      overflow: hidden;
+      font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      background: rgba(247, 247, 242, 0.74);
+    }
+    body {
+      display: grid;
+      place-items: center;
+      color: #20231f;
+    }
+    .panel {
+      display: grid;
+      justify-items: center;
+      gap: 10px;
+      width: min(360px, calc(100% - 48px));
+      padding: 22px;
+      background: rgba(255, 255, 255, 0.96);
+      border: 1px solid #dfe5dc;
+      border-radius: 8px;
+      box-shadow: 0 18px 46px rgba(23, 26, 23, 0.22);
+      text-align: center;
+    }
+    .spinner {
+      width: 24px;
+      height: 24px;
+      border: 3px solid #d8e1d7;
+      border-top-color: #24483b;
+      border-radius: 50%;
+      animation: spin 0.8s linear infinite;
+    }
+    strong {
+      font-size: 16px;
+      font-weight: 850;
+    }
+    p {
+      margin: 0;
+      color: #68716a;
+      font-size: 13px;
+      line-height: 1.45;
+    }
+    @keyframes spin {
+      to { transform: rotate(360deg); }
+    }
+  </style>
+</head>
+<body>
+  <section class="panel" role="alert" aria-live="assertive" aria-busy="true">
+    <div class="spinner" aria-hidden="true"></div>
+    <strong>Gemini 사용량 확인 중</strong>
+    <p>Usage Limits 화면에서 남은 사용량 %를 확인하고 대시보드에 반영하는 중입니다.</p>
+  </section>
+</body>
+</html>`;
+}
+
+function closeEmbeddedGeminiView(reason: "login-complete" | "usage-complete" | "manual" | "hidden") {
+  if (geminiBrowserTimer) {
+    clearInterval(geminiBrowserTimer);
+    geminiBrowserTimer = null;
+  }
+  closeGeminiBlockingWindow();
+
+  if (mainWindow && !mainWindow.isDestroyed() && geminiBrowserView && mainWindow.getBrowserViews().includes(geminiBrowserView)) {
+    mainWindow.removeBrowserView(geminiBrowserView);
+  }
+
+  if (geminiBrowserView && !geminiBrowserView.webContents.isDestroyed()) {
+    geminiBrowserView.webContents.stop();
+  }
+  geminiBrowserMode = null;
+  mainWindow?.webContents.send("gemini-view:closed", { reason });
+}
+
+function isGoogleOrGeminiUrl(url: string) {
+  try {
+    const hostname = new URL(url).hostname;
+    return hostname.endsWith("google.com") || hostname.endsWith("gemini.google.com");
+  } catch {
+    return false;
+  }
+}
+
 if (!gotSingleInstanceLock) {
   app.quit();
 } else {
@@ -557,10 +936,13 @@ if (!gotSingleInstanceLock) {
 
     ipcMain.handle("codex-usage:read", () => readCodexUsageShared());
     ipcMain.handle("claude-usage:read", (_event, force?: boolean) => readClaudeUsageShared(Boolean(force)));
-    ipcMain.handle("gemini-usage:read", () => readGeminiUsageShared());
+    ipcMain.handle("gemini-usage:read", (_event, force?: boolean) => readGeminiUsageShared(Boolean(force)));
     ipcMain.handle("cli-session:read", (_event, force?: boolean) => readCliSessionShared(Boolean(force)));
     ipcMain.handle("claude-login:start", () => startClaudeLogin());
     ipcMain.handle("gemini-login:start", () => startGeminiLogin());
+    ipcMain.handle("gemini-apps-login:start", (_event, bounds?: Partial<GeminiViewBounds>) => startGeminiAppsLogin(bounds));
+    ipcMain.handle("gemini-view:bounds", (_event, bounds?: Partial<GeminiViewBounds>) => updateEmbeddedGeminiBounds(bounds));
+    ipcMain.handle("gemini-view:close", () => closeEmbeddedGeminiView("manual"));
     ipcMain.handle("app:minimize-to-tray", () => minimizeMainWindowToTray());
     ipcMain.handle("app:quit", () => quitApp());
     ipcMain.handle("codex-usage:open-dashboard", () => shell.openExternal("https://chatgpt.com/codex/settings/usage"));

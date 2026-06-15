@@ -4,10 +4,13 @@ contextBridge.exposeInMainWorld("tokenMonitor", {
   platform: process.platform,
   getCodexUsage: () => ipcRenderer.invoke("codex-usage:read"),
   getClaudeUsage: (force) => ipcRenderer.invoke("claude-usage:read", force),
-  getGeminiUsage: () => ipcRenderer.invoke("gemini-usage:read"),
+  getGeminiUsage: (force) => ipcRenderer.invoke("gemini-usage:read", force),
   getCliSessionStatus: (force) => ipcRenderer.invoke("cli-session:read", force),
   startClaudeLogin: () => ipcRenderer.invoke("claude-login:start"),
   startGeminiLogin: () => ipcRenderer.invoke("gemini-login:start"),
+  startGeminiAppsLogin: (bounds) => ipcRenderer.invoke("gemini-apps-login:start", bounds),
+  updateGeminiViewBounds: (bounds) => ipcRenderer.invoke("gemini-view:bounds", bounds),
+  closeGeminiView: () => ipcRenderer.invoke("gemini-view:close"),
   minimizeToTray: () => ipcRenderer.invoke("app:minimize-to-tray"),
   quitApp: () => ipcRenderer.invoke("app:quit"),
   openCodexUsageDashboard: () => ipcRenderer.invoke("codex-usage:open-dashboard"),
@@ -28,5 +31,10 @@ contextBridge.exposeInMainWorld("tokenMonitor", {
     const listener = () => callback();
     ipcRenderer.on("usage:refresh-requested", listener);
     return () => ipcRenderer.removeListener("usage:refresh-requested", listener);
+  },
+  onGeminiViewClosed: (callback) => {
+    const listener = (_event, payload) => callback(payload);
+    ipcRenderer.on("gemini-view:closed", listener);
+    return () => ipcRenderer.removeListener("gemini-view:closed", listener);
   }
 });

@@ -107,6 +107,33 @@ export type GeminiUsageWindow = {
   resetsAt: string | null;
 };
 
+export type GeminiAppsUsageWindow = {
+  label: "5시간" | "주간";
+  remaining: string | null;
+  reset: string | null;
+};
+
+export type GeminiAppsUsage = {
+  source: "gemini-web-usage-limits";
+  fiveHour: GeminiAppsUsageWindow | null;
+  weekly: GeminiAppsUsageWindow | null;
+  plan: string | null;
+  updatedAt: string;
+  detail: string | null;
+};
+
+export type GeminiAppsSessionStatus = {
+  loggedIn: boolean;
+  checkedAt: string | null;
+};
+
+export type GeminiViewBounds = {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+};
+
 export type GeminiUsageResult =
   | {
       ok: true;
@@ -119,6 +146,8 @@ export type GeminiUsageResult =
         usedPercent: number | null;
         remainingPercent: number | null;
       } | null;
+      geminiApps: GeminiAppsUsage | null;
+      geminiAppsSession: GeminiAppsSessionStatus;
       primary: GeminiUsageWindow | null;
       secondary: GeminiUsageWindow | null;
       tertiary: GeminiUsageWindow | null;
@@ -136,6 +165,8 @@ export type GeminiUsageResult =
       ok: false;
       source: "antigravity-cli-google" | "antigravity-cli-local" | "antigravity-local" | "gemini-cli-oauth";
       error: string;
+      geminiApps: GeminiAppsUsage | null;
+      geminiAppsSession: GeminiAppsSessionStatus;
       updatedAt: string;
     };
 
@@ -167,10 +198,13 @@ declare global {
       platform: string;
       getCodexUsage: () => Promise<CodexUsageResult>;
       getClaudeUsage: (force?: boolean) => Promise<ClaudeUsageResult>;
-      getGeminiUsage: () => Promise<GeminiUsageResult>;
+      getGeminiUsage: (force?: boolean) => Promise<GeminiUsageResult>;
       getCliSessionStatus: (force?: boolean) => Promise<CliSessionResult>;
       startClaudeLogin: () => Promise<{ ok: boolean; command: string; skipped?: boolean; detail?: string }>;
       startGeminiLogin: () => Promise<{ ok: boolean; command: string; skipped?: boolean; detail?: string }>;
+      startGeminiAppsLogin: (bounds?: Partial<GeminiViewBounds>) => Promise<{ ok: boolean; detail?: string }>;
+      updateGeminiViewBounds: (bounds: Partial<GeminiViewBounds>) => Promise<{ ok: boolean }>;
+      closeGeminiView: () => Promise<void>;
       minimizeToTray: () => Promise<void>;
       quitApp: () => Promise<void>;
       openCodexUsageDashboard: () => Promise<void>;
@@ -180,6 +214,7 @@ declare global {
       onOverlaySettingsChanged: (callback: (settings: OverlaySettings) => void) => () => void;
       onExitConfirmRequested: (callback: () => void) => () => void;
       onUsageRefreshRequested: (callback: () => void) => () => void;
+      onGeminiViewClosed: (callback: (payload: { reason: "login-complete" | "usage-complete" | "manual" | "hidden" }) => void) => () => void;
     };
   }
 }
