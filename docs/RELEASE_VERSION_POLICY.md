@@ -69,7 +69,7 @@ Before `v1.0.0`, do not maintain a fixed version-by-version feature roadmap. Whe
 Current package version:
 
 ```text
-0.7.0-beta.0
+0.7.1
 ```
 
 Baseline `v0.1.0` includes:
@@ -192,6 +192,27 @@ For each release-worthy version bump, summarize:
 - Known limitations
 
 ## Release History
+
+### 0.7.1 — 2026-07-21 — PATCH
+
+**Change category:** PATCH (developer debugging documentation and environment example)
+
+**User-visible changes:**
+- README briefly documents developer mode as a local debugging aid for provider collection, Gemini parsing, packaged executable reproduction, and current dashboard state review
+- `.env.development.example` documents the single `TOKEN_MONITOR_DEV_MODE` flag for local development use
+
+**Provider/data-source changes:**
+- No provider collection source changes
+- Developer mode documentation separates user prerequisites from developer-only collection and parsing verification expectations
+
+**Packaging notes:**
+- Package version updated to `0.7.1`
+- No portable executable packaged because patch releases do not produce portable artifacts by default
+
+**Known limitations:**
+- Developer mode implementation is still planned; this release documents the intended single-flag configuration and privacy constraints
+
+---
 
 ### 0.7.0-beta.0 — 2026-06-15 — BETA
 

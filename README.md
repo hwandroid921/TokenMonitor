@@ -8,7 +8,7 @@ Token Monitor는 로컬 LLM 계정/세션 데이터를 읽어 현재 플랜, 남
 
 ## 현재 버전
 
-- App/exe version: `0.7.0-beta.0`
+- App/exe version: `0.7.1`
 - Current milestone line: `0.7.x beta`
 - Portable artifact policy: portable exe packaging is reserved for milestone versions such as `0.3.0`, `0.4.0`, or later `MINOR.0` / `MAJOR.0` release points unless explicitly requested.
 - Output naming policy: build artifact names stay in English.
@@ -272,6 +272,15 @@ Run in development:
 npm run dev
 ```
 
+Developer mode for local debugging:
+
+```powershell
+$env:TOKEN_MONITOR_DEV_MODE='1'
+npm run dev
+```
+
+Developer mode is for debugging provider collection, Gemini parsing, packaged exe reproduction, and current dashboard state review. It does not add tokens, account emails, account IDs, credential file contents, or raw provider responses to the UI or logs.
+
 Type check:
 
 ```powershell
@@ -305,6 +314,7 @@ electron/
   main.ts              Electron lifecycle, windows, tray, IPC
   codex-usage.ts       ChatGPT/Codex usage collector
   claude-usage.ts      Claude OAuth/local log collector
+  gemini-apps-usage.ts Gemini Apps Usage Limits parser and cache
   gemini-usage.ts      Google/Gemini plan and Antigravity quota collector
   cli-session.ts       CLI login/session checks
   overlay-settings.ts  Overlay settings schema and migration
