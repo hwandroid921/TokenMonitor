@@ -9,7 +9,8 @@ README and other user-facing project documents should describe the current final
 ## Versioning Goal
 
 - `v0.1.0` is the default starting program version.
-- `v1.0.0` is used when the intended initial feature implementation is complete.
+- Keep the project and app/exe version on the `v0.9.x` line during the remaining modification period.
+- Promote directly from the current `v0.9.x` version to `v1.0.0` only after the user explicitly declares that the modifications are complete, for example by saying `수정 완료`. An agent's own work-completion wording does not trigger the promotion.
 - Versions before `v1.0.0` represent staged work toward feature completeness, stability, and release polish.
 - Do not predefine fixed feature content for every version up to `v1.0.0`. Record version content when actual implementation, fixes, or documentation work is performed.
 
@@ -41,6 +42,8 @@ Electron Builder uses this value in the executable file name:
 TokenMonitor-<package.version>-x64.exe
 ```
 
+Portable executables are generated in the repository root. Unpacked Windows builds are generated under `dist-app/win-unpacked`.
+
 Do not treat every planning or documentation update as a new app/exe release.
 
 ## App/Exe Version Unit Rules
@@ -52,7 +55,7 @@ MAJOR.MINOR.PATCH
 ```
 
 - `MAJOR`: Product-level compatibility boundary. Before initial completion, `v1.0.0` marks the first complete release. After that, major changes increment by `1.0.0` units.
-- `MINOR`: User-visible feature milestone or meaningful workflow change. Before and after `v1.0.0`, minor changes increment by `0.1.0` units.
+- `MINOR`: User-visible feature milestone or meaningful workflow change. New pre-1.0 minor lines are suspended while the project remains on `v0.9.x`.
 - `PATCH`: Bug fix, UI polish, packaging fix, or narrow code adjustment.
 - Prerelease versions such as `0.7.0-beta.0` may be used for beta validation before a milestone release is promoted to a stable `MINOR.0` or `MAJOR.0` version.
 
@@ -62,14 +65,14 @@ Portable executable packaging is performed only for milestone release versions s
 
 Beta/prerelease versions may produce portable artifacts when the user explicitly requests tag/release work or when the beta is intended for external validation.
 
-Before `v1.0.0`, do not maintain a fixed version-by-version feature roadmap. When work is completed, decide whether it is patch, minor, or major according to the actual change and record the completed content in Release History.
+Before `v1.0.0`, keep all remaining modification work on the `v0.9.x` development line. Increment only the patch component for retained release-level work, and do not create `0.10.0` or another pre-1.0 minor line.
 
 ## Current Baseline
 
 Current package version:
 
 ```text
-0.7.1
+0.9.3
 ```
 
 Baseline `v0.1.0` includes:
@@ -83,7 +86,7 @@ Baseline `v0.1.0` includes:
 
 ## Increment Guidance
 
-Use a patch increment when the work is narrow and does not change the product milestone.
+After `v1.0.0`, use a patch increment when the work is narrow and does not change the product milestone.
 
 Examples:
 
@@ -92,9 +95,9 @@ Examples:
 - Minor display copy changes
 - Bug fixes that do not add a new user-facing feature
 
-Do not increment the app/exe version for documentation-only or instruction-only work unless explicitly requested.
+During the pre-1.0 restriction, use only `0.9.PATCH` increments for retained release-level work. Documentation-only or instruction-only work does not require a patch increment unless explicitly requested.
 
-Use a minor increment when the work represents a new milestone. Minor changes increment by `0.1.0` units.
+After `v1.0.0`, use a minor increment when the work represents a new milestone.
 
 Examples:
 
@@ -105,7 +108,7 @@ Examples:
 - Major dashboard layout redesign
 - Significant packaging/release workflow change
 
-Reserve `v1.0.0` for the final complete initial release after:
+Promote the current `v0.9.x` version directly to `v1.0.0` only when the user explicitly declares the modifications complete and the release-readiness review confirms:
 
 - Provider quota display is stable
 - Overlay display is reliable
@@ -116,6 +119,19 @@ Reserve `v1.0.0` for the final complete initial release after:
 
 After `v1.0.0`, release versions should be managed through Git releases and tags. Each post-`v1.0.0` release should have a corresponding Git tag and release entry.
 
+## Account Identity And Privacy Policy
+
+Token Monitor may display reviewed account identity information when it helps the user quickly distinguish which provider account is currently being monitored.
+
+- Allowed user-visible identity fields are name, nickname, and email.
+- Use only fields provided by the expected provider/account context and needed by the dashboard or overlay.
+- Review the data source, display purpose, UI placement, and missing-data behavior before shipping each provider integration.
+- Keep identity information within the user-facing account-identification flow and avoid unnecessary persistence.
+- Names, nicknames, and emails may appear in normal user UI and the developer mode's dedicated account-identification summary.
+- Do not include names, nicknames, or emails in application logs, raw parser diagnostics, analytics, build logs, error messages, release artifacts, or real-data documentation examples.
+- Never display or log access tokens, refresh tokens, API keys, session secrets, credential contents, raw provider payloads, or provider-internal account IDs.
+- Permission to display a name, nickname, or email does not permit exposing authentication material or unrestricted provider responses.
+
 ## Post-v1.0.0 Future Feature Backlog
 
 These items are candidates for releases after the initial complete `v1.0.0` milestone. They are not required for `v1.0.0` and should be scoped, versioned, and recorded only when implementation work actually begins or ships.
@@ -124,8 +140,9 @@ These items are candidates for releases after the initial complete `v1.0.0` mile
   - Notify the user when a provider quota/reset window is refreshed or initialized.
   - Notify the user when remaining usage drops below a user-configured threshold.
 - Account information on provider dashboards:
-  - Show display-safe account information for each model/provider card where available.
-  - Continue to exclude account emails, access tokens, refresh tokens, account IDs, and credential-derived identifiers from UI and logs.
+  - Show reviewed names, nicknames, and emails for each model/provider card where available and useful for account distinction.
+  - Add explicit dashboard and overlay presentation rules so identity fields do not inherit unrelated quota visibility settings.
+  - Keep identity fields out of logs and raw parser diagnostics while allowing reviewed fields in normal UI and the developer mode account summary. Continue to exclude credentials, raw provider payloads, and provider-internal account IDs from all UI and logs.
 - Additional usage and credits:
   - Track whether providers expose display-safe additional usage, purchased credits, or flexible usage balances.
   - Show extra usage/credit status only when the source clearly distinguishes it from base plan quota.
@@ -139,13 +156,13 @@ These items are candidates for releases after the initial complete `v1.0.0` mile
 Before finishing a task:
 
 1. Review the user-requested work.
-2. Decide whether the work affects the project milestone version, the app/exe release version, both, or neither.
-3. If the app/exe release version should change, update:
+2. While the pre-1.0 restriction is active, keep the project milestone and app/exe release version on the `0.9.x` line.
+3. For retained release-level work, increment only the patch component and update:
    - `package.json`
    - `package-lock.json`
    - any release/output references that include the version string
-4. If feature additions, fixes, documentation work, or instruction work require a version update after reviewing version history, update the relevant version immediately in the same task.
-5. If the change is documentation-only or instruction-only and does not require a version update, do not update `package.json` and do not package a new exe unless explicitly requested.
+4. When the user explicitly declares the modifications complete, promote directly from the current `0.9.x` version to `1.0.0`.
+5. Do not package a new executable unless explicitly requested or packaging is part of the `1.0.0` release workflow.
 6. Run verification when code or packaging-related behavior changed:
 
    ```powershell
@@ -157,7 +174,7 @@ Before finishing a task:
 
    ```powershell
    $env:CSC_IDENTITY_AUTO_DISCOVERY='false'
-   npx electron-builder --win portable --x64 --publish never --config.win.signAndEditExecutable=false
+   npm run package:portable
    ```
 
 8. Verify the generated executable and SHA256 hash when packaging is performed.
@@ -192,6 +209,255 @@ For each release-worthy version bump, summarize:
 - Known limitations
 
 ## Release History
+
+Release History records the behavior and privacy boundary of each version at the time it was released. Older entries that describe account emails as hidden or removed are historical facts and do not override the current Account Identity And Privacy Policy above.
+
+### 0.9.3 - 2026-07-24 - PATCH
+
+Settings layout simplification for Codex connection.
+
+Changes:
+
+- Moves the Codex path and connection card under the ChatGPT provider settings
+- Removes all provider collection-path guides from Settings
+- Removes Codex installation and path-source summary rows
+- Keeps only the Codex connection status and shows that Codex connection is required when disconnected
+
+Version impact:
+
+- Package version updated to `0.9.3`
+- Portable Windows x64 packaging performed and verified by explicit user request
+
+### 0.9.2 - 2026-07-24 - PATCH
+
+Codex Desktop path recovery and duration-aware quota display.
+
+Changes:
+
+- Makes Codex Desktop installation and login the explicit prerequisite for ChatGPT usage collection
+- Keeps known Codex Desktop paths as the automatic default and routes executable discovery failures from the general dashboard to the Settings tab
+- Adds a Settings `Codex Desktop` section for browsing or entering `codex.exe`, testing the app-server connection, saving a validated path, and restoring automatic discovery
+- Stores the selected executable path separately from overlay settings and clears Codex usage/session caches after path changes
+- Adds ordered Codex error history and recommended resolutions to the developer/admin diagnostics without recording raw paths, credentials, provider payloads, or internal account identifiers
+- Classifies five-hour and weekly usage by the returned window duration and treats an absent five-hour window as unavailable instead of unlimited
+
+Version impact:
+
+- Package version updated to `0.9.2`
+- No `0.10.0` line is created during pre-1.0 development
+- Portable Windows x64 packaging performed and verified by explicit user request
+
+### 0.9.1 - 2026-07-23 - PATCH
+
+Developer environment status explanation update.
+
+Changes:
+
+- Removes the standalone account-identity and sensitive-data notice above the developer dashboard sections
+- Expands `개발 환경 상태` with developer mode, setting source, environment filename, candidate count, diagnostic duration, snapshot time, and cache-freshness explanations
+- Keeps full local paths and environment file contents out of the developer UI
+
+Version impact:
+
+- Package version updated to `0.9.1`
+- Portable and unpacked Windows packaging performed by explicit user request
+
+### 0.9.0 - 2026-07-23 - MINOR
+
+Account-distinguishing dashboard identity display.
+
+Changes:
+
+- Shows the reviewed account email in the `로그인` field of the normal and developer dashboards when the provider supplies it
+- Falls back to the existing login-state text when no display-safe email is available
+- Standardizes provider card field order as `로그인`, `플랜`, `5시간`, and `주간`, followed by any provider-specific supplemental quota fields
+- Keeps tokens, credential contents, provider-internal account IDs, raw provider responses, and account identity out of application logs
+
+Version impact:
+
+- Package version updated to `0.9.0`
+- Portable and unpacked Windows packaging performed for this `MINOR.0` milestone
+
+### 0.8.4 - 2026-07-23 - PATCH
+
+Developer account identity and sensitive-data boundary update.
+
+Changes:
+
+- Shows allowlisted provider account name, nickname, email, and identity source in the developer mode account summary when available
+- Keeps tokens, credential contents, provider-internal account IDs, raw CLI output, raw provider responses, and raw Gemini page snippets out of the developer UI
+- Replaces Gemini raw text snippets with structured keyword markers and ignores legacy raw snippet cache entries
+- Replaces exposed collector/CLI error details with fixed user-safe messages
+- Allows Claude OAuth server quota to remain available when no local Claude JSONL history exists
+
+Version impact:
+
+- Package version updated to `0.8.4`
+- Portable and unpacked Windows packaging performed by explicit user request for this patch release
+
+### 0.8.3 - 2026-07-23 - PATCH
+
+Portable duplicate launch cleanup.
+
+Changes:
+
+- Detects duplicate packaged launches that fail the single-instance lock
+- Terminates only the duplicate portable wrapper parent process when it matches the TokenMonitor portable artifact name
+- Keeps the first running app, tray, overlay, and main window untouched
+
+Version impact:
+
+- Package version updated to `0.8.3`
+- Portable packaging skipped by default because this is a patch-level process cleanup fix
+
+### 0.8.2 - 2026-07-23 - PATCH
+
+Developer dashboard layout and privacy-safe test result update.
+
+Changes:
+
+- Simplifies the developer dashboard order to environment status, current dashboard state, and developer test results
+- Removes environment variable source details from the visible developer dashboard
+- Shows current dashboard state with login, plan, five-hour quota, and weekly quota first
+- Shows developer test results with display-safe login state, collection method, quota collection status, and failure reason
+- Keeps account emails, account IDs, tokens, and raw provider payloads hidden
+
+Version impact:
+
+- Package version updated to `0.8.2`
+- Portable packaging skipped by default because this is a patch-level developer dashboard update
+
+### 0.8.1 - 2026-07-22 - PATCH
+
+Packaged executable output path adjustment.
+
+Changes:
+
+- Places the portable executable in the repository root after packaging
+- Keeps the unpacked executable under `dist-app/win-unpacked`
+- Lets developer mode `.env` discovery check the portable executable source folder
+
+Version impact:
+
+- Package version updated to `0.8.1`
+- Portable packaging performed because packaged executable output behavior changed
+
+### 0.8.0 — 2026-07-22 — MINOR
+
+Developer mode milestone.
+
+Changes:
+
+- Adds developer mode as a local verification workflow for provider collection, dashboard state review, and Gemini parser diagnostics
+- Adds display-safe developer diagnostics for service name, provider name, plan, login status, collection checks, cache status, and sanitized Gemini parser hints
+- Keeps developer mode controlled by `TOKEN_MONITOR_DEV_MODE` from the process environment or local `.env`
+- Removes Gemini account email from renderer-facing usage result types
+
+Version impact:
+
+- Package version updated to `0.8.0`
+- Portable packaging required because this is a `MINOR.0` milestone release
+
+### 0.7.7 — 2026-07-22 — PATCH
+
+Developer dashboard provider identity summary.
+
+Changes:
+
+- Developer dashboard provider cards now show display-safe service name, provider name, plan, and login status
+- The summary uses the same current provider state as the main dashboard and does not expose account identifiers
+
+Version impact:
+
+- Package version updated to `0.7.7`
+- Portable packaging skipped by default because this is a patch-level developer dashboard UI update
+
+### 0.7.6 — 2026-07-22 — PATCH
+
+Dashboard login fields and Gemini diagnostics consolidation.
+
+Changes:
+
+- Provider dashboard fields now include display-safe login status alongside the plan name
+- Overlay field filtering now respects the session display setting for login status
+- Gemini parser diagnostics are shown inside the Gemini / Antigravity developer diagnostics card instead of a separate section
+
+Version impact:
+
+- Package version updated to `0.7.6`
+- Portable packaging skipped by default because this is a patch-level UI diagnostics update
+
+### 0.7.5 — 2026-07-22 — PATCH
+
+Portable developer mode `.env` discovery fix.
+
+Changes:
+
+- Developer mode `.env` discovery now checks portable executable source folders and the parent folder used by local packaged reproduction tests
+- Portable execution can enable developer mode from the local project `.env` without manually setting the process environment variable
+- The `.env` loader continues to read only `TOKEN_MONITOR_DEV_MODE`
+
+Version impact:
+
+- Package version updated to `0.7.5`
+- Portable packaging performed because portable execution verification was explicitly requested
+
+### 0.7.4 — 2026-07-22 — PATCH
+
+Developer mode diagnostics completion.
+
+Changes:
+
+- Developer mode now reports display-safe environment loading status, total diagnostics duration, cache summary, and sanitized Gemini parser hints
+- Gemini parser debugging now reads only sanitized debug summaries and never exposes raw page text or provider payloads
+- Current dashboard state review remains based on actual provider collection results rather than mock scenario data
+
+Version impact:
+
+- Package version updated to `0.7.4`
+- Portable packaging skipped by default because this is a patch-level developer diagnostics update
+
+### 0.7.3 — 2026-07-22 — PATCH
+
+**Change category:** PATCH (developer mode `.env` loading)
+
+**User-visible changes:**
+- No default user-facing changes; developer mode remains hidden unless `TOKEN_MONITOR_DEV_MODE=1` is set
+- Developer mode can now be enabled from a local ignored `.env` file as well as the process environment
+
+**Provider/data-source changes:**
+- No provider collection source changes
+- The `.env` loader reads only `TOKEN_MONITOR_DEV_MODE` and does not load provider credentials, account identifiers, tokens, or raw payloads
+
+**Packaging notes:**
+- Package version updated to `0.7.3`
+- No portable executable packaged because patch releases do not produce portable artifacts by default
+
+**Known limitations:**
+- `.env` loading is intentionally limited to developer mode and does not provide general application configuration
+
+---
+
+### 0.7.2 — 2026-07-22 — PATCH
+
+**Change category:** PATCH (developer mode implementation)
+
+**User-visible changes:**
+- No default user-facing changes; developer mode remains hidden unless `TOKEN_MONITOR_DEV_MODE=1` is set
+- Developer mode adds a dashboard tab for display-safe provider collection checks, Gemini parser status, and current dashboard state review
+
+**Provider/data-source changes:**
+- No provider collection source changes
+- Developer diagnostics summarize current collection outcomes without raw provider payloads, tokens, account emails, account IDs, or credential contents
+
+**Packaging notes:**
+- Package version updated to `0.7.2`
+- No portable executable packaged because patch releases do not produce portable artifacts by default
+
+**Known limitations:**
+- Developer mode shows current summarized results and does not yet provide editable parser fixtures or manual scenario injection
+
+---
 
 ### 0.7.1 — 2026-07-21 — PATCH
 
@@ -1277,4 +1543,4 @@ For each release-worthy version bump, summarize:
 - Do not change the app/exe release version for documentation-only or instruction-only work unless explicitly requested.
 - Do not package with stale `electron-builder`, `npm run dist:win`, `node`, `makensis`, or `signtool` processes still running.
 - Do not keep older `TokenMonitor-*-x64.exe` files when creating a higher version executable.
-- Do not log OAuth tokens, refresh tokens, account emails, or account IDs while testing release changes.
+- Do not log names, nicknames, emails, OAuth tokens, refresh tokens, credential contents, raw provider payloads, or provider-internal account IDs while testing release changes. Reviewed names, nicknames, and emails may appear only in the intended user-facing account-identification UI.

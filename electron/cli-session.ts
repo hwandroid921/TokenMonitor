@@ -1,4 +1,5 @@
 import { spawn } from "node:child_process";
+import { readAccountIdentity, type AccountIdentity } from "./account-identity.js";
 import { type CodexUsageResult, getCodexUsage } from "./codex-usage.js";
 
 export type CliSessionStatus = {
@@ -7,6 +8,7 @@ export type CliSessionStatus = {
   installed: boolean;
   loggedIn: boolean;
   authMethod: string | null;
+  account: AccountIdentity | null;
   detail: string;
   checkedAt: string;
 };
@@ -26,12 +28,14 @@ async function getCodexSession(usageResult?: CodexUsageResult): Promise<CliSessi
   const usage = usageResult ?? await getCodexUsage();
 
   if (!usage.ok) {
+    const installed = !["desktop-not-installed", "executable-not-found", "invalid-configured-path"].includes(usage.errorCode);
     return {
       provider: "codex",
       ok: false,
-      installed: false,
+      installed,
       loggedIn: false,
       authMethod: null,
+      account: null,
       detail: usage.error,
       checkedAt
     };
@@ -43,6 +47,7 @@ async function getCodexSession(usageResult?: CodexUsageResult): Promise<CliSessi
     installed: true,
     loggedIn: usage.hasAccountEmail || Boolean(usage.accountType || usage.planType),
     authMethod: usage.accountType,
+    account: usage.account,
     detail: usage.planType ? `플랜 ${usage.planType}` : "ChatGPT 계정 확인됨",
     checkedAt
   };
@@ -60,6 +65,7 @@ async function getClaudeSession(): Promise<CliSessionStatus> {
       installed: false,
       loggedIn: false,
       authMethod: null,
+      account: null,
       detail: result.error,
       checkedAt
     };
@@ -68,6 +74,7 @@ async function getClaudeSession(): Promise<CliSessionStatus> {
   const loggedIn = Boolean(result.data?.loggedIn);
   const authMethod = typeof result.data?.authMethod === "string" ? result.data.authMethod : null;
   const apiProvider = typeof result.data?.apiProvider === "string" ? result.data.apiProvider : null;
+  const nestedAccount = result.data?.account && typeof result.data.account === "object" ? result.data.account : result.data;
 
   return {
     provider: "claude",
@@ -75,6 +82,7 @@ async function getClaudeSession(): Promise<CliSessionStatus> {
     installed: true,
     loggedIn,
     authMethod,
+    account: readAccountIdentity(nestedAccount, "claude-cli"),
     detail: loggedIn ? `로그인됨${apiProvider ? ` (${apiProvider})` : ""}` : "로그인되지 않음",
     checkedAt
   };
@@ -90,11 +98,10 @@ function runJsonCommand(command: string, args: string[], timeoutMs: number): Pro
         shell: process.platform === "win32"
       });
     } catch (error) {
-      resolve({ ok: false, error: error instanceof Error ? error.message : `${command} 실행 실패` });
+      resolve({ ok: false, error: `${command} 실행 실패` });
       return;
     }
     let stdout = "";
-    let stderr = "";
     let settled = false;
 
     const timeout = setTimeout(() => finish({ ok: false, error: `${command} 실행 시간이 초과되었습니다.` }), timeoutMs);
@@ -103,19 +110,17 @@ function runJsonCommand(command: string, args: string[], timeoutMs: number): Pro
       stdout += chunk.toString("utf8");
     });
 
-    child.stderr?.on("data", (chunk: Buffer) => {
-      stderr += chunk.toString("utf8");
-    });
+    child.stderr?.resume();
 
     child.on("error", (error) => {
-      finish({ ok: false, error: error.message });
+      finish({ ok: false, error: `${command} 실행 실패` });
     });
 
     child.on("close", () => {
       try {
         finish({ ok: true, data: JSON.parse(stdout.trim()) as Record<string, unknown> });
       } catch {
-        finish({ ok: false, error: stderr.trim() || stdout.trim() || `${command} 출력 파싱 실패` });
+        finish({ ok: false, error: `${command} 상태 출력을 확인할 수 없습니다.` });
       }
     });
 

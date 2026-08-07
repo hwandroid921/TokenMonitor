@@ -98,7 +98,7 @@ export async function getClaudeUsage(): Promise<ClaudeUsageResult> {
     const roots = getClaudeProjectRoots();
     const files = roots.flatMap((root) => listJsonlFiles(root));
 
-    if (files.length === 0) {
+    if (files.length === 0 && !oauth) {
       return {
         ok: false,
         source: "local-logs",
@@ -135,7 +135,7 @@ export async function getClaudeUsage(): Promise<ClaudeUsageResult> {
     return {
       ok: false,
       source: "local-logs",
-      error: error instanceof Error ? error.message : "Claude 사용 로그를 읽을 수 없습니다.",
+      error: "Claude 사용 로그를 읽을 수 없습니다.",
       updatedAt: new Date().toISOString()
     };
   }
@@ -192,7 +192,7 @@ async function getClaudeOAuthUsage(): Promise<ClaudeOAuthUsage | null> {
           usedCredits: numberOrNull(json.extra_usage.used_credits),
           utilization: numberOrNull(json.extra_usage.utilization),
           currency: json.extra_usage.currency ?? null,
-          disabledReason: json.extra_usage.disabled_reason ?? null
+          disabledReason: json.extra_usage.disabled_reason ? "추가 사용이 비활성화되어 있습니다." : null
         }
       : null
   };

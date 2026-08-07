@@ -6,7 +6,7 @@ Project-specific instructions for AI coding agents working in this repository.
 
 Token Monitor is a Windows Electron + React desktop app for checking Codex, Claude, and Antigravity quota status.
 
-Primary users are Windows users who want to quickly inspect local LLM plan, quota, remaining usage, and reset time. The app must preserve provider usage collection, the compact dashboard, the transparent overlay, system tray behavior, and the privacy rule that sensitive account data is never shown in UI or logs.
+Primary users are Windows users who want to quickly inspect local LLM plan, quota, remaining usage, reset time, and the identity of the account currently being monitored. The app must preserve provider usage collection, the compact dashboard, the transparent overlay, system tray behavior, and the privacy rule that credentials and non-display account identifiers are never shown in UI or logs. After a privacy and necessity review, the UI may show the user's name, nickname, and email when those fields help the user distinguish between accounts.
 
 ## Tech Stack
 
@@ -24,7 +24,7 @@ Primary users are Windows users who want to quickly inspect local LLM plan, quot
 - `build/`: Windows app and tray icon assets
 - `dist/`: Vite renderer build output
 - `dist-electron/`: Electron TypeScript build output
-- `dist-app/`: Windows packaging output
+- `dist-app/`: Windows unpacked packaging output
 - `README.md`: user-facing final-state documentation
 - `docs/RELEASE_VERSION_POLICY.md`: milestone/app version policy and release history
 - `package.json`: app/exe release version and npm scripts
@@ -41,14 +41,14 @@ Portable package:
 
 ```powershell
 $env:CSC_IDENTITY_AUTO_DISCOVERY='false'
-npx electron-builder --win portable --x64 --publish never --config.win.signAndEditExecutable=false
+npm run package:portable
 ```
 
 Unpacked package:
 
 ```powershell
 $env:CSC_IDENTITY_AUTO_DISCOVERY='false'
-npx electron-builder --win dir --x64 --publish never --config.win.signAndEditExecutable=false
+npm run package:unpacked
 ```
 
 ## Working Rules
@@ -57,7 +57,8 @@ npx electron-builder --win dir --x64 --publish never --config.win.signAndEditExe
 - Keep changes scoped to the user request. Do not perform unrelated refactors.
 - Keep changes small and verifiable.
 - Keep UI changes aligned with the current compact dashboard style.
-- Do not show account emails, access tokens, refresh tokens, or account IDs in the UI or logs.
+- The UI may show a user's name, nickname, and email after confirming that each field is necessary to distinguish the active account and comes from the expected provider/account context.
+- Never show access tokens, refresh tokens, API keys, session secrets, raw credential contents, or provider-internal account IDs in the UI or logs.
 - Write README and user-facing project docs as final-state documentation. Do not list individual task edits or change-by-change notes there.
 - Record version-level changes only in `docs/RELEASE_VERSION_POLICY.md` Release History.
 - Keep portable artifact names in English.
@@ -73,12 +74,14 @@ npx electron-builder --win dir --x64 --publish never --config.win.signAndEditExe
 
 - Each standalone document version starts at `v1.0.0` by default.
 - The overall program/project milestone version starts at `v0.1.0`.
-- The overall project should move to `v1.0.0` when the intended initial feature implementation is complete.
+- Keep the program/project milestone and app/exe version on the `v0.9.x` line throughout the remaining pre-release modification period.
+- Increment the patch component for retained release-level work, for example `0.9.1` to `0.9.2`. Do not create `0.10.0` or another pre-1.0 minor line.
+- Move directly from the current `v0.9.x` version to `v1.0.0` only when the user explicitly declares that the modifications are complete, for example by saying `수정 완료`. An agent's own completion report does not trigger this promotion.
 - Do not predefine fixed feature content for every version up to `v1.0.0`; record version content when actual work is completed.
 - Minor project changes increment by `0.1.0` units, for example `0.1.0` to `0.2.0`.
 - Major project changes increment by `1.0.0` units, for example `1.0.0` to `2.0.0`.
 - For feature additions, feature fixes, documentation work, and instruction work, review the relevant version history before finishing.
-- If the work requires a version update, perform the version update immediately as part of the same task.
+- While the `v0.9.x` restriction is active, record retained release-level work with the next `0.9.PATCH` version.
 - After `v1.0.0`, manage releases with matching Git tags and remote release entries.
 - Keep document versioning, project milestone versioning, and app/exe release versioning distinct.
 - The app/exe release version remains managed by `package.json` and `package-lock.json`.
@@ -91,7 +94,7 @@ npx electron-builder --win dir --x64 --publish never --config.win.signAndEditExe
 - Add a new abstraction only when it removes real duplication or meaningful complexity.
 - Electron main process changes should follow the existing IPC, cache, collector, and child process patterns in `electron/`.
 - React UI changes should follow the existing compact dashboard and settings patterns in `src/main.tsx` and `src/styles.css`.
-- Provider usage collectors must return only display-safe data needed by the renderer.
+- Provider usage collectors must return only renderer-required data. This may include reviewed account identity fields such as name, nickname, and email, but must exclude credentials, raw provider payloads, and provider-internal account IDs.
 - External CLI execution should follow the existing command discovery, timeout, and user-facing error detail patterns.
 - Write Windows paths and packaging examples for PowerShell unless another shell is explicitly requested.
 
@@ -102,7 +105,8 @@ npx electron-builder --win dir --x64 --publish never --config.win.signAndEditExe
 - Provider error and recovery guidance should stay compact inside provider cards.
 - Ensure text does not overflow buttons, cards, or compact panels.
 - Preserve accessibility attributes, disabled states, pending states, and focus behavior.
-- Never display account emails, tokens, account IDs, or other credential-derived identifiers.
+- Display reviewed name, nickname, and email fields compactly when they help users distinguish accounts, with clear labels and graceful handling when a field is unavailable.
+- Never display tokens, secrets, raw credential contents, provider-internal account IDs, or unreviewed credential-derived identifiers.
 
 ## Provider Rules
 
@@ -122,11 +126,14 @@ npx electron-builder --win dir --x64 --publish never --config.win.signAndEditExe
 
 ## Security and Privacy
 
-- Do not hardcode secrets, API keys, OAuth tokens, refresh tokens, account IDs, or account emails.
+- User-visible account identity is an intentional product feature. A user's name, nickname, and email may be collected and displayed when they are necessary for distinguishing the monitored account and the change has been reviewed for source, purpose, UI placement, and missing-data behavior.
+- Treat name, nickname, and email as personal data: collect only fields used by the UI, keep them within the account-display flow, and avoid unnecessary persistence. They may appear in the normal UI and the developer mode's dedicated account-identification summary, but must not be written to application logs, raw parser diagnostics, build logs, analytics, or error messages.
+- Do not hardcode real personal data, secrets, API keys, OAuth tokens, refresh tokens, provider-internal account IDs, or credential contents. Test fixtures and documentation examples must use clearly fictional identity values.
 - Do not modify `.env`, credential, or production config files unless the user explicitly asks and the change is safe.
-- Do not log raw provider payloads that may include sensitive data.
-- Do not include secrets or account identifiers in README examples, screenshots, test fixtures, issues, PR descriptions, or build logs.
-- When documenting local file paths, use generic path patterns and do not include real account identifiers.
+- Do not log raw provider payloads. Extract only the reviewed display fields and quota data needed by the application.
+- Do not include real personal data, secrets, credentials, or provider-internal account identifiers in README examples, screenshots, test fixtures, issues, PR descriptions, or build logs.
+- When documenting local file paths, use generic path patterns and do not include real personal data or account identifiers.
+- Keep identity display separate from authentication material: permission to display a name, nickname, or email never authorizes exposing tokens, credential files, session data, or raw provider responses.
 
 ## Build and Packaging Process
 
@@ -165,13 +172,13 @@ Get-Process -Id <PID> -ErrorAction SilentlyContinue | Stop-Process -Force
 - For patch-level changes such as `0.3.1`, `0.3.2`, or `0.3.3`, skip portable packaging by default even when code changed.
 - For documentation-only or instruction-only work, skip packaging unless the user explicitly asks for a new executable.
 - When the app/exe version changes and the user requested unpacked exe refreshes, regenerate `dist-app/win-unpacked`.
-- When creating a portable executable for a higher version, remove older versioned executables first so `dist-app/` keeps only the latest portable exe.
+- When creating a portable executable for a higher version, remove older versioned executables first so the repository root keeps only the latest portable exe.
 
 PowerShell cleanup example:
 
 ```powershell
 $currentVersion = (Get-Content -Raw package.json | ConvertFrom-Json).version
-Get-ChildItem -Path dist-app -Filter "TokenMonitor-*-x64.exe" -File |
+Get-ChildItem -Path . -Filter "TokenMonitor-*-x64.exe" -File |
   Where-Object { $_.Name -ne "TokenMonitor-$currentVersion-x64.exe" } |
   Remove-Item -Force
 ```
@@ -179,8 +186,8 @@ Get-ChildItem -Path dist-app -Filter "TokenMonitor-*-x64.exe" -File |
 After packaging, verify the executable and hash:
 
 ```powershell
-Get-ChildItem -Force dist-app\TokenMonitor-*-x64.exe
-Get-FileHash dist-app\TokenMonitor-*-x64.exe -Algorithm SHA256
+Get-ChildItem -Force TokenMonitor-*-x64.exe
+Get-FileHash TokenMonitor-*-x64.exe -Algorithm SHA256
 ```
 
 For unpacked packaging, verify `dist-app\win-unpacked\TokenMonitor.exe` and its SHA256 hash.
@@ -314,4 +321,4 @@ Tell the user the branch name, commit hash, push result, and PR description draf
 - Direct user requests have priority.
 - The closest applicable `AGENTS.md` has priority over a parent directory `AGENTS.md`.
 - If instructions conflict, follow the more specific instruction.
-- Safety, security, privacy, and secret-protection rules always take priority.
+- A direct user request may authorize reviewed UI use of names, nicknames, and emails for account distinction. Safety and protection of credentials, secrets, raw provider payloads, and provider-internal identifiers always take priority.

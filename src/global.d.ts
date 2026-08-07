@@ -1,3 +1,10 @@
+export type AccountIdentity = {
+  name: string | null;
+  nickname: string | null;
+  email: string | null;
+  source: string;
+};
+
 export type CodexUsageWindow = {
   label: string;
   usedPercent: number;
@@ -13,8 +20,12 @@ export type CodexUsageResult =
       accountType: string | null;
       planType: string | null;
       hasAccountEmail: boolean;
+      account: AccountIdentity | null;
       primary: CodexUsageWindow | null;
       secondary: CodexUsageWindow | null;
+      fiveHour: CodexUsageWindow | null;
+      weekly: CodexUsageWindow | null;
+      otherWindows: CodexUsageWindow[];
       credits: {
         hasCredits: boolean;
         unlimited: boolean;
@@ -25,9 +36,41 @@ export type CodexUsageResult =
   | {
       ok: false;
       source: "codex-app-server";
+      errorCode: CodexUsageErrorCode;
       error: string;
       updatedAt: string;
     };
+
+export type CodexUsageErrorCode =
+  | "desktop-not-installed"
+  | "executable-not-found"
+  | "invalid-configured-path"
+  | "access-denied"
+  | "app-server-start-failed"
+  | "app-server-timeout"
+  | "login-required"
+  | "usage-read-failed"
+  | "unsupported-response";
+
+export type CodexPathStatus = {
+  configuredPath: string | null;
+  activePath: string | null;
+  source: "manual" | "environment" | "local-direct" | "local-versioned" | "windows-apps" | "path" | "none";
+  desktopInstalled: boolean;
+  executableFound: boolean;
+  configuredPathValid: boolean | null;
+  connection: "unchecked" | "connected" | "login-required" | "failed";
+  detail: string;
+  checkedAt: string;
+};
+
+export type CodexPathUpdateResult = {
+  ok: boolean;
+  canceled: boolean;
+  status: CodexPathStatus;
+  detail?: string;
+  usage?: CodexUsageResult;
+};
 
 export type ProviderId = "codex" | "claude" | "gemini";
 
@@ -37,6 +80,7 @@ export type CliSessionStatus = {
   installed: boolean;
   loggedIn: boolean;
   authMethod: string | null;
+  account: AccountIdentity | null;
   detail: string;
   checkedAt: string;
 };
@@ -139,7 +183,7 @@ export type GeminiUsageResult =
       ok: true;
       source: "antigravity-cli-google" | "antigravity-cli-local" | "antigravity-local" | "gemini-cli-oauth";
       planType: string | null;
-      accountEmail: string | null;
+      account: AccountIdentity | null;
       promptCredits: {
         available: number | null;
         monthly: number | null;
@@ -192,14 +236,79 @@ export type ProviderDisplaySettings = {
   showReset: boolean;
 };
 
+export type DeveloperModeInfo = {
+  enabled: boolean;
+};
+
+export type DeveloperCheckStatus = "success" | "failed" | "skipped";
+
+export type DeveloperEnvStatus = {
+  enabled: boolean;
+  source: "process" | "env-file" | "default";
+  checkedPathCount: number;
+  loadedFileName: string | null;
+};
+
+export type DeveloperProviderDiagnostic = {
+  id: ProviderId;
+  name: string;
+  account: AccountIdentity | null;
+  userPrerequisites: string[];
+  checks: Array<{
+    method: string;
+    status: DeveloperCheckStatus;
+    detail: string;
+  }>;
+};
+
+export type DeveloperDiagnostics = {
+  enabled: boolean;
+  generatedAt: string;
+  environment: DeveloperEnvStatus;
+  totalDurationMs?: number;
+  cacheSummary?: {
+    codex: string;
+    claude: string;
+    gemini: string;
+    cliSession: string;
+  };
+  providers: DeveloperProviderDiagnostic[];
+  codexIssues?: Array<{
+    code: string;
+    order: number;
+    title: string;
+    detail: string;
+    resolution: string[];
+    occurredAt: string;
+    lastOccurredAt: string;
+    count: number;
+    resolvedAt: string | null;
+  }>;
+  geminiParser: {
+    sessionLoggedIn: boolean;
+    cacheAvailable: boolean;
+    planParsed: boolean;
+    fiveHourParsed: boolean;
+    weeklyParsed: boolean;
+    detail: string | null;
+    updatedAt: string | null;
+    debugUpdatedAt: string | null;
+    usageDetected: boolean;
+    percentCandidates: string[];
+    snippets: string[];
+  } | null;
+};
+
 declare global {
   interface Window {
     tokenMonitor?: {
       platform: string;
-      getCodexUsage: () => Promise<CodexUsageResult>;
+      getCodexUsage: (force?: boolean) => Promise<CodexUsageResult>;
       getClaudeUsage: (force?: boolean) => Promise<ClaudeUsageResult>;
       getGeminiUsage: (force?: boolean) => Promise<GeminiUsageResult>;
       getCliSessionStatus: (force?: boolean) => Promise<CliSessionResult>;
+      getDeveloperMode: () => Promise<DeveloperModeInfo>;
+      getDeveloperDiagnostics: () => Promise<DeveloperDiagnostics>;
       startClaudeLogin: () => Promise<{ ok: boolean; command: string; skipped?: boolean; detail?: string }>;
       startGeminiLogin: () => Promise<{ ok: boolean; command: string; skipped?: boolean; detail?: string }>;
       startGeminiAppsLogin: (bounds?: Partial<GeminiViewBounds>) => Promise<{ ok: boolean; detail?: string }>;
@@ -208,6 +317,10 @@ declare global {
       minimizeToTray: () => Promise<void>;
       quitApp: () => Promise<void>;
       openCodexUsageDashboard: () => Promise<void>;
+      getCodexPathStatus: () => Promise<CodexPathStatus>;
+      selectCodexExecutablePath: () => Promise<CodexPathUpdateResult>;
+      updateCodexExecutablePath: (candidate: string) => Promise<CodexPathUpdateResult>;
+      resetCodexExecutablePath: () => Promise<CodexPathUpdateResult>;
       openNodeJsDownload: () => Promise<void>;
       getOverlaySettings: () => Promise<OverlaySettings>;
       updateOverlaySettings: (settings: OverlaySettings) => Promise<OverlaySettings>;

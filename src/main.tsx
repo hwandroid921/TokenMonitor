@@ -1,13 +1,16 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { createRoot } from "react-dom/client";
-import { ExternalLink, LayoutDashboard, Link, RefreshCw, Settings, Zap } from "lucide-react";
+import { Bug, ExternalLink, LayoutDashboard, Link, RefreshCw, Settings, Zap } from "lucide-react";
 import "./styles.css";
 import type {
   ClaudeOAuthWindow,
   ClaudeUsageResult,
   CliSessionResult,
+  CodexPathStatus,
   CodexUsageResult,
   CodexUsageWindow,
+  DeveloperDiagnostics,
+  DeveloperModeInfo,
   GeminiAppsUsage,
   GeminiAppsUsageWindow,
   GeminiUsageResult,
@@ -22,6 +25,7 @@ type ProviderUsage = {
   source: string;
   status: "live" | "pending" | "error" | "loading";
   fields?: ProviderField[];
+  account?: string;
   plan: string;
   session: string;
   used: string;
@@ -29,6 +33,7 @@ type ProviderUsage = {
   reset: string;
   detail: string;
   canLogin?: boolean;
+  canConfigureCodex?: boolean;
   actionLabel?: string;
   issues?: ProviderIssue[];
 };
@@ -36,7 +41,7 @@ type ProviderUsage = {
 type ProviderField = {
   label: string;
   value: string;
-  kind: "plan" | "quota" | "usage" | "remaining" | "reset";
+  kind: "account" | "plan" | "session" | "quota" | "usage" | "remaining" | "reset";
 };
 
 type ProviderIssue = {
@@ -86,7 +91,7 @@ function App() {
   const [cliSessions, setCliSessions] = useState<CliSessionResult | null>(null);
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [overlaySettings, setOverlaySettings] = useState<OverlaySettings>(defaultOverlaySettings);
-  const [activeTab, setActiveTab] = useState<"dashboard" | "settings">("dashboard");
+  const [activeTab, setActiveTab] = useState<"dashboard" | "settings" | "developer">("dashboard");
   const [showExitConfirm, setShowExitConfirm] = useState(false);
   const [isClaudeLoginPending, setIsClaudeLoginPending] = useState(false);
   const [isGeminiLoginPending, setIsGeminiLoginPending] = useState(false);
@@ -96,6 +101,8 @@ function App() {
   const [claudeLoginNotice, setClaudeLoginNotice] = useState<string | null>(null);
   const [geminiLoginNotice, setGeminiLoginNotice] = useState<string | null>(null);
   const [geminiAppsLoginNotice, setGeminiAppsLoginNotice] = useState<string | null>(null);
+  const [developerMode, setDeveloperMode] = useState<DeveloperModeInfo>({ enabled: false });
+  const [developerDiagnostics, setDeveloperDiagnostics] = useState<DeveloperDiagnostics | null>(null);
 
   const providers = useMemo(() => buildProviderUsage(codexUsage, claudeUsage, geminiUsage, cliSessions), [codexUsage, claudeUsage, geminiUsage, cliSessions]);
 
@@ -119,9 +126,21 @@ function App() {
       setClaudeUsage(latestClaude);
       setGeminiUsage(latestGemini);
       setCliSessions(latestSessions);
+      if (developerMode.enabled) {
+        const diagnostics = await window.tokenMonitor?.getDeveloperDiagnostics();
+        setDeveloperDiagnostics(diagnostics ?? null);
+      }
     } finally {
       setIsRefreshing(false);
     }
+  }
+
+  function openCodexPathSettings() {
+    setActiveTab("settings");
+    window.setTimeout(() => {
+      document.getElementById("codex-path-settings")?.scrollIntoView({ behavior: "smooth", block: "start" });
+      document.getElementById("codex-path-input")?.focus();
+    }, 0);
   }
 
   async function updateOverlaySettings(nextSettings: OverlaySettings) {
@@ -195,8 +214,8 @@ function App() {
         setClaudeLoginNotice(makeClaudeLoginNotice(result.claudeUsage, result.cliSessions));
       }
       await refreshUsage();
-    } catch (error) {
-      setClaudeLoginNotice(error instanceof Error ? error.message : "Claude 연동 확인을 시작할 수 없습니다.");
+    } catch {
+      setClaudeLoginNotice("Claude 연동 확인을 시작할 수 없습니다.");
     } finally {
       setIsClaudeLoginPending(false);
     }
@@ -220,8 +239,8 @@ function App() {
         void refreshUsage();
         setIsGeminiLoginPending(false);
       }, 5000);
-    } catch (error) {
-      setGeminiLoginNotice(error instanceof Error ? error.message : "Antigravity CLI 설치 및 로그인을 시작할 수 없습니다.");
+    } catch {
+      setGeminiLoginNotice("Antigravity CLI 설치 및 로그인을 시작할 수 없습니다.");
       setIsGeminiLoginPending(false);
     }
   }
@@ -258,8 +277,8 @@ function App() {
         setIsGeminiAppsLoginPending(false);
       }, 5000);
       return;
-    } catch (error) {
-      setGeminiAppsLoginNotice(error instanceof Error ? error.message : "Gemini 작업을 시작할 수 없습니다.");
+    } catch {
+      setGeminiAppsLoginNotice("Gemini 작업을 시작할 수 없습니다.");
       return;
     } finally {
       if (isUsageCheck) {
@@ -270,34 +289,24 @@ function App() {
         setIsGeminiAppsLoginPending(false);
       }
     }
-/*
-    setIsGeminiAppsLoginPending(true);
-    setGeminiAppsLoginNotice(null);
-    try {
-      const startResult = await window.tokenMonitor?.startGeminiAppsLogin();
-      if (!startResult?.ok) {
-        setGeminiAppsLoginNotice(startResult?.detail ?? "Gemini 로그인 창을 열 수 없습니다.");
-        return;
-      }
-
-      setGeminiAppsLoginNotice(startResult.detail ?? "Gemini 로그인 후 Usage Limits 화면이 보이면 자동으로 한도를 저장합니다.");
-      window.setTimeout(() => {
-        void refreshUsage();
-        setIsGeminiAppsLoginPending(false);
-      }, 5000);
-    } catch (error) {
-      setGeminiAppsLoginNotice(error instanceof Error ? error.message : "Gemini 로그인을 시작할 수 없습니다.");
-      setIsGeminiAppsLoginPending(false);
-    }
-  }
-*/
-
   }
 
   useEffect(() => {
     void refreshUsage();
     void window.tokenMonitor?.getOverlaySettings().then(setOverlaySettings);
+    void window.tokenMonitor?.getDeveloperMode().then((mode) => {
+      setDeveloperMode(mode);
+      if (mode.enabled) {
+        void window.tokenMonitor?.getDeveloperDiagnostics().then(setDeveloperDiagnostics);
+      }
+    });
   }, []);
+
+  useEffect(() => {
+    if (!developerMode.enabled && activeTab === "developer") {
+      setActiveTab("dashboard");
+    }
+  }, [activeTab, developerMode.enabled]);
 
   useEffect(() => {
     const unsubscribe = window.tokenMonitor?.onExitConfirmRequested(() => setShowExitConfirm(true));
@@ -375,6 +384,12 @@ function App() {
             <Settings size={16} aria-hidden="true" />
             설정
           </button>
+          {developerMode.enabled ? (
+            <button className={activeTab === "developer" ? "active" : ""} type="button" onClick={() => setActiveTab("developer")}>
+              <Bug size={16} aria-hidden="true" />
+              개발자
+            </button>
+          ) : null}
         </nav>
 
         {activeTab === "dashboard" ? (
@@ -392,12 +407,20 @@ function App() {
                 onClaudeLogin={handleClaudeLogin}
                 onGeminiLogin={handleGeminiLogin}
                 onGeminiAppsLogin={handleGeminiAppsLogin}
+                onOpenCodexSettings={openCodexPathSettings}
               />
             ))}
           </section>
           </>
+        ) : activeTab === "settings" ? (
+          <SettingsPanel settings={overlaySettings} onChange={updateOverlaySettings} onUsageRefresh={refreshUsage} />
         ) : (
-          <SettingsPanel settings={overlaySettings} onChange={updateOverlaySettings} />
+          <DeveloperPanel
+            providers={providers}
+            diagnostics={developerDiagnostics}
+            isRefreshing={isRefreshing}
+            onRefresh={() => void refreshUsage()}
+          />
         )}
       </section>
 
@@ -456,7 +479,8 @@ function ProviderCard({
   actionNotice,
   onClaudeLogin,
   onGeminiLogin,
-  onGeminiAppsLogin
+  onGeminiAppsLogin,
+  onOpenCodexSettings
 }: {
   provider: ProviderUsage;
   geminiUsage: GeminiUsageResult | null;
@@ -467,6 +491,7 @@ function ProviderCard({
   onClaudeLogin: () => void;
   onGeminiLogin: () => void;
   onGeminiAppsLogin: () => void;
+  onOpenCodexSettings: () => void;
 }) {
   const isActionPending = provider.id === "claude" && isClaudeLoginPending || provider.id === "gemini" && isGeminiLoginPending;
   const actionLabel = isActionPending ? "연동 확인 중" : (provider.actionLabel ?? "사용량 수집 연동");
@@ -475,7 +500,7 @@ function ProviderCard({
     ? isGeminiAppsLoggedIn ? "사용량 확인 중" : "Gemini 로그인 확인 중"
     : isGeminiAppsLoggedIn ? "사용량 확인" : "Gemini 로그인";
   const handleAction = provider.id === "gemini" ? onGeminiLogin : onClaudeLogin;
-  const showHeaderActions = Boolean(provider.canLogin || provider.id === "gemini");
+  const showHeaderActions = Boolean(provider.canLogin || provider.canConfigureCodex || provider.id === "gemini");
   const showNodeInstallAction = Boolean(actionNotice?.includes("Node.js/npm"));
   const handleNodeInstall = () => {
     void window.tokenMonitor?.openNodeJsDownload();
@@ -490,6 +515,18 @@ function ProviderCard({
         </div>
         {showHeaderActions ? (
           <div className="provider-header-actions">
+            {provider.canConfigureCodex ? (
+              <button
+                className="provider-action provider-header-action"
+                type="button"
+                onClick={onOpenCodexSettings}
+                aria-label="Codex 경로 설정"
+                title="Codex 경로 설정"
+              >
+                <Settings size={15} aria-hidden="true" />
+                <span>경로 설정</span>
+              </button>
+            ) : null}
             {provider.id === "gemini" ? (
               <button
                 className="provider-action provider-header-action provider-header-action-secondary"
@@ -572,78 +609,10 @@ function ProviderIssueNotice({ provider }: { provider: ProviderUsage }) {
   );
 }
 
-function ProviderCollectionGuide({ providerId }: { providerId: ProviderId }) {
-  const guide = getProviderCollectionGuide(providerId);
-
-  return (
-    <section className="collection-guide" aria-label={`${providerLabels[providerId]} 수집 경로`}>
-      <div className="collection-guide-heading">
-        <span>수집 경로</span>
-        <strong>{guide.title}</strong>
-      </div>
-      <p>{guide.summary}</p>
-      <ol>
-        {guide.steps.map((step) => (
-          <li key={step}>{step}</li>
-        ))}
-      </ol>
-    </section>
-  );
-}
-
-function getProviderCollectionGuide(providerId: ProviderId) {
-  if (providerId === "codex") {
-    return {
-      title: "ChatGPT 로컬 앱 서버",
-      summary: "Codex Desktop 설치와 로그인이 완료된 상태에서 ChatGPT 5시간/주간 quota를 확인합니다.",
-      steps: [
-        "Codex Desktop 설치 필수",
-        "Codex Desktop 로그인 상태 확인",
-        "Codex Desktop 설치 경로 또는 CODEX_CLI_PATH의 codex.exe 실행",
-        "표시용 plan, remaining, reset 값만 대시보드에 반영"
-      ]
-    };
-  }
-
-  if (providerId === "claude") {
-    return {
-      title: "Claude Code OAuth",
-      summary: "Node.js/npm이 준비된 상태에서 Claude Pro/Max 이상 계정으로 Claude CLI 설치와 OAuth 로그인을 진행한 뒤 서버 quota를 읽습니다.",
-      steps: [
-        "Node.js/npm 설치 상태 확인",
-        "Claude Pro/Max 이상 계정 확인",
-        "Claude CLI 설치 및 로그인 버튼 실행",
-        "OAuth usage endpoint에서 5시간/주간 quota 조회",
-        "서버 quota 미연동 시 local log를 보조 정보로 사용"
-      ]
-    };
-  }
-
-  return {
-    title: "Gemini Usage Limits + Antigravity CLI",
-    summary: "Gemini Apps 한도는 Gemini 웹 Usage Limits 화면에서, Antigravity 한도는 CLI 또는 local fallback에서 분리해 표시합니다.",
-    steps: [
-      "Gemini 로그인 버튼 실행",
-      "로그인 완료 후 사용량 확인 버튼 실행",
-      "Antigravity 한도가 필요하면 Node.js LTS 설치",
-      "Antigravity CLI 설치 및 로그인 버튼 실행"
-    ]
-  };
-
-  return {
-    title: "Gemini Usage Limits + Antigravity CLI",
-    summary: "Google AI 플랜은 공통으로 표시하고, Gemini Apps 한도는 gemini.google.com Usage Limits 기준으로 분리합니다. Antigravity 5시간 한도는 Node.js/npm 기반 CLI와 local fallback에서 수집합니다.",
-    steps: [
-      "Gemini Apps 5시간/주간 한도는 gemini.google.com의 Usage Limits 데이터가 필요",
-      "Google 플랜은 OAuth 또는 local provider 응답의 Free/Plus/Pro/Ultra 값을 표시",
-      "Antigravity 5시간 한도는 Antigravity CLI 설치 및 로그인 버튼 실행 후 수집",
-      "Antigravity 실행 시 local fallback 유지",
-      "계정 이메일과 OAuth token은 UI와 로그에 표시하지 않음"
-    ]
-  };
-}
-
 function getProviderIssues(provider: ProviderUsage): ProviderIssue[] {
+  if (provider.id === "codex" && provider.status !== "error") {
+    return [];
+  }
   const hasUnavailableField = (provider.fields ?? defaultProviderFields(provider)).some((field) => isUnavailableValue(field.value));
   if (provider.status !== "error" && !hasUnavailableField) {
     return [];
@@ -655,7 +624,7 @@ function getProviderIssues(provider: ProviderUsage): ProviderIssue[] {
       steps: [
         "Codex Desktop 설치",
         "Codex Desktop 로그인",
-        "필요 시 CODEX_CLI_PATH 설정"
+        "실행 파일을 찾지 못하면 설정 탭에서 Codex 경로 확인"
       ]
     }];
   }
@@ -691,7 +660,7 @@ function getProviderIssue(provider: ProviderUsage) {
       steps: [
         "Codex Desktop 설치",
         "Codex Desktop 로그인",
-        "필요 시 CODEX_CLI_PATH 설정"
+        "실행 파일을 찾지 못하면 설정 탭에서 Codex 경로 확인"
       ]
     };
   }
@@ -725,7 +694,7 @@ function getProviderIssue(provider: ProviderUsage) {
         "Codex Desktop 설치 확인",
         "Codex Desktop 로그인 완료",
         "codex.exe 경로 확인",
-        "필요 시 CODEX_CLI_PATH 설정"
+        "필요 시 설정 탭에서 Codex 경로 지정"
       ]
     };
   }
@@ -829,13 +798,34 @@ async function waitForGeminiAppsUsageCompletion(
 
 function defaultProviderFields(provider: ProviderUsage): ProviderField[] {
   return [
+    { label: "로그인", value: provider.session, kind: "session" },
     { label: "플랜", value: provider.plan, kind: "plan" },
     { label: "잔여 사용량", value: provider.remaining, kind: "remaining" },
     { label: "초기화", value: provider.reset, kind: "reset" }
   ];
 }
 
-function SettingsPanel({ settings, onChange }: { settings: OverlaySettings; onChange: (settings: OverlaySettings) => void }) {
+function SettingsPanel({
+  settings,
+  onChange,
+  onUsageRefresh
+}: {
+  settings: OverlaySettings;
+  onChange: (settings: OverlaySettings) => void;
+  onUsageRefresh: () => Promise<void>;
+}) {
+  const [codexPathStatus, setCodexPathStatus] = useState<CodexPathStatus | null>(null);
+  const [codexPathInput, setCodexPathInput] = useState("");
+  const [codexPathPending, setCodexPathPending] = useState(false);
+  const [codexPathNotice, setCodexPathNotice] = useState<string | null>(null);
+
+  useEffect(() => {
+    void window.tokenMonitor?.getCodexPathStatus().then((status) => {
+      setCodexPathStatus(status);
+      setCodexPathInput(status.configuredPath ?? status.activePath ?? "");
+    });
+  }, []);
+
   function update(patch: Partial<OverlaySettings>) {
     onChange({ ...settings, ...patch });
   }
@@ -854,12 +844,73 @@ function SettingsPanel({ settings, onChange }: { settings: OverlaySettings; onCh
     });
   }
 
+  async function applyCodexPath(candidate: string) {
+    if (!candidate.trim()) {
+      setCodexPathNotice("codex.exe 전체 경로를 입력해 주세요.");
+      return;
+    }
+    setCodexPathPending(true);
+    setCodexPathNotice(null);
+    try {
+      const result = await window.tokenMonitor?.updateCodexExecutablePath(candidate);
+      if (!result) {
+        setCodexPathNotice("Codex 경로 설정 기능을 사용할 수 없습니다.");
+        return;
+      }
+      setCodexPathStatus(result.status);
+      setCodexPathInput(result.status.configuredPath ?? result.status.activePath ?? candidate);
+      setCodexPathNotice(result.ok ? "Codex 경로를 저장하고 연결을 확인했습니다." : result.detail ?? result.status.detail);
+      if (result.ok) {
+        await onUsageRefresh();
+      }
+    } finally {
+      setCodexPathPending(false);
+    }
+  }
+
+  async function selectCodexPath() {
+    setCodexPathPending(true);
+    setCodexPathNotice(null);
+    try {
+      const result = await window.tokenMonitor?.selectCodexExecutablePath();
+      if (!result || result.canceled) {
+        return;
+      }
+      setCodexPathStatus(result.status);
+      setCodexPathInput(result.status.configuredPath ?? result.status.activePath ?? "");
+      setCodexPathNotice(result.ok ? "Codex 경로를 저장하고 연결을 확인했습니다." : result.detail ?? result.status.detail);
+      if (result.ok) {
+        await onUsageRefresh();
+      }
+    } finally {
+      setCodexPathPending(false);
+    }
+  }
+
+  async function resetCodexPath() {
+    setCodexPathPending(true);
+    setCodexPathNotice(null);
+    try {
+      const result = await window.tokenMonitor?.resetCodexExecutablePath();
+      if (!result) {
+        setCodexPathNotice("Codex 자동 경로 설정을 사용할 수 없습니다.");
+        return;
+      }
+      setCodexPathStatus(result.status);
+      setCodexPathInput(result.status.activePath ?? "");
+      setCodexPathNotice(result.ok ? "Codex 경로를 자동 탐색으로 복원했습니다." : result.detail ?? result.status.detail);
+      await onUsageRefresh();
+    } finally {
+      setCodexPathPending(false);
+    }
+  }
+
   return (
     <section className="settings-panel" aria-label="설정">
       <div className="settings-heading">
         <div>
           <span className="eyebrow">기본 설정</span>
-          <h1>오버레이와 종료 동작</h1>
+          <h1>연결과 표시 설정</h1>
         </div>
         <Settings size={20} aria-hidden="true" />
       </div>
@@ -905,7 +956,54 @@ function SettingsPanel({ settings, onChange }: { settings: OverlaySettings; onCh
                   </label>
                 </div>
 
-                <ProviderCollectionGuide providerId={id} />
+                {id === "codex" ? (
+                  <section className="codex-path-settings" id="codex-path-settings" aria-labelledby="codex-path-heading">
+                    <div className="setting-group-heading">
+                      <div>
+                        <h3 id="codex-path-heading">Codex 연결</h3>
+                        <p>ChatGPT 사용량 확인을 위한 Codex 실행 파일을 연결합니다.</p>
+                      </div>
+                      <span className={`codex-path-state ${codexPathStatus?.connection ?? "unchecked"}`}>
+                        {formatCodexPathConnection(codexPathStatus)}
+                      </span>
+                    </div>
+
+                    <dl className="codex-path-summary">
+                      <div>
+                        <dt>연결 상태</dt>
+                        <dd>{formatCodexConnectionDetail(codexPathStatus)}</dd>
+                      </div>
+                    </dl>
+
+                    <label className="codex-path-field" htmlFor="codex-path-input">
+                      <span>codex.exe 경로</span>
+                      <div>
+                        <input
+                          id="codex-path-input"
+                          type="text"
+                          value={codexPathInput}
+                          onChange={(event) => setCodexPathInput(event.target.value)}
+                          placeholder={"C:\\...\\codex.exe"}
+                          spellCheck={false}
+                          disabled={codexPathPending}
+                        />
+                        <button className="secondary-button" type="button" onClick={() => void selectCodexPath()} disabled={codexPathPending}>
+                          찾아보기
+                        </button>
+                      </div>
+                    </label>
+
+                    <div className="codex-path-actions">
+                      <button className="secondary-button" type="button" onClick={() => void applyCodexPath(codexPathInput)} disabled={codexPathPending}>
+                        {codexPathPending ? "확인 중" : "연결 테스트 및 저장"}
+                      </button>
+                      <button className="secondary-button" type="button" onClick={() => void resetCodexPath()} disabled={codexPathPending}>
+                        자동 설정으로 복원
+                      </button>
+                    </div>
+                    {codexPathNotice ? <p className="codex-path-notice" role="status">{codexPathNotice}</p> : null}
+                  </section>
+                ) : null}
               </article>
             );
           })}
@@ -919,6 +1017,520 @@ function SettingsPanel({ settings, onChange }: { settings: OverlaySettings; onCh
       </label>
     </section>
   );
+}
+
+function formatCodexPathConnection(status: CodexPathStatus | null) {
+  if (!status) return "확인 중";
+  if (status.connection === "connected") return "연결됨";
+  return "연결 필요";
+}
+
+function formatCodexConnectionDetail(status: CodexPathStatus | null) {
+  if (!status) return "연결 상태를 확인하고 있습니다.";
+  if (status.connection === "connected") return status.detail || "Codex에 연결되었습니다.";
+  return "ChatGPT 사용량을 확인하려면 Codex 연결이 필요합니다.";
+}
+
+function DeveloperPanel({
+  providers,
+  diagnostics,
+  isRefreshing,
+  onRefresh
+}: {
+  providers: ProviderUsage[];
+  diagnostics: DeveloperDiagnostics | null;
+  isRefreshing: boolean;
+  onRefresh: () => void;
+}) {
+  return (
+    <section className="developer-panel" aria-label="개발자 모드">
+      <div className="settings-heading">
+        <div>
+          <span className="eyebrow">Developer Mode</span>
+          <h1>실제 수집 상태 검증</h1>
+        </div>
+        <button className="secondary-button" type="button" onClick={onRefresh} disabled={isRefreshing}>
+          {isRefreshing ? "확인 중" : "현재 상태 다시 확인"}
+        </button>
+      </div>
+
+      <section className="developer-section">
+        <h2>개발 환경 상태</h2>
+        <DeveloperEnvironmentStatus diagnostics={diagnostics} />
+      </section>
+
+      <section className="developer-section">
+        <h2>Codex 오류 및 권장 해결</h2>
+        <CodexDiagnosticIssues diagnostics={diagnostics} />
+      </section>
+
+      <section className="developer-section">
+        <h2>현재 대시보드 상태</h2>
+        <div className="developer-grid">
+          {providers.map((provider) => (
+            <article className="developer-card" key={provider.id}>
+              <h3>{provider.name}</h3>
+              <DeveloperDashboardSummary provider={provider} />
+            </article>
+          ))}
+        </div>
+      </section>
+
+      <section className="developer-section">
+        <h2>개발 테스트 결과</h2>
+        <div className="developer-grid">
+          {(diagnostics?.providers ?? []).map((provider) => {
+            const dashboardProvider = providers.find((item) => item.id === provider.id);
+            return (
+              <article className="developer-card" key={provider.id}>
+                <h3>{provider.name}</h3>
+                <DeveloperTestLoginSummary provider={dashboardProvider} diagnostic={provider} />
+                <div className="developer-check-list">
+                  {provider.checks.map((check) => (
+                    <div className="developer-check" key={`${provider.id}-${check.method}`}>
+                      <span className={`developer-status ${check.status}`}>{formatDeveloperStatus(check.status)}</span>
+                      <strong>{check.method}</strong>
+                      <p>{formatDeveloperCheckDetail(check)}</p>
+                    </div>
+                  ))}
+                </div>
+                {provider.id === "gemini" ? <GeminiParserDiagnostics diagnostics={diagnostics} /> : null}
+              </article>
+            );
+          })}
+        </div>
+      </section>
+    </section>
+  );
+}
+
+function CodexDiagnosticIssues({ diagnostics }: { diagnostics: DeveloperDiagnostics | null }) {
+  const issues = diagnostics?.codexIssues ?? [];
+  if (issues.length === 0) {
+    return <article className="developer-card"><p className="developer-inline-note">현재 실행에서 기록된 Codex 오류가 없습니다.</p></article>;
+  }
+
+  return (
+    <div className="developer-issue-list">
+      {issues.map((issue) => (
+        <article className={`developer-card developer-issue-card ${issue.resolvedAt ? "resolved" : "active"}`} key={issue.code}>
+          <div className="developer-issue-heading">
+            <span>{String(issue.order).padStart(2, "0")}</span>
+            <div>
+              <h3>{issue.title}</h3>
+              <p>{issue.resolvedAt ? "해결됨" : "해결 필요"} · {issue.count}회 · 최근 {formatTime(issue.lastOccurredAt)}</p>
+            </div>
+          </div>
+          <p>{issue.detail}</p>
+          <strong>권장 해결</strong>
+          <ol>
+            {issue.resolution.map((step) => <li key={step}>{step}</li>)}
+          </ol>
+        </article>
+      ))}
+    </div>
+  );
+}
+
+function DeveloperEnvironmentStatus({ diagnostics }: { diagnostics: DeveloperDiagnostics | null }) {
+  const environment = diagnostics?.environment;
+  const cache = diagnostics?.cacheSummary;
+
+  return (
+    <article className="developer-card developer-environment-card">
+      <section className="developer-environment-group" aria-labelledby="developer-runtime-heading">
+        <h3 id="developer-runtime-heading">실행 설정</h3>
+        <dl className="developer-dl developer-environment-list">
+          <div>
+            <dt>개발자 모드</dt>
+            <dd>
+              <strong>{environment?.enabled ? "켜짐" : "꺼짐"}</strong>
+              <span>`TOKEN_MONITOR_DEV_MODE=1` 적용 여부입니다. 켜짐 상태에서만 이 탭과 provider 진단을 제공합니다.</span>
+            </dd>
+          </div>
+          <div>
+            <dt>설정 출처</dt>
+            <dd>
+              <strong>{formatDeveloperEnvSource(environment?.source)}</strong>
+              <span>프로세스 환경변수, 로컬 `.env`, 또는 설정을 찾지 못한 기본값 중 실제 적용된 경로입니다.</span>
+            </dd>
+          </div>
+          <div>
+            <dt>환경 파일</dt>
+            <dd>
+              <strong>{environment?.loadedFileName ?? "사용 안 함"}</strong>
+              <span>환경 파일에서 설정을 읽은 경우 파일명만 표시합니다. 전체 로컬 경로와 파일 내용은 표시하지 않습니다.</span>
+            </dd>
+          </div>
+          <div>
+            <dt>확인 후보</dt>
+            <dd>
+              <strong>{environment?.checkedPathCount ?? 0}개</strong>
+              <span>현재 작업 폴더, 실행 파일 주변, portable 원본 폴더 등에서 중복 제거 후 확인한 `.env` 후보 수입니다.</span>
+            </dd>
+          </div>
+          <div>
+            <dt>진단 소요</dt>
+            <dd>
+              <strong>{diagnostics?.totalDurationMs != null ? `${diagnostics.totalDurationMs}ms` : "미측정"}</strong>
+              <span>새로고침 요청부터 provider 사용량·로그인 상태·파서 진단을 모아 결과를 만든 시점까지 걸린 시간입니다.</span>
+            </dd>
+          </div>
+          <div>
+            <dt>갱신 시각</dt>
+            <dd>
+              <strong>{diagnostics?.generatedAt ? formatTime(diagnostics.generatedAt) : "없음"}</strong>
+              <span>현재 화면에 표시된 개발 진단 스냅샷이 완성된 로컬 시각입니다.</span>
+            </dd>
+          </div>
+        </dl>
+      </section>
+
+      <section className="developer-environment-group" aria-labelledby="developer-cache-heading">
+        <h3 id="developer-cache-heading">수집 캐시</h3>
+        <p className="developer-environment-intro">
+          최신은 재사용 가능한 유효 캐시, 만료는 다음 조회에서 다시 수집할 캐시, 비어 있음은 저장된 결과가 없는 상태입니다.
+        </p>
+        <dl className="developer-dl developer-environment-list">
+          <DeveloperCacheRow label="ChatGPT" value={cache?.codex} ttlSeconds={15} detail="Codex app-server 사용량 결과" />
+          <DeveloperCacheRow label="Claude" value={cache?.claude} ttlSeconds={15} detail="Claude OAuth 및 로컬 사용량 결과" />
+          <DeveloperCacheRow label="Gemini" value={cache?.gemini} ttlSeconds={15} detail="Gemini Apps 및 Antigravity 사용량 결과" />
+          <DeveloperCacheRow label="CLI 로그인" value={cache?.cliSession} ttlSeconds={60} detail="Codex·Claude CLI 설치 및 로그인 확인 결과" />
+        </dl>
+      </section>
+    </article>
+  );
+}
+
+function DeveloperCacheRow({ label, value, ttlSeconds, detail }: { label: string; value: string | undefined; ttlSeconds: number; detail: string }) {
+  return (
+    <div>
+      <dt>{label}</dt>
+      <dd>
+        <strong>{formatDeveloperCacheState(value, ttlSeconds)}</strong>
+        <span>{detail}이며 유효기간은 {ttlSeconds}초입니다.</span>
+      </dd>
+    </div>
+  );
+}
+
+function formatDeveloperCacheState(value: string | undefined, ttlSeconds: number) {
+  if (!value || value === "empty") {
+    return "비어 있음";
+  }
+
+  const match = value.match(/^(fresh|stale) (\d+)ms$/);
+  if (!match) {
+    return "상태 확인 불가";
+  }
+
+  const ageMs = Number(match[2]);
+  const age = ageMs >= 1_000 ? `${(ageMs / 1_000).toFixed(1)}초 경과` : `${ageMs}ms 경과`;
+  return match[1] === "fresh" ? `최신 · ${age}` : `만료 · ${age} / 기준 ${ttlSeconds}초`;
+}
+
+function DeveloperDashboardSummary({ provider }: { provider: ProviderUsage }) {
+  const fields = normalizeDeveloperDashboardFields(provider);
+
+  return (
+    <dl className="developer-provider-summary developer-dashboard-summary">
+      {fields.map((field) => (
+        <div key={field.label}>
+          <dt>{field.label}</dt>
+          <dd>{field.value}</dd>
+        </div>
+      ))}
+    </dl>
+  );
+}
+
+function DeveloperTestLoginSummary({
+  provider,
+  diagnostic
+}: {
+  provider: ProviderUsage | undefined;
+  diagnostic: DeveloperDiagnostics["providers"][number];
+}) {
+  if (!provider) {
+    return null;
+  }
+
+  const account = diagnostic.account;
+
+  return (
+    <dl className="developer-provider-summary">
+      <div><dt>로그인</dt><dd>{account?.email ?? formatDeveloperLoginIdentity(provider)}</dd></div>
+      <div><dt>이름</dt><dd>{account?.name ?? "미제공"}</dd></div>
+      <div><dt>닉네임</dt><dd>{account?.nickname ?? "미제공"}</dd></div>
+      <div><dt>이메일</dt><dd>{account?.email ?? "미제공"}</dd></div>
+      <div><dt>계정 출처</dt><dd>{account?.source ?? "미확인"}</dd></div>
+    </dl>
+  );
+}
+
+function normalizeDeveloperDashboardFields(provider: ProviderUsage) {
+  const quotaFields = (provider.fields ?? defaultProviderFields(provider))
+    .filter((field) => field.kind === "quota")
+    .map((field) => ({ label: normalizeDashboardFieldLabel(field.label), value: field.value }));
+
+  return [
+    { label: "로그인", value: formatDeveloperLoginIdentity(provider) },
+    { label: "플랜", value: provider.plan },
+    ...quotaFields
+  ];
+}
+
+function normalizeDashboardFieldLabel(label: string) {
+  if (/5|five/i.test(label)) {
+    return label.includes("Gemini") || label.includes("Antigravity") ? label : "5시간";
+  }
+  if (/주|週|week|7/i.test(label)) {
+    return label.includes("Gemini") ? label : "주간";
+  }
+  return label;
+}
+
+function formatDeveloperLoginIdentity(provider: ProviderUsage) {
+  if (provider.account) {
+    return provider.account;
+  }
+  if (provider.session.includes("로그아웃") || provider.session.includes("필요") || provider.session.includes("확인 중")) {
+    return provider.session;
+  }
+  if (provider.session.includes("로그인")) {
+    return "로그인됨";
+  }
+  return provider.session;
+}
+
+function formatDeveloperCheckDetail(check: { method: string; status: "success" | "failed" | "skipped"; detail: string }) {
+  const path = `수집 경로/방법: ${check.method}`;
+
+  if (isSessionCheck(check.method)) {
+    return `${path} / 결과: ${formatDeveloperStatus(check.status)}${check.status === "success" ? "" : ` / 실패 이유: ${sanitizeDeveloperFailureDetail(check.detail)}`}`;
+  }
+
+  if (check.status === "success") {
+    return `${path} / 잔여 사용량 수집: 성공 / ${formatRemainingFromCheckDetail(check.detail)}`;
+  }
+
+  return `${path} / 잔여 사용량 수집: 실패 / 실패 이유: ${sanitizeDeveloperFailureDetail(check.detail)}`;
+}
+
+function isSessionCheck(method: string) {
+  return /session|login/i.test(method);
+}
+
+function formatRemainingFromCheckDetail(detail: string) {
+  const parts: string[] = [];
+  const primary = detail.match(/primary=([0-9]+%|none)/i);
+  const weekly = detail.match(/weekly=([0-9]+%|none)/i);
+  const fiveHour = detail.match(/fiveHour=([0-9]+%|[^,\s]+)/i);
+  const models = detail.match(/models=([0-9]+)/i);
+
+  if (primary) {
+    parts.push(`5시간 ${primary[1] === "none" ? "없음" : primary[1]}`);
+  }
+  if (fiveHour) {
+    parts.push(`5시간 ${fiveHour[1] === "none" ? "없음" : fiveHour[1]}`);
+  }
+  if (weekly) {
+    parts.push(`주간 ${weekly[1] === "none" ? "없음" : weekly[1]}`);
+  }
+  if (models) {
+    parts.push(`모델 ${models[1]}개`);
+  }
+
+  return parts.length > 0 ? parts.join(" / ") : "잔여 사용량 상세 없음";
+}
+
+function sanitizeDeveloperFailureDetail(detail: string) {
+  return detail
+    .replace(/plan=[^,\s]+,?\s*/gi, "")
+    .replace(/account(email)?=[^,\s]+,?\s*/gi, "account=비표시 ")
+    .trim() || "확인 가능한 실패 이유 없음";
+}
+
+function LegacyDeveloperPanel({
+  providers,
+  diagnostics,
+  isRefreshing,
+  onRefresh
+}: {
+  providers: ProviderUsage[];
+  diagnostics: DeveloperDiagnostics | null;
+  isRefreshing: boolean;
+  onRefresh: () => void;
+}) {
+  const providerSummaries = new Map(providers.map((provider) => [provider.id, provider]));
+
+  return (
+    <section className="developer-panel" aria-label="개발자 모드">
+      <div className="settings-heading">
+        <div>
+          <span className="eyebrow">Developer Mode</span>
+          <h1>실제 수집 상태 검증</h1>
+        </div>
+        <button className="secondary-button" type="button" onClick={onRefresh} disabled={isRefreshing}>
+          {isRefreshing ? "확인 중" : "현재 상태 다시 확인"}
+        </button>
+      </div>
+
+      <p className="developer-note">
+        이 화면은 TOKEN_MONITOR_DEV_MODE=1일 때만 표시됩니다. 검토된 이름, 닉네임, 이메일은 계정 구분을 위해 표시할 수 있으며, 토큰, credential contents, provider-internal account ID, raw provider payload는 표시하지 않습니다.
+      </p>
+
+      <section className="developer-section">
+        <h2>개발 환경 상태</h2>
+        <article className="developer-card developer-parser-card">
+          <dl className="developer-dl">
+            <div><dt>개발자 모드</dt><dd>{diagnostics?.environment.enabled ? "켜짐" : "꺼짐"}</dd></div>
+            <div><dt>설정 출처</dt><dd>{formatDeveloperEnvSource(diagnostics?.environment.source)}</dd></div>
+            <div><dt>환경 파일</dt><dd>{diagnostics?.environment.loadedFileName ?? "없음"}</dd></div>
+            <div><dt>확인 후보</dt><dd>{diagnostics?.environment.checkedPathCount ?? 0}개</dd></div>
+            <div><dt>진단 소요</dt><dd>{diagnostics?.totalDurationMs != null ? `${diagnostics.totalDurationMs}ms` : "미측정"}</dd></div>
+            <div><dt>갱신 시각</dt><dd>{diagnostics?.generatedAt ? formatTime(diagnostics.generatedAt) : "없음"}</dd></div>
+          </dl>
+          {diagnostics?.cacheSummary ? (
+            <div className="developer-field-list">
+              <span>Codex: {diagnostics.cacheSummary.codex}</span>
+              <span>Claude: {diagnostics.cacheSummary.claude}</span>
+              <span>Gemini: {diagnostics.cacheSummary.gemini}</span>
+              <span>CLI: {diagnostics.cacheSummary.cliSession}</span>
+            </div>
+          ) : null}
+        </article>
+      </section>
+
+      <section className="developer-section">
+        <h2>일반 사용자 전제조건</h2>
+        <div className="developer-grid">
+          {(diagnostics?.providers ?? []).map((provider) => (
+            <article className="developer-card" key={provider.id}>
+              <h3>{provider.name}</h3>
+              <DeveloperProviderSummary provider={providerSummaries.get(provider.id)} />
+              <ul>
+                {provider.userPrerequisites.map((item) => (
+                  <li key={item}>{item}</li>
+                ))}
+              </ul>
+            </article>
+          ))}
+        </div>
+      </section>
+
+      <section className="developer-section">
+        <h2>개발 테스트 결과</h2>
+        <div className="developer-grid">
+          {(diagnostics?.providers ?? []).map((provider) => (
+            <article className="developer-card" key={provider.id}>
+              <h3>{provider.name}</h3>
+              <DeveloperProviderSummary provider={providerSummaries.get(provider.id)} />
+              <div className="developer-check-list">
+                {provider.checks.map((check) => (
+                  <div className="developer-check" key={`${provider.id}-${check.method}`}>
+                    <span className={`developer-status ${check.status}`}>{formatDeveloperStatus(check.status)}</span>
+                    <strong>{check.method}</strong>
+                    <p>{check.detail}</p>
+                  </div>
+                ))}
+              </div>
+              {provider.id === "gemini" ? <GeminiParserDiagnostics diagnostics={diagnostics} /> : null}
+            </article>
+          ))}
+        </div>
+      </section>
+
+      <section className="developer-section">
+        <h2>현재 대시보드 표시 상태</h2>
+        <div className="developer-grid">
+          {providers.map((provider) => (
+            <article className="developer-card" key={provider.id}>
+              <h3>{provider.name}</h3>
+              <dl className="developer-dl">
+                <div><dt>상태</dt><dd>{provider.status}</dd></div>
+                <div><dt>버튼</dt><dd>{provider.canLogin ? provider.actionLabel ?? "표시됨" : provider.id === "gemini" ? "Gemini Apps 버튼 표시" : "없음"}</dd></div>
+                <div><dt>상세</dt><dd>{provider.detail}</dd></div>
+                <div><dt>안내</dt><dd>{provider.issues?.length ?? 0}개</dd></div>
+              </dl>
+              <div className="developer-field-list">
+                {(provider.fields ?? defaultProviderFields(provider)).map((field) => (
+                  <span key={field.label}>{field.label}: {field.value}</span>
+                ))}
+              </div>
+            </article>
+          ))}
+        </div>
+      </section>
+    </section>
+  );
+}
+
+function DeveloperProviderSummary({ provider }: { provider: ProviderUsage | undefined }) {
+  if (!provider) {
+    return null;
+  }
+
+  return (
+    <dl className="developer-provider-summary">
+      <div><dt>서비스</dt><dd>{provider.source}</dd></div>
+      <div><dt>이름</dt><dd>{provider.name}</dd></div>
+      <div><dt>플랜</dt><dd>{provider.plan}</dd></div>
+      <div><dt>로그인</dt><dd>{provider.session}</dd></div>
+    </dl>
+  );
+}
+
+function GeminiParserDiagnostics({ diagnostics }: { diagnostics: DeveloperDiagnostics | null }) {
+  if (!diagnostics?.geminiParser) {
+    return <p className="developer-inline-note">Gemini 파싱 진단 결과를 아직 읽지 못했습니다.</p>;
+  }
+
+  const parser = diagnostics.geminiParser;
+  return (
+    <div className="developer-parser-inline">
+      <h4>Gemini 파싱 상태</h4>
+      <dl className="developer-dl">
+        <div><dt>웹 로그인</dt><dd>{parser.sessionLoggedIn ? "확인됨" : "미확인"}</dd></div>
+        <div><dt>캐시</dt><dd>{parser.cacheAvailable ? "있음" : "없음"}</dd></div>
+        <div><dt>플랜</dt><dd>{parser.planParsed ? "파싱됨" : "미확인"}</dd></div>
+        <div><dt>5시간</dt><dd>{parser.fiveHourParsed ? "파싱됨" : "미확인"}</dd></div>
+        <div><dt>주간</dt><dd>{parser.weeklyParsed ? "파싱됨" : "미확인"}</dd></div>
+        <div><dt>최근 갱신</dt><dd>{parser.updatedAt ? formatTime(parser.updatedAt) : "없음"}</dd></div>
+        <div><dt>파서 디버그</dt><dd>{parser.debugUpdatedAt ? formatTime(parser.debugUpdatedAt) : "없음"}</dd></div>
+        <div><dt>사용량 단서</dt><dd>{parser.usageDetected ? "감지됨" : "미감지"}</dd></div>
+        <div><dt>퍼센트 후보</dt><dd>{parser.percentCandidates.length > 0 ? parser.percentCandidates.join(", ") : "없음"}</dd></div>
+        <div><dt>상세</dt><dd>{parser.detail ?? "표시 가능한 파싱 상세 없음"}</dd></div>
+      </dl>
+      {parser.snippets.length > 0 ? (
+        <div className="developer-snippet-list" aria-label="Gemini parser structured markers">
+          {parser.snippets.slice(0, 4).map((snippet) => (
+            <p key={snippet}>{snippet}</p>
+          ))}
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
+function formatDeveloperStatus(status: "success" | "failed" | "skipped") {
+  if (status === "success") {
+    return "성공";
+  }
+  if (status === "skipped") {
+    return "대기";
+  }
+  return "실패";
+}
+
+function formatDeveloperEnvSource(source: DeveloperDiagnostics["environment"]["source"] | undefined) {
+  if (source === "process") {
+    return "프로세스 환경변수";
+  }
+  if (source === "env-file") {
+    return ".env 파일";
+  }
+  return "기본값";
 }
 
 function OverlayApp() {
@@ -1019,6 +1631,9 @@ function filterProviderFields(fields: ProviderField[], display: ReturnType<typeo
     if (field.kind === "plan") {
       return display.showPlan;
     }
+    if (field.kind === "session") {
+      return display.showSession;
+    }
     if (field.kind === "usage") {
       return display.showUsed;
     }
@@ -1095,6 +1710,7 @@ function buildCodexProvider(usage: CodexUsageResult | null, sessions: CliSession
       remaining: "확인 중",
       reset: "확인 중",
       fields: [
+        { label: "로그인", value: "확인 중", kind: "session" },
         { label: "플랜", value: "확인 중", kind: "plan" },
         { label: "5시간", value: "확인 중", kind: "quota" },
         { label: "주간", value: "확인 중", kind: "quota" }
@@ -1104,46 +1720,102 @@ function buildCodexProvider(usage: CodexUsageResult | null, sessions: CliSession
   }
 
   if (!usage.ok) {
+    const login = formatAccountLogin(sessions?.codex.account?.email, formatSession(sessions?.codex));
+    const issue = getCodexUserIssue(usage.errorCode);
     return {
       id: "codex",
       name: "ChatGPT",
       source: "OpenAI",
       status: "error",
       plan: "확인 불가",
-      session: formatSession(sessions?.codex),
+      account: sessions?.codex.account?.email ?? undefined,
+      session: login,
       used: "확인 불가",
       remaining: "확인 불가",
       reset: "확인 불가",
       fields: [
+        { label: "로그인", value: login, kind: "session" },
         { label: "플랜", value: "확인 불가", kind: "plan" },
         { label: "5시간", value: "확인 불가", kind: "quota" },
         { label: "주간", value: "확인 불가", kind: "quota" }
       ],
-      detail: usage.error
+      detail: usage.error,
+      canConfigureCodex: issue.openSettings,
+      issues: [{ reason: issue.title, steps: [issue.description] }]
     };
   }
 
+  const accountEmail = usage.account?.email ?? sessions?.codex.account?.email ?? null;
+  const login = formatAccountLogin(accountEmail, formatSession(sessions?.codex));
   return {
     id: "codex",
     name: "ChatGPT",
     source: "OpenAI",
     status: "live",
     plan: usage.planType ?? "로그인됨",
-    session: formatSession(sessions?.codex),
-    used: formatWindows(usage.primary, usage.secondary, "used"),
-    remaining: formatWindows(usage.primary, usage.secondary, "remaining"),
-    reset: formatResetWindows(usage.primary, usage.secondary),
+    account: accountEmail ?? undefined,
+    session: login,
+    used: formatCodexWindows(usage, "used"),
+    remaining: formatCodexWindows(usage, "remaining"),
+    reset: formatCodexResetWindows(usage),
     fields: [
+      { label: "로그인", value: login, kind: "session" },
       { label: "플랜", value: usage.planType ?? "로그인됨", kind: "plan" },
-      { label: "5시간", value: formatCodexWindowSummary(usage.primary), kind: "quota" },
-      { label: "주간", value: formatCodexWindowSummary(usage.secondary), kind: "quota" }
+      { label: "5시간", value: formatCodexWindowSummary(usage.fiveHour, "현재 한도 정보 없음"), kind: "quota" },
+      { label: "주간", value: formatCodexWindowSummary(usage.weekly), kind: "quota" },
+      ...usage.otherWindows.map((window) => ({ label: window.label, value: formatCodexWindowSummary(window), kind: "quota" as const }))
     ],
     detail: `최근 갱신 ${formatTime(usage.updatedAt)}`
   };
 }
 
+function getCodexUserIssue(errorCode: Extract<CodexUsageResult, { ok: false }>["errorCode"]) {
+  if (errorCode === "desktop-not-installed") {
+    return {
+      title: "Codex Desktop이 필요합니다.",
+      description: "Codex Desktop을 설치하고 ChatGPT 계정으로 로그인한 뒤 다시 확인해 주세요.",
+      openSettings: false
+    };
+  }
+  if (errorCode === "executable-not-found") {
+    return {
+      title: "Codex 실행 파일을 찾지 못했습니다.",
+      description: "설정에서 Codex Desktop 경로를 확인해 주세요.",
+      openSettings: true
+    };
+  }
+  if (errorCode === "invalid-configured-path" || errorCode === "access-denied") {
+    return {
+      title: "설정된 Codex 경로를 사용할 수 없습니다.",
+      description: "설정에서 다른 경로를 선택하거나 자동 설정으로 복원해 주세요.",
+      openSettings: true
+    };
+  }
+  if (errorCode === "login-required") {
+    return {
+      title: "Codex 로그인이 필요합니다.",
+      description: "Codex Desktop에서 ChatGPT 계정으로 로그인한 뒤 다시 확인해 주세요.",
+      openSettings: false
+    };
+  }
+  if (errorCode === "app-server-start-failed") {
+    return {
+      title: "Codex Desktop에 연결하지 못했습니다.",
+      description: "Codex Desktop을 한 번 실행하거나 최신 버전으로 업데이트한 뒤 다시 시도해 주세요.",
+      openSettings: true
+    };
+  }
+  return {
+    title: "사용량을 일시적으로 확인할 수 없습니다.",
+    description: "잠시 후 다시 시도하거나 공식 사용량 대시보드에서 확인해 주세요.",
+    openSettings: false
+  };
+}
+
 function buildClaudeProvider(usage: ClaudeUsageResult | null, sessions: CliSessionResult | null): ProviderUsage {
   const canLogin = isClaudeCliLoginMissing(sessions);
+  const accountEmail = sessions?.claude.account?.email ?? null;
+  const login = formatAccountLogin(accountEmail, formatSession(sessions?.claude));
 
   if (usage == null) {
     return {
@@ -1157,6 +1829,7 @@ function buildClaudeProvider(usage: ClaudeUsageResult | null, sessions: CliSessi
       remaining: "확인 중",
       reset: "확인 중",
       fields: [
+        { label: "로그인", value: "확인 중", kind: "session" },
         { label: "플랜", value: "확인 중", kind: "plan" },
         { label: "5시간", value: "확인 중", kind: "quota" },
         { label: "주간", value: "확인 중", kind: "quota" }
@@ -1174,11 +1847,13 @@ function buildClaudeProvider(usage: ClaudeUsageResult | null, sessions: CliSessi
       source: "Anthropic",
       status: "error",
       plan: "확인 불가",
-      session: formatSession(sessions?.claude),
+      account: accountEmail ?? undefined,
+      session: login,
       used: "확인 불가",
       remaining: "확인 불가",
       reset: "확인 불가",
       fields: [
+        { label: "로그인", value: login, kind: "session" },
         { label: "플랜", value: "확인 불가", kind: "plan" },
         { label: "5시간", value: "확인 불가", kind: "quota" },
         { label: "주간", value: "확인 불가", kind: "quota" }
@@ -1208,11 +1883,13 @@ function buildClaudeProvider(usage: ClaudeUsageResult | null, sessions: CliSessi
     source: "Anthropic",
     status: "live",
     plan: usage.planType ?? "로컬 로그",
-    session: formatSession(sessions?.claude),
+    account: accountEmail ?? undefined,
+    session: login,
     used: usedLabel,
     remaining: remainingLabel,
     reset: resetLabel,
     fields: [
+      { label: "로그인", value: login, kind: "session" },
       { label: "플랜", value: usage.planType ?? "로컬 로그", kind: "plan" },
       { label: "5시간", value: formatClaudeWindowSummary(usage.oauth?.fiveHour ?? null, usage.windows.fiveHour), kind: "quota" },
       { label: "주간", value: formatClaudeWindowSummary(usage.oauth?.sevenDay ?? null, usage.windows.sevenDay), kind: "quota" }
@@ -1236,6 +1913,7 @@ function buildGeminiProvider(usage: GeminiUsageResult | null): ProviderUsage {
       remaining: "확인 중",
       reset: "확인 중",
       fields: [
+        { label: "로그인", value: "확인 중", kind: "session" },
         { label: "플랜", value: "확인 중", kind: "plan" },
         { label: "Gemini 5시간", value: "확인 중", kind: "quota" },
         { label: "Gemini 주간", value: "확인 중", kind: "quota" },
@@ -1260,6 +1938,7 @@ function buildGeminiProvider(usage: GeminiUsageResult | null): ProviderUsage {
       remaining: "확인 불가",
       reset: "확인 불가",
       fields: [
+        { label: "로그인", value: formatGeminiLoginSummary(usage), kind: "session" },
         { label: "플랜", value: planLabel, kind: "plan" },
         { label: "Gemini 5시간", value: formatGeminiAppsWebUsageSummary(usage.geminiApps?.fiveHour ?? null), kind: "quota" },
         { label: "Gemini 주간", value: formatGeminiAppsWebUsageSummary(usage.geminiApps?.weekly ?? null), kind: "quota" },
@@ -1276,6 +1955,7 @@ function buildGeminiProvider(usage: GeminiUsageResult | null): ProviderUsage {
   const sourceLabel = formatAntigravitySource(usage.source);
   const planLabel = usage.geminiApps?.plan ?? usage.planType ?? "확인 필요";
   const promptCredits = formatPromptCredits(usage.promptCredits);
+  const login = formatAccountLogin(usage.account?.email, formatGeminiLoginSummary(usage));
 
   return {
     id: "gemini",
@@ -1283,11 +1963,13 @@ function buildGeminiProvider(usage: GeminiUsageResult | null): ProviderUsage {
     source: "Google",
     status: "live",
     plan: planLabel,
-    session: sourceLabel,
+    account: usage.account?.email ?? undefined,
+    session: login,
     used: formatGeminiWindows(antigravityFiveHourWindow, null, null, "used"),
     remaining: formatGeminiWindows(antigravityFiveHourWindow, null, null, "remaining"),
     reset: formatGeminiResets(antigravityFiveHourWindow, null, null),
     fields: [
+      { label: "로그인", value: login, kind: "session" },
       { label: "플랜", value: planLabel, kind: "plan" },
       { label: "Gemini 5시간", value: formatGeminiAppsWebUsageSummary(usage.geminiApps?.fiveHour ?? null), kind: "quota" },
       { label: "Gemini 주간", value: formatGeminiAppsWebUsageSummary(usage.geminiApps?.weekly ?? null), kind: "quota" },
@@ -1302,6 +1984,14 @@ function formatGeminiDetail(geminiAppsUpdatedAt: string | null, parsedGeminiApps
   const updateDetail = geminiAppsUpdatedAt ? `Gemini Apps 최근 갱신 ${formatTime(geminiAppsUpdatedAt)}` : "Gemini Apps Usage Limits 연동 필요";
   const parsedDetail = parsedGeminiAppsDetail ? ` / ${parsedGeminiAppsDetail}` : "";
   return `${updateDetail}${parsedDetail} / Antigravity ${antigravitySource} 기준 최근 갱신 ${formatTime(antigravityUpdatedAt)}`;
+}
+
+function formatGeminiLoginSummary(usage: GeminiUsageResult) {
+  const geminiWeb = usage.geminiAppsSession.loggedIn ? "Gemini 웹 로그인됨" : "Gemini 웹 로그아웃";
+  if (!usage.ok) {
+    return `${geminiWeb} / Antigravity 확인 필요`;
+  }
+  return `${geminiWeb} / Antigravity ${formatAntigravitySource(usage.source)}`;
 }
 
 function buildGeminiIssues(geminiApps: GeminiAppsUsage | null, antigravityFiveHourWindow: GeminiUsageWindow | null): ProviderIssue[] {
@@ -1360,6 +2050,7 @@ function makeCodexError(error: string): CodexUsageResult {
   return {
     ok: false,
     source: "codex-app-server",
+    errorCode: "usage-read-failed",
     error,
     updatedAt: new Date().toISOString()
   };
@@ -1395,20 +2086,28 @@ function formatSession(session: CliSessionResult["codex"] | undefined) {
   return session.loggedIn ? `로그인됨${session.authMethod ? ` (${session.authMethod})` : ""}` : "로그아웃";
 }
 
-function formatWindows(primary: CodexUsageWindow | null, secondary: CodexUsageWindow | null, mode: "used" | "remaining") {
+function formatAccountLogin(email: string | null | undefined, fallback: string) {
+  return email ?? fallback;
+}
+
+function formatCodexWindows(usage: Extract<CodexUsageResult, { ok: true }>, mode: "used" | "remaining") {
   const valueKey = mode === "used" ? "usedPercent" : "remainingPercent";
   const values = [
-    primary ? `5시간 ${primary[valueKey]}%` : null,
-    secondary ? `주간 ${secondary[valueKey]}%` : null
+    usage.fiveHour ? `5시간 ${usage.fiveHour[valueKey]}%` : null,
+    usage.weekly ? `주간 ${usage.weekly[valueKey]}%` : null,
+    ...usage.otherWindows.map((window) => `${window.label} ${window[valueKey]}%`)
   ].filter(Boolean);
 
   return values.length > 0 ? values.join(" / ") : "데이터 없음";
 }
 
-function formatResetWindows(primary: CodexUsageWindow | null, secondary: CodexUsageWindow | null) {
+function formatCodexResetWindows(usage: Extract<CodexUsageResult, { ok: true }>) {
   const values = [
-    primary?.resetsAt ? `5시간 ${formatReset(primary.resetsAt)}` : null,
-    secondary?.resetsAt ? `주간 ${formatReset(secondary.resetsAt)}` : null
+    usage.fiveHour?.resetsAt ? `5시간 ${formatReset(usage.fiveHour.resetsAt)}` : null,
+    usage.weekly?.resetsAt ? `주간 ${formatReset(usage.weekly.resetsAt)}` : null,
+    ...usage.otherWindows
+      .filter((window) => Boolean(window.resetsAt))
+      .map((window) => `${window.label} ${formatReset(window.resetsAt!)}`)
   ].filter(Boolean);
 
   return values.length > 0 ? values.join(" / ") : "데이터 없음";
@@ -1444,9 +2143,9 @@ function formatGeminiWindows(primary: GeminiUsageWindow | null, secondary: Gemin
   return values.length > 0 ? values.join(" / ") : "데이터 없음";
 }
 
-function formatCodexWindowSummary(window: CodexUsageWindow | null) {
+function formatCodexWindowSummary(window: CodexUsageWindow | null, missingLabel = "남은 사용량 데이터 없음") {
   if (!window) {
-    return "남은 사용량 데이터 없음";
+    return missingLabel;
   }
 
   const reset = window.resetsAt ? formatReset(window.resetsAt) : "초기화 시간 없음";

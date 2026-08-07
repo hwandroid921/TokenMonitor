@@ -5,6 +5,7 @@ import https from "node:https";
 import os from "node:os";
 import path from "node:path";
 import type { RequestOptions } from "node:https";
+import { makeAccountIdentity, readAccountIdentity, type AccountIdentity } from "./account-identity.js";
 import { readGeminiAppsSessionStatus, readGeminiAppsUsageCache, type GeminiAppsSessionStatus, type GeminiAppsUsage } from "./gemini-apps-usage.js";
 
 // Cached once per process — Gemini CLI install location doesn't change at runtime.
@@ -72,7 +73,7 @@ export type GeminiUsageResult =
       ok: true;
       source: AntigravityUsageSource;
       planType: string | null;
-      accountEmail: string | null;
+      account: AccountIdentity | null;
       promptCredits: PromptCredits | null;
       geminiApps: GeminiAppsUsage | null;
       geminiAppsSession: GeminiAppsSessionStatus;
@@ -141,7 +142,7 @@ export async function getGeminiUsage(): Promise<GeminiUsageResult> {
       ok: true,
       source: "gemini-cli-oauth",
       planType: planFromCodeAssist(assist, claims.hostedDomain),
-      accountEmail: null,
+      account: claims.account,
       promptCredits: null,
       geminiApps: readGeminiAppsUsageCache(),
       geminiAppsSession: readGeminiAppsSessionStatus(),
@@ -152,7 +153,7 @@ export async function getGeminiUsage(): Promise<GeminiUsageResult> {
       updatedAt: new Date().toISOString()
     };
   } catch (error) {
-    return makeError(error instanceof Error ? error.message : "Gemini 사용량을 읽을 수 없습니다.");
+    return makeError("Gemini OAuth 사용량을 읽을 수 없습니다.");
   }
 }
 
@@ -160,7 +161,7 @@ function makeError(error: string, source: AntigravityUsageSource = "gemini-cli-o
   return {
     ok: false,
     source,
-    error,
+    error: sanitizeErrorMessage(error),
     geminiApps: readGeminiAppsUsageCache(),
     geminiAppsSession: readGeminiAppsSessionStatus(),
     updatedAt: new Date().toISOString()
@@ -196,7 +197,7 @@ async function getAntigravityLocalUsage(): Promise<GeminiUsageResult> {
       ok: true,
       source: "antigravity-local",
       planType: normalizeGeminiPlan(readAntigravityPlan(payload)) ?? "확인 필요",
-      accountEmail: null,
+      account: readAntigravityAccountIdentity(payload),
       promptCredits: parseLocalPromptCredits(payload),
       geminiApps: readGeminiAppsUsageCache(),
       geminiAppsSession: readGeminiAppsSessionStatus(),
@@ -207,7 +208,7 @@ async function getAntigravityLocalUsage(): Promise<GeminiUsageResult> {
       updatedAt: new Date().toISOString()
     };
   } catch (error) {
-    return makeError(error instanceof Error ? error.message : "Antigravity local usage probe failed.", "antigravity-local");
+    return makeError("Antigravity local usage probe failed.", "antigravity-local");
   }
 }
 
@@ -425,7 +426,7 @@ function runAntigravityUsageCli(args: string[]): Promise<string> {
         resolve(stdout);
         return;
       }
-      reject(new Error(stderr.trim() || stdout.trim() || `antigravity-usage exited with ${code}`));
+      reject(new Error(`antigravity-usage exited with ${code}`));
     });
   });
 }
@@ -842,12 +843,12 @@ async function getAntigravityCliUsage(method: "google" | "auto"): Promise<Gemini
     }
 
     const resolvedSource: AntigravityUsageSource = readString(snapshot.method) === "google" ? "antigravity-cli-google" : "antigravity-cli-local";
-    const planType = await readGeminiOauthPlanType();
+    const profile = await readGeminiOauthProfile();
     return {
       ok: true,
       source: resolvedSource,
-      planType,
-      accountEmail: null,
+      planType: profile.planType,
+      account: profile.account,
       promptCredits: parsePromptCredits(snapshot.promptCredits),
       geminiApps: readGeminiAppsUsageCache(),
       geminiAppsSession: readGeminiAppsSessionStatus(),
@@ -858,28 +859,31 @@ async function getAntigravityCliUsage(method: "google" | "auto"): Promise<Gemini
       updatedAt: readResetTime(snapshot.timestamp) ?? new Date().toISOString()
     };
   } catch (error) {
-    return makeError(error instanceof Error ? sanitizeErrorMessage(error.message) : "antigravity-usage CLI 사용량을 읽을 수 없습니다.", source);
+    return makeError("antigravity-usage CLI 사용량을 읽을 수 없습니다.", source);
   }
 }
 
-async function readGeminiOauthPlanType(): Promise<string> {
+async function readGeminiOauthProfile(): Promise<{ planType: string; account: AccountIdentity | null }> {
   try {
     const authType = readGeminiAuthType();
     if (authType === "api-key" || authType === "vertex-ai") {
-      return "확인 필요";
+      return { planType: "확인 필요", account: null };
     }
 
     const credentials = readGeminiCredentials();
     if (!credentials) {
-      return "확인 필요";
+      return { planType: "확인 필요", account: null };
     }
 
     const accessToken = await getValidAccessToken(credentials);
     const claims = parseJwtClaims(readString(credentials.idToken ?? credentials.id_token));
     const assist = await loadCodeAssist(accessToken);
-    return planFromCodeAssist(assist, claims.hostedDomain);
+    return {
+      planType: planFromCodeAssist(assist, claims.hostedDomain),
+      account: claims.account
+    };
   } catch {
-    return "확인 필요";
+    return { planType: "확인 필요", account: null };
   }
 }
 
@@ -1035,9 +1039,10 @@ function readAntigravityPlan(value: unknown) {
   return readString(userTier?.preferredName ?? userTier?.name ?? planInfo?.preferredName ?? planInfo?.planDisplayName ?? planInfo?.displayName ?? planInfo?.planName ?? planInfo?.planShortName);
 }
 
-function readAntigravityEmail(value: unknown) {
+function readAntigravityAccountIdentity(value: unknown) {
   const userStatus = readNestedRecord(value, ["userStatus"]);
-  return readString(userStatus?.email);
+  const user = readNestedRecord(userStatus, ["user"]) ?? readNestedRecord(userStatus, ["account"]) ?? userStatus;
+  return readAccountIdentity(user, "antigravity-local");
 }
 
 function readNestedRecord(value: unknown, pathParts: string[]) {
@@ -1051,20 +1056,34 @@ function readNestedRecord(value: unknown, pathParts: string[]) {
   return current && typeof current === "object" ? current as Record<string, unknown> : null;
 }
 
-function parseJwtClaims(token: string | null): { email: string | null; hostedDomain: string | null } {
+function parseJwtClaims(token: string | null): { hostedDomain: string | null; account: AccountIdentity | null } {
   if (!token) {
-    return { email: null, hostedDomain: null };
+    return { hostedDomain: null, account: null };
   }
 
   try {
     const payload = token.split(".")[1];
-    const decoded = JSON.parse(Buffer.from(payload, "base64url").toString("utf8")) as { email?: string; hd?: string };
+    const decoded = JSON.parse(Buffer.from(payload, "base64url").toString("utf8")) as {
+      hd?: string;
+      name?: string;
+      email?: string;
+      nickname?: string;
+      preferred_username?: string;
+    };
     return {
-      email: typeof decoded.email === "string" ? decoded.email : null,
-      hostedDomain: typeof decoded.hd === "string" ? decoded.hd : null
+      hostedDomain: typeof decoded.hd === "string" ? decoded.hd : null,
+      account: makeAccountIdentity(
+        {
+          name: decoded.name,
+          nickname: decoded.nickname,
+          preferredUsername: decoded.preferred_username,
+          email: decoded.email
+        },
+        "gemini-cli-oauth"
+      )
     };
   } catch {
-    return { email: null, hostedDomain: null };
+    return { hostedDomain: null, account: null };
   }
 }
 

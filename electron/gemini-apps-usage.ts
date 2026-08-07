@@ -17,7 +17,7 @@ export type GeminiAppsUsage = {
   detail: string | null;
 };
 
-type GeminiAppsParseDebug = {
+export type GeminiAppsParseDebug = {
   updatedAt: string;
   percentCandidates: string[];
   snippets: string[];
@@ -231,6 +231,30 @@ export function writeGeminiAppsParseDebug(rawText: string) {
   fs.writeFileSync(getParseDebugPath(), JSON.stringify(buildParseDebug(rawText), null, 2), "utf8");
 }
 
+export function readGeminiAppsParseDebug(): GeminiAppsParseDebug | null {
+  try {
+    const parsed = JSON.parse(fs.readFileSync(getParseDebugPath(), "utf8")) as Partial<GeminiAppsParseDebug>;
+    const safeDebug = {
+      updatedAt: typeof parsed.updatedAt === "string" ? parsed.updatedAt : new Date().toISOString(),
+      percentCandidates: Array.isArray(parsed.percentCandidates)
+        ? parsed.percentCandidates.filter((value): value is string => typeof value === "string").slice(0, 20)
+        : [],
+      snippets: Array.isArray(parsed.snippets)
+        ? parsed.snippets.filter((value): value is string => typeof value === "string" && value.startsWith("keyword:")).slice(0, 12)
+        : [],
+      usageDetected: Boolean(parsed.usageDetected)
+    };
+    const hasLegacyRawSnippets = Array.isArray(parsed.snippets)
+      && parsed.snippets.some((value) => typeof value === "string" && !value.startsWith("keyword:"));
+    if (hasLegacyRawSnippets) {
+      fs.writeFileSync(getParseDebugPath(), JSON.stringify(safeDebug, null, 2), "utf8");
+    }
+    return safeDebug;
+  } catch {
+    return null;
+  }
+}
+
 export function writeGeminiAppsSessionStatus(status: GeminiAppsSessionStatus) {
   fs.mkdirSync(app.getPath("userData"), { recursive: true });
   fs.writeFileSync(getSessionPath(), JSON.stringify(status, null, 2), "utf8");
@@ -418,7 +442,7 @@ function formatParseDetail(debug: GeminiAppsParseDebug, plan: string | null) {
 function buildParseDebug(rawText: string): GeminiAppsParseDebug {
   const text = sanitizeDebugText(rawText.replace(/\s+/g, " ").trim());
   const percentCandidates = uniqueStrings(Array.from(text.matchAll(/[0-9]+(?:\.[0-9]+)?\s*%/g)).map((match) => match[0].replace(/\s+/g, ""))).slice(0, 20);
-  const snippets = buildKeywordSnippets(text, [
+  const snippets = buildKeywordMarkers(text, [
     "usage limits",
     "usage limit",
     "remaining",
@@ -443,17 +467,13 @@ function buildParseDebug(rawText: string): GeminiAppsParseDebug {
   };
 }
 
-function buildKeywordSnippets(text: string, keywords: string[]) {
+function buildKeywordMarkers(text: string, keywords: string[]) {
   const lower = text.toLowerCase();
-  const snippets: string[] = [];
-  for (const keyword of keywords) {
-    const index = lower.indexOf(keyword.toLowerCase());
-    if (index < 0) {
-      continue;
-    }
-    snippets.push(text.slice(Math.max(0, index - 120), index + 220));
-  }
-  return uniqueStrings(snippets).slice(0, 12);
+  return uniqueStrings(
+    keywords
+      .filter((keyword) => lower.includes(keyword.toLowerCase()))
+      .map((keyword) => `keyword:${keyword.toLowerCase()}`)
+  ).slice(0, 12);
 }
 
 function sanitizeDebugText(value: string) {

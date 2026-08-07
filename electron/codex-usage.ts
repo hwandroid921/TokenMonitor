@@ -1,12 +1,17 @@
-import { type ChildProcess, spawn } from "node:child_process";
+import { type ChildProcess, type ChildProcessWithoutNullStreams, spawn } from "node:child_process";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
+import { makeAccountIdentity, type AccountIdentity } from "./account-identity.js";
 
 export const activeChildProcesses = new Set<ChildProcess>();
 
 let _appVersion = "0.0.0";
+let _configuredExecutablePath: string | null = null;
 export function setAppVersion(version: string) { _appVersion = version; }
+export function setCodexExecutablePath(value: string | null) {
+  _configuredExecutablePath = value?.trim() || null;
+}
 
 export function registerChildProcess(child: ChildProcess) {
   activeChildProcesses.add(child);
@@ -53,6 +58,9 @@ type RpcAccountResponse = {
   account?: {
     type?: string;
     email?: string;
+    name?: string;
+    displayName?: string;
+    nickname?: string;
     planType?: string;
   } | null;
 };
@@ -77,14 +85,50 @@ export type CodexUsageWindow = {
   resetsAt: string | null;
 };
 
+export type CodexUsageErrorCode =
+  | "desktop-not-installed"
+  | "executable-not-found"
+  | "invalid-configured-path"
+  | "access-denied"
+  | "app-server-start-failed"
+  | "app-server-timeout"
+  | "login-required"
+  | "usage-read-failed"
+  | "unsupported-response";
+
+export type CodexExecutableSource =
+  | "manual"
+  | "environment"
+  | "local-direct"
+  | "local-versioned"
+  | "windows-apps"
+  | "path"
+  | "none";
+
+export type CodexPathStatus = {
+  configuredPath: string | null;
+  activePath: string | null;
+  source: CodexExecutableSource;
+  desktopInstalled: boolean;
+  executableFound: boolean;
+  configuredPathValid: boolean | null;
+  connection: "unchecked" | "connected" | "login-required" | "failed";
+  detail: string;
+  checkedAt: string;
+};
+
 export type CodexUsageSnapshot = {
   ok: true;
   source: "codex-app-server";
   accountType: string | null;
   planType: string | null;
   hasAccountEmail: boolean;
+  account: AccountIdentity | null;
   primary: CodexUsageWindow | null;
   secondary: CodexUsageWindow | null;
+  fiveHour: CodexUsageWindow | null;
+  weekly: CodexUsageWindow | null;
+  otherWindows: CodexUsageWindow[];
   credits: {
     hasCredits: boolean;
     unlimited: boolean;
@@ -98,6 +142,7 @@ export type CodexUsageResult =
   | {
       ok: false;
       source: "codex-app-server";
+      errorCode: CodexUsageErrorCode;
       error: string;
       updatedAt: string;
     };
@@ -106,12 +151,14 @@ class JsonRpcClient {
   private buffer = "";
   private nextId = 1;
   private readonly pending = new Map<number, (message: RpcMessage) => void>();
-  private readonly child = spawn(resolveCodexExecutable(), ["-s", "read-only", "-a", "untrusted", "app-server"], {
-    stdio: ["pipe", "pipe", "pipe"],
-    windowsHide: true
-  });
+  private readonly child: ChildProcessWithoutNullStreams;
 
-  constructor() {
+  constructor(executablePath?: string) {
+    const resolvedPath = executablePath ?? resolveCodexExecutable().path;
+    this.child = spawn(resolvedPath, ["-s", "read-only", "-a", "untrusted", "app-server"], {
+      stdio: ["pipe", "pipe", "pipe"],
+      windowsHide: true
+    });
     registerChildProcess(this.child);
     this.child.on("error", (error) => {
       for (const resolver of this.pending.values()) {
@@ -195,17 +242,20 @@ class JsonRpcClient {
   }
 }
 
-export async function getCodexUsage(): Promise<CodexUsageResult> {
+export async function getCodexUsage(executablePath?: string): Promise<CodexUsageResult> {
   let rpc: JsonRpcClient | null = null;
 
   try {
-    rpc = new JsonRpcClient();
+    rpc = new JsonRpcClient(executablePath);
     await rpc.request("initialize", { clientInfo: { name: "token-monitor", version: _appVersion } }, 12000);
     rpc.notify("initialized");
 
     const limitsResult = await rpc.request<RpcRateLimitsResponse>("account/rateLimits/read", {}, 6000);
     const accountResult = await rpc.request<RpcAccountResponse>("account/read", {}, 6000).catch(() => null);
     const rateLimits = limitsResult.rateLimits;
+    const primary = makeWindow(rateLimits?.primary ?? null);
+    const secondary = makeWindow(rateLimits?.secondary ?? null);
+    const classified = classifyWindows(primary, secondary);
 
     return {
       ok: true,
@@ -213,8 +263,12 @@ export async function getCodexUsage(): Promise<CodexUsageResult> {
       accountType: accountResult?.account?.type ?? null,
       planType: accountResult?.account?.planType ?? rateLimits?.planType ?? null,
       hasAccountEmail: Boolean(accountResult?.account?.email),
-      primary: makeWindow("5시간 한도", rateLimits?.primary ?? null),
-      secondary: makeWindow("이번 주 한도", rateLimits?.secondary ?? null),
+      account: makeAccountIdentity(accountResult?.account ?? {}, "codex-app-server"),
+      primary,
+      secondary,
+      fiveHour: classified.fiveHour,
+      weekly: classified.weekly,
+      otherWindows: classified.otherWindows,
       credits: makeCredits(rateLimits?.credits ?? null),
       updatedAt: new Date().toISOString()
     };
@@ -222,7 +276,8 @@ export async function getCodexUsage(): Promise<CodexUsageResult> {
     return {
       ok: false,
       source: "codex-app-server",
-      error: error instanceof Error ? error.message : "Codex 사용량을 읽을 수 없습니다.",
+      errorCode: classifyCodexError(error),
+      error: formatCodexError(error),
       updatedAt: new Date().toISOString()
     };
   } finally {
@@ -230,7 +285,98 @@ export async function getCodexUsage(): Promise<CodexUsageResult> {
   }
 }
 
-function makeWindow(label: string, value: RpcRateWindow | null): CodexUsageWindow | null {
+export async function validateCodexExecutablePath(candidate: string): Promise<{
+  ok: boolean;
+  connection: CodexPathStatus["connection"];
+  detail: string;
+}> {
+  const normalized = candidate.trim();
+  if (!path.isAbsolute(normalized)) {
+    return { ok: false, connection: "failed", detail: "전체 경로를 입력해 주세요." };
+  }
+  if (path.basename(normalized).toLowerCase() !== "codex.exe" || !isExecutableFile(normalized)) {
+    return { ok: false, connection: "failed", detail: "선택한 위치에서 codex.exe를 찾을 수 없습니다." };
+  }
+
+  const result = await getCodexUsage(normalized);
+  if (result.ok) {
+    return { ok: true, connection: "connected", detail: "Codex Desktop 연결을 확인했습니다." };
+  }
+  if (result.errorCode === "login-required") {
+    return { ok: true, connection: "login-required", detail: "실행 파일은 정상입니다. Codex Desktop 로그인이 필요합니다." };
+  }
+  return { ok: false, connection: "failed", detail: result.error };
+}
+
+export function getCodexPathStatus(connection: CodexPathStatus["connection"] = "unchecked", detail?: string): CodexPathStatus {
+  try {
+    const resolution = resolveCodexExecutable();
+    const configuredPathValid = _configuredExecutablePath ? isExecutableFile(_configuredExecutablePath) : null;
+    return {
+      configuredPath: _configuredExecutablePath,
+      activePath: resolution.path,
+      source: resolution.source,
+      desktopInstalled: resolution.desktopInstalled,
+      executableFound: true,
+      configuredPathValid,
+      connection,
+      detail: configuredPathValid === false && resolution.source !== "manual"
+        ? "사용자 지정 경로를 사용할 수 없어 자동 탐색 경로를 사용 중입니다."
+        : detail ?? "Codex 실행 파일을 확인했습니다.",
+      checkedAt: new Date().toISOString()
+    };
+  } catch (error) {
+    return {
+      configuredPath: _configuredExecutablePath,
+      activePath: null,
+      source: "none",
+      desktopInstalled: detectCodexDesktopInstallation(),
+      executableFound: false,
+      configuredPathValid: _configuredExecutablePath ? isExecutableFile(_configuredExecutablePath) : null,
+      connection: "failed",
+      detail: detail ?? formatCodexError(error),
+      checkedAt: new Date().toISOString()
+    };
+  }
+}
+
+function formatCodexError(error: unknown) {
+  const message = error instanceof Error ? error.message.toLowerCase() : "";
+  if (message.includes("codex desktop is not installed")) {
+    return "Codex Desktop이 필요합니다.";
+  }
+  if (message.includes("configured codex path is invalid")) {
+    return "설정된 Codex 경로를 사용할 수 없습니다.";
+  }
+  if (message.includes("eacces") || message.includes("access is denied") || message.includes("permission denied")) {
+    return "Codex 실행 파일을 시작할 수 없습니다.";
+  }
+  if (message.includes("login") || message.includes("unauthorized") || message.includes("authentication")) {
+    return "Codex Desktop 로그인이 필요합니다.";
+  }
+  if (message.includes("enoent") || message.includes("not found") || message.includes("cannot find")) {
+    return "Codex 실행 파일을 찾을 수 없습니다.";
+  }
+  if (message.includes("timeout") || message.includes("시간이 초과")) {
+    return "Codex app-server 응답 시간이 초과되었습니다.";
+  }
+  return "Codex app-server에서 사용량을 읽을 수 없습니다.";
+}
+
+function classifyCodexError(error: unknown): CodexUsageErrorCode {
+  const message = error instanceof Error ? error.message.toLowerCase() : "";
+  if (message.includes("codex desktop is not installed")) return "desktop-not-installed";
+  if (message.includes("configured codex path is invalid")) return "invalid-configured-path";
+  if (message.includes("enoent") || message.includes("not found") || message.includes("cannot find")) return "executable-not-found";
+  if (message.includes("eacces") || message.includes("access is denied") || message.includes("permission denied")) return "access-denied";
+  if (message.includes("timeout") || message.includes("시간이 초과")) return "app-server-timeout";
+  if (message.includes("login") || message.includes("unauthorized") || message.includes("authentication")) return "login-required";
+  if (message.includes("json") || message.includes("parse")) return "unsupported-response";
+  if (message.includes("spawn") || message.includes("exited") || message.includes("pipe")) return "app-server-start-failed";
+  return "usage-read-failed";
+}
+
+function makeWindow(value: RpcRateWindow | null): CodexUsageWindow | null {
   if (!value) {
     return null;
   }
@@ -238,11 +384,34 @@ function makeWindow(label: string, value: RpcRateWindow | null): CodexUsageWindo
   const usedPercent = clampPercent(value.usedPercent);
 
   return {
-    label,
+    label: makeWindowLabel(value.windowDurationMins ?? null),
     usedPercent,
     remainingPercent: clampPercent(100 - usedPercent),
     windowMinutes: value.windowDurationMins ?? null,
     resetsAt: value.resetsAt ? new Date(value.resetsAt * 1000).toISOString() : null
+  };
+}
+
+function makeWindowLabel(windowMinutes: number | null) {
+  if (windowMinutes === 300) return "5시간 한도";
+  if (windowMinutes === 10_080) return "주간 한도";
+  if (windowMinutes != null) return `${formatWindowDuration(windowMinutes)} 한도`;
+  return "추가 한도";
+}
+
+function formatWindowDuration(minutes: number) {
+  if (minutes % 10_080 === 0) return `${minutes / 10_080}주`;
+  if (minutes % 1_440 === 0) return `${minutes / 1_440}일`;
+  if (minutes % 60 === 0) return `${minutes / 60}시간`;
+  return `${minutes}분`;
+}
+
+function classifyWindows(primary: CodexUsageWindow | null, secondary: CodexUsageWindow | null) {
+  const windows = [primary, secondary].filter((value): value is CodexUsageWindow => Boolean(value));
+  return {
+    fiveHour: windows.find((value) => value.windowMinutes === 300) ?? null,
+    weekly: windows.find((value) => value.windowMinutes === 10_080) ?? null,
+    otherWindows: windows.filter((value) => value.windowMinutes !== 300 && value.windowMinutes !== 10_080)
   };
 }
 
@@ -262,13 +431,17 @@ function clampPercent(value: number) {
   return Math.min(100, Math.max(0, Math.round(value * 10) / 10));
 }
 
-function resolveCodexExecutable() {
+function resolveCodexExecutable(): { path: string; source: CodexExecutableSource; desktopInstalled: boolean } {
+  const desktopInstalled = detectCodexDesktopInstallation();
+  if (_configuredExecutablePath && isExecutableFile(_configuredExecutablePath)) {
+    return { path: _configuredExecutablePath, source: "manual", desktopInstalled };
+  }
+
   const configuredPath = process.env.CODEX_CLI_PATH?.trim();
   if (configuredPath) {
     if (isExecutableFile(configuredPath)) {
-      return configuredPath;
+      return { path: configuredPath, source: "environment", desktopInstalled };
     }
-    throw new Error(`CODEX_CLI_PATH is set but codex.exe was not found: ${configuredPath}`);
   }
 
   if (process.platform === "win32") {
@@ -276,31 +449,56 @@ function resolveCodexExecutable() {
     if (resolved) {
       return resolved;
     }
-    throw new Error("Codex CLI executable was not found. Install or run Codex, or set CODEX_CLI_PATH to codex.exe.");
+    if (_configuredExecutablePath) {
+      throw new Error("Configured Codex path is invalid.");
+    }
+    if (!desktopInstalled) {
+      throw new Error("Codex Desktop is not installed.");
+    }
+    throw new Error("Codex CLI executable was not found.");
   }
 
-  return "codex";
+  return { path: "codex", source: "path", desktopInstalled };
 }
 
-function resolveWindowsCodexExecutable() {
+function resolveWindowsCodexExecutable(): { path: string; source: CodexExecutableSource; desktopInstalled: boolean } | null {
+  const desktopInstalled = detectCodexDesktopInstallation();
   const localAppData = process.env.LOCALAPPDATA ?? path.join(os.homedir(), "AppData", "Local");
   const directPath = path.join(localAppData, "OpenAI", "Codex", "bin", "codex.exe");
   if (isExecutableFile(directPath)) {
-    return directPath;
+    return { path: directPath, source: "local-direct", desktopInstalled };
   }
 
   const localBin = path.join(localAppData, "OpenAI", "Codex", "bin");
   const localCandidate = findNewestCodexExecutableInSubdirs(localBin);
   if (localCandidate) {
-    return localCandidate;
+    return { path: localCandidate, source: "local-versioned", desktopInstalled };
   }
 
   const windowsAppsCandidate = findNewestCodexWindowsAppsExecutable();
   if (windowsAppsCandidate) {
-    return windowsAppsCandidate;
+    return { path: windowsAppsCandidate, source: "windows-apps", desktopInstalled };
   }
 
-  return findCommandOnPath("codex.exe") ?? findCommandOnPath("codex.cmd") ?? findCommandOnPath("codex");
+  const pathCandidate = findCommandOnPath("codex.exe") ?? findCommandOnPath("codex.cmd") ?? findCommandOnPath("codex");
+  return pathCandidate ? { path: pathCandidate, source: "path", desktopInstalled } : null;
+}
+
+function detectCodexDesktopInstallation() {
+  if (process.platform !== "win32") {
+    return true;
+  }
+  const localAppData = process.env.LOCALAPPDATA ?? path.join(os.homedir(), "AppData", "Local");
+  if (fs.existsSync(path.join(localAppData, "OpenAI", "Codex"))) {
+    return true;
+  }
+  const windowsAppsRoot = path.join(process.env.ProgramFiles ?? "C:\\Program Files", "WindowsApps");
+  try {
+    return fs.readdirSync(windowsAppsRoot, { withFileTypes: true })
+      .some((entry) => entry.isDirectory() && entry.name.startsWith("OpenAI.Codex_"));
+  } catch {
+    return false;
+  }
 }
 
 function findNewestCodexExecutableInSubdirs(root: string) {
