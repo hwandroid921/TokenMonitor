@@ -36,7 +36,7 @@ type ProviderUsage = {
 type ProviderField = {
   label: string;
   value: string;
-  kind: "identity" | "plan" | "quota" | "usage" | "remaining" | "reset";
+  kind: "identity" | "session" | "plan" | "quota" | "usage" | "remaining" | "reset";
 };
 
 type ProviderIssue = {
@@ -174,9 +174,6 @@ function App() {
       if (!startResult?.ok) {
         setClaudeLoginNotice(startResult?.detail ?? "Claude 연동에는 Node.js/npm 설치가 필요합니다.");
         await refreshUsage();
-        setIsGeminiAppsLoginPending(false);
-        setIsGeminiAppsLoginPending(false);
-        setIsGeminiPanelOpen(false);
         return;
       }
 
@@ -271,28 +268,6 @@ function App() {
         setIsGeminiAppsLoginPending(false);
       }
     }
-/*
-    setIsGeminiAppsLoginPending(true);
-    setGeminiAppsLoginNotice(null);
-    try {
-      const startResult = await window.tokenMonitor?.startGeminiAppsLogin();
-      if (!startResult?.ok) {
-        setGeminiAppsLoginNotice(startResult?.detail ?? "Gemini 로그인 창을 열 수 없습니다.");
-        return;
-      }
-
-      setGeminiAppsLoginNotice(startResult.detail ?? "Gemini 로그인 후 Usage Limits 화면이 보이면 자동으로 한도를 저장합니다.");
-      window.setTimeout(() => {
-        void refreshUsage();
-        setIsGeminiAppsLoginPending(false);
-      }, 5000);
-    } catch (error) {
-      setGeminiAppsLoginNotice(error instanceof Error ? error.message : "Gemini 로그인을 시작할 수 없습니다.");
-      setIsGeminiAppsLoginPending(false);
-    }
-  }
-*/
-
   }
 
   useEffect(() => {
@@ -886,6 +861,10 @@ function SettingsPanel({ settings, onChange }: { settings: OverlaySettings; onCh
 
                 <div className="check-list compact">
                   <label>
+                    <input type="checkbox" checked={item.showSession} onChange={(event) => updateProviderItem(id, { showSession: event.target.checked })} />
+                    계정 (마스킹 이메일)
+                  </label>
+                  <label>
                     <input type="checkbox" checked={item.showPlan} onChange={(event) => updateProviderItem(id, { showPlan: event.target.checked })} />
                     현재 플랜
                   </label>
@@ -1052,6 +1031,9 @@ function filterProviderFields(fields: ProviderField[], display: ReturnType<typeo
     if (field.kind === "identity") {
       return display.showSession;
     }
+    if (field.kind === "session") {
+      return display.showSession;
+    }
     if (field.kind === "usage") {
       return display.showUsed;
     }
@@ -1070,14 +1052,15 @@ function formatFieldValueForDisplay(field: ProviderField, display: ReturnType<ty
     return field.value;
   }
 
-  const match = field.value.match(/^남은 사용량\s+(.+?)\s+\/\s+초기화\s+(.+)$/);
+  const match = field.value.match(/^사용량\s+(.+?)\s+\/\s+잔여량\s+(.+?)\s+\/\s+초기화\s+(.+)$/);
   if (!match) {
     return field.value;
   }
 
   const parts = [
-    display.showRemaining ? `남은 사용량 ${match[1]}` : null,
-    display.showReset ? `초기화 ${match[2]}` : null
+    display.showUsed ? `사용량 ${match[1]}` : null,
+    display.showRemaining ? `잔여량 ${match[2]}` : null,
+    display.showReset ? `초기화 ${match[3]}` : null
   ].filter(Boolean);
 
   return parts.length > 0 ? parts.join(" / ") : field.value;
@@ -1085,7 +1068,8 @@ function formatFieldValueForDisplay(field: ProviderField, display: ReturnType<ty
 
 function formatOverlayValue(value: string) {
   return value
-    .replace(/^남은 사용량\s*/, "")
+    .replace(/^사용량\s*/, "사용 ")
+    .replace(/\s*\/\s*잔여량\s*/, " · 남음 ")
     .replace(/\s*\/\s*초기화\s*/, " · ")
     .replace("초기화 시간 없음", "reset 없음")
     .replace("남은 사용량 데이터 없음", "데이터 없음");
@@ -1251,7 +1235,7 @@ function buildClaudeProvider(usage: ClaudeUsageResult | null, sessions: CliSessi
     remaining: remainingLabel,
     reset: resetLabel,
     fields: [
-      { label: "로그인", value: sessionLabel, kind: "plan" },
+      { label: "로그인", value: sessionLabel, kind: "session" },
       ...(maskedEmail ? [{ label: "계정", value: maskedEmail, kind: "identity" as const }] : []),
       { label: "플랜", value: planLabel, kind: "plan" },
       { label: "주간", value: formatClaudeStatusLineWindowSummary(usage.sevenDay), kind: "quota" },
@@ -1509,13 +1493,13 @@ function formatCodexWindowSummary(window: CodexUsageWindow | null) {
   }
 
   const reset = window.resetsAt ? formatReset(window.resetsAt) : "초기화 시간 없음";
-  return `남은 사용량 ${window.remainingPercent}% / 초기화 ${reset}`;
+  return `사용량 ${window.usedPercent}% / 잔여량 ${window.remainingPercent}% / 초기화 ${reset}`;
 }
 
 function formatClaudeStatusLineWindowSummary(window: ClaudeUsageWindow | null) {
   if (window) {
     const reset = window.resetsAt ? formatReset(window.resetsAt) : "초기화 시간 없음";
-    return `남은 사용량 ${window.remainingPercent}% / 초기화 ${reset}`;
+    return `사용량 ${window.usedPercent}% / 잔여량 ${window.remainingPercent}% / 초기화 ${reset}`;
   }
 
   return "Claude Code에서 대화를 시작하면 확인됩니다";
@@ -1527,7 +1511,7 @@ function formatGeminiWindowSummary(window: GeminiUsageWindow | null) {
   }
 
   const reset = window.resetsAt ? formatReset(window.resetsAt) : "초기화 시간 없음";
-  return `남은 사용량 ${window.remainingPercent}% / 초기화 ${reset}`;
+  return `사용량 ${window.usedPercent}% / 잔여량 ${window.remainingPercent}% / 초기화 ${reset}`;
 }
 
 function formatGeminiAppsWebUsageSummary(window: GeminiAppsUsageWindow | null) {
@@ -1535,7 +1519,16 @@ function formatGeminiAppsWebUsageSummary(window: GeminiAppsUsageWindow | null) {
     return "남은 사용량 미연동 / 초기화 미연동";
   }
 
-  return `남은 사용량 ${window.remaining ?? "확인 필요"} / 초기화 ${window.reset ?? "확인 필요"}`;
+  const used = formatUsedFromRemaining(window.remaining);
+  return `사용량 ${used ?? "확인 필요"} / 잔여량 ${window.remaining ?? "확인 필요"} / 초기화 ${window.reset ?? "확인 필요"}`;
+}
+
+function formatUsedFromRemaining(remaining: string | null) {
+  const match = remaining?.match(/^([0-9]+(?:\.[0-9]+)?)%$/);
+  if (!match) {
+    return null;
+  }
+  return `${Math.max(0, Math.min(100, 100 - Number(match[1])))}%`;
 }
 
 function formatGeminiAppsUsageSummary(window: GeminiAppsUsageWindow | null) {

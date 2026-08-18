@@ -152,8 +152,8 @@ export async function getGeminiUsage(): Promise<GeminiUsageResult> {
       models,
       updatedAt: new Date().toISOString()
     };
-  } catch (error) {
-    return makeError(error instanceof Error ? error.message : "Gemini 사용량을 읽을 수 없습니다.");
+  } catch {
+    return makeError("Gemini 사용량을 읽을 수 없습니다. Gemini 또는 Antigravity 연결 상태를 확인하세요.");
   }
 }
 
@@ -207,8 +207,8 @@ async function getAntigravityLocalUsage(): Promise<GeminiUsageResult> {
       models,
       updatedAt: new Date().toISOString()
     };
-  } catch (error) {
-    return makeError(error instanceof Error ? error.message : "Antigravity local usage probe failed.", "antigravity-local");
+  } catch {
+    return makeError("Antigravity 로컬 사용량을 읽을 수 없습니다. Antigravity 실행 상태를 확인하세요.", "antigravity-local");
   }
 }
 
@@ -580,12 +580,6 @@ function ratioToPercent(value: number | null) {
   return clampPercent(value <= 1 ? value * 100 : value);
 }
 
-function sanitizeErrorMessage(value: string) {
-  return value
-    .replace(/[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/gi, "[redacted-email]")
-    .replace(/[A-Za-z0-9_\-]{35,}/g, "[redacted-token]");
-}
-
 function readGeminiAuthType() {
   try {
     const settings = JSON.parse(fs.readFileSync(path.join(os.homedir(), ".gemini", "settings.json"), "utf8")) as {
@@ -654,30 +648,7 @@ async function getValidAccessToken(credentials: GeminiOAuthCredentials) {
     throw new Error("Gemini OAuth token refresh 응답에 access token이 없습니다.");
   }
 
-  saveRefreshedCredentials(credentials, {
-    access_token: json.access_token,
-    id_token: json.id_token,
-    expires_in: json.expires_in
-  });
   return json.access_token;
-}
-
-function saveRefreshedCredentials(credentials: GeminiOAuthCredentials, refreshed: { access_token: string; id_token?: string; expires_in?: number }) {
-  const credentialsPath = path.join(os.homedir(), ".gemini", "oauth_creds.json");
-  const next: GeminiOAuthCredentials = {
-    ...credentials,
-    access_token: refreshed.access_token,
-    accessToken: credentials.accessToken ? refreshed.access_token : credentials.accessToken,
-    id_token: refreshed.id_token ?? credentials.id_token,
-    idToken: credentials.idToken ? refreshed.id_token ?? credentials.idToken : credentials.idToken,
-    expiry_date: Date.now() + (refreshed.expires_in ?? 3600) * 1000
-  };
-
-  try {
-    fs.writeFileSync(credentialsPath, JSON.stringify(next, null, 2));
-  } catch {
-    // A refreshed token is still usable for this request even if persisting fails.
-  }
 }
 
 async function findOAuthClient(): Promise<{ clientId: string; clientSecret: string } | null> {
@@ -858,8 +829,8 @@ async function getAntigravityCliUsage(method: "google" | "auto"): Promise<Gemini
       models,
       updatedAt: readResetTime(snapshot.timestamp) ?? new Date().toISOString()
     };
-  } catch (error) {
-    return makeError(error instanceof Error ? sanitizeErrorMessage(error.message) : "antigravity-usage CLI 사용량을 읽을 수 없습니다.", source);
+  } catch {
+    return makeError("Antigravity 사용량을 읽을 수 없습니다. CLI 로그인 또는 실행 상태를 확인하세요.", source);
   }
 }
 

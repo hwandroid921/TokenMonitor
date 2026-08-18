@@ -41,10 +41,6 @@ function getSessionPath() {
   return path.join(app.getPath("userData"), "gemini-apps-session.json");
 }
 
-function getParseDebugPath() {
-  return path.join(app.getPath("userData"), "gemini-apps-parse-debug.json");
-}
-
 export function readGeminiAppsSessionStatus(): GeminiAppsSessionStatus {
   try {
     const parsed = JSON.parse(fs.readFileSync(getSessionPath(), "utf8")) as GeminiAppsSessionStatus;
@@ -224,11 +220,6 @@ async function captureFromWindow(onCaptured: () => void) {
 export function writeGeminiAppsUsageCache(usage: GeminiAppsUsage) {
   fs.mkdirSync(app.getPath("userData"), { recursive: true });
   fs.writeFileSync(getCachePath(), JSON.stringify(usage, null, 2), "utf8");
-}
-
-export function writeGeminiAppsParseDebug(rawText: string) {
-  fs.mkdirSync(app.getPath("userData"), { recursive: true });
-  fs.writeFileSync(getParseDebugPath(), JSON.stringify(buildParseDebug(rawText), null, 2), "utf8");
 }
 
 export function writeGeminiAppsSessionStatus(status: GeminiAppsSessionStatus) {
@@ -497,7 +488,8 @@ function normalizeWindow(value: GeminiAppsUsageWindow | null, label: GeminiAppsU
 
 function isGeminiUrl(url: string) {
   try {
-    return new URL(url).hostname.endsWith("gemini.google.com");
+    const hostname = new URL(url).hostname;
+    return hostname === "gemini.google.com" || hostname.endsWith(".gemini.google.com");
   } catch {
     return false;
   }
@@ -506,7 +498,7 @@ function isGeminiUrl(url: string) {
 function isGoogleLoginUrl(url: string) {
   try {
     const hostname = new URL(url).hostname;
-    return hostname.endsWith("accounts.google.com") || hostname.endsWith("google.com");
+    return hostname === "accounts.google.com" || hostname.endsWith(".accounts.google.com");
   } catch {
     return false;
   }

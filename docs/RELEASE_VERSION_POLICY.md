@@ -64,15 +64,15 @@ Beta/prerelease versions may produce portable artifacts when the user explicitly
 
 Before `v1.0.0`, do not maintain a fixed version-by-version feature roadmap. When work is completed, decide whether it is patch, minor, or major according to the actual change and record the completed content in Release History.
 
-## Current Baseline
+## Current Release
 
 Current package version:
 
 ```text
-0.9.13
+1.0.0
 ```
 
-Baseline `v0.1.0` includes:
+`v1.0.0` is the first complete release. It includes:
 
 - ChatGPT quota display through the Codex Desktop local usage flow
 - Claude quota display
@@ -159,9 +159,9 @@ Before finishing a task:
 
 8. Verify the generated executable and SHA256 hash when packaging is performed.
 
-## Git Releases And Tags After v1.0.0
+## Git Releases And Tags From v1.0.0
 
-After the project reaches `v1.0.0`, release management should include Git release and tag creation.
+Starting with `v1.0.0`, release management includes Git tag and remote release creation.
 
 Rules:
 
@@ -174,7 +174,7 @@ Rules:
   - differences from the previous release
   - verification and packaging status
 - Ensure `package.json`, `package-lock.json`, Release History, packaged artifacts, Git tag, and remote release entry all refer to the same version.
-- Before `v1.0.0`, tags and remote releases are optional unless explicitly requested.
+- `v1.0.0` and every later release must have a corresponding Git tag and remote release entry.
 
 ## Release Notes Checklist
 
@@ -189,6 +189,37 @@ For each release-worthy version bump, summarize:
 - Known limitations
 
 ## Release History
+
+### 1.0.0 — 2026-08-18 — MAJOR
+
+**Change category:** MAJOR (first complete release)
+
+**User-visible changes:**
+- Finalized the Windows x64 dashboard, system tray, and lower-right transparent overlay experience.
+- Provider-specific overlay settings now independently control masked account email, plan, usage, remaining usage, and reset time.
+- Usage summaries present weekly windows before periodic windows where the provider exposes both.
+
+**Provider/data-source changes:**
+- ChatGPT uses the local Codex Desktop app-server flow with safe executable discovery.
+- Claude uses an app-owned Claude Code Status Line minimum snapshot instead of credential-file or conversation-log collection.
+- Gemini Apps and Antigravity remain separate quota sources; Gemini web-page source text is parsed in memory only and is not written as a debug artifact.
+- Gemini OAuth credentials are read only and are never refreshed back to provider credential files by Token Monitor.
+
+**Privacy and security review:**
+- Removed raw Gemini page-text debug persistence.
+- Restricted embedded Gemini navigation to Google-owned host boundaries.
+- Replaced raw external CLI/provider error forwarding with display-safe recovery guidance.
+- Raw tokens, credential contents, provider-internal account IDs, raw provider payloads, and unmasked emails remain excluded from the renderer, logs, settings, and caches.
+
+**Packaging notes:**
+- Package version is `1.0.0`.
+- Portable Windows x64 packaging and SHA256 verification are required for this release.
+- Git tag `v1.0.0` and the matching remote release are required after the release commit is merged to the stable release branch.
+
+**Known limitations:**
+- Provider web/CLI interfaces can change and may require collector updates.
+- Gemini Apps usage extraction depends on visible page content and can be unavailable when Google does not render quota data.
+- Claude usage becomes available after a Claude Code response produces the Status Line snapshot.
 
 ### 0.9.13 — 2026-08-18 — PATCH
 

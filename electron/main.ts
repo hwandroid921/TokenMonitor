@@ -11,7 +11,6 @@ import { getCodexUsage, killAllActiveChildProcesses, setAppVersion } from "./cod
 import {
   parseGeminiAppsUsageText,
   readGeminiAppsSessionStatus,
-  writeGeminiAppsParseDebug,
   writeGeminiAppsSessionStatus,
   writeGeminiAppsUsageCache
 } from "./gemini-apps-usage.js";
@@ -649,6 +648,14 @@ function configureGeminiBrowserView(view: BrowserView) {
     return { action: "deny" };
   });
 
+  const blockUnexpectedNavigation = (event: Electron.Event, url: string) => {
+    if (!isGoogleOrGeminiUrl(url)) {
+      event.preventDefault();
+    }
+  };
+  view.webContents.on("will-navigate", blockUnexpectedNavigation);
+  view.webContents.on("will-redirect", blockUnexpectedNavigation);
+
   view.webContents.on("did-finish-load", () => {
     void inspectEmbeddedGeminiView();
   });
@@ -735,7 +742,6 @@ async function inspectEmbeddedGeminiView() {
 async function readEmbeddedGeminiState(view: BrowserView) {
   try {
     const text = await view.webContents.executeJavaScript(geminiReadableTextScript(), true) as string;
-    writeGeminiAppsParseDebug(text);
     return {
       loggedIn: isGeminiLoggedInText(text),
       usage: parseGeminiAppsUsageText(text)
@@ -944,7 +950,7 @@ function closeEmbeddedGeminiView(reason: "login-complete" | "usage-complete" | "
 function isGoogleOrGeminiUrl(url: string) {
   try {
     const hostname = new URL(url).hostname;
-    return hostname.endsWith("google.com") || hostname.endsWith("gemini.google.com");
+    return hostname === "google.com" || hostname.endsWith(".google.com");
   } catch {
     return false;
   }

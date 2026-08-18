@@ -67,7 +67,7 @@ async function getClaudeSession(): Promise<CliSessionStatus> {
       loggedIn: false,
       authMethod: null,
       maskedEmail: null,
-      detail: sanitizeSessionDetail(result.error),
+      detail: "Claude CLI 상태를 확인할 수 없습니다. Node.js/npm 및 Claude 로그인을 확인하세요.",
       checkedAt
     };
   }
@@ -93,12 +93,6 @@ function readMaskedEmail(data: Record<string, unknown>) {
   const account = data.account && typeof data.account === "object" ? data.account as Record<string, unknown> : null;
   const user = data.user && typeof data.user === "object" ? data.user as Record<string, unknown> : null;
   return maskEmail(data.email) ?? maskEmail(account?.email) ?? maskEmail(user?.email);
-}
-
-function sanitizeSessionDetail(value: string) {
-  return value
-    .replace(/[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/gi, "[redacted-email]")
-    .replace(/\b(?:ya29|1\/\/|Bearer)\S+/gi, "[redacted-token]");
 }
 
 function runJsonCommand(
