@@ -2,14 +2,14 @@
 
 > Windows에서 ChatGPT, Claude, Gemini, Antigravity 사용량과 quota 상태를 한 화면에서 확인하는 데스크톱 앱입니다.
 
-Token Monitor는 로컬 LLM 계정/세션 데이터를 읽어 현재 플랜, 남은 quota, reset 시간을 compact dashboard와 투명 always-on-top overlay로 보여줍니다. OAuth access token, refresh token, account email, account ID는 UI에 표시하지 않으며 로그에도 남기지 않는 것을 원칙으로 합니다.
+Token Monitor는 로컬 LLM 계정/세션 데이터를 읽어 현재 플랜, 남은 quota, reset 시간을 compact dashboard와 투명 always-on-top overlay로 보여줍니다. 공급자가 제공한 account email은 계정 구분을 위해 마스킹된 형태로만 표시합니다. OAuth access token, refresh token, account ID는 UI에 표시하지 않으며 로그에도 남기지 않는 것을 원칙으로 합니다.
 
 이 문서는 프로젝트의 최종 동작 상태를 기준으로 작성합니다. 일반 README와 사용자 문서는 개별 수정 이력을 나열하지 않으며, 버전 단위 변경 사항은 [RELEASE_VERSION_POLICY.md](docs/RELEASE_VERSION_POLICY.md)의 Release History에만 기록합니다.
 
 ## 현재 버전
 
-- App/exe version: `0.7.0-beta.0`
-- Current milestone line: `0.7.x beta`
+- App/exe version: `0.9.9`
+- Current milestone line: `0.9.x`
 - Portable artifact policy: portable exe packaging is reserved for milestone versions such as `0.3.0`, `0.4.0`, or later `MINOR.0` / `MAJOR.0` release points unless explicitly requested.
 - Output naming policy: build artifact names stay in English.
 
@@ -20,23 +20,24 @@ Token Monitor는 로컬 LLM 계정/세션 데이터를 읽어 현재 플랜, 남
 - 투명 always-on-top overlay로 주요 사용량 정보를 화면 위에 표시
 - 시스템 트레이 최소화와 단일 인스턴스 실행 지원
 - Claude와 Antigravity CLI 설치/로그인 흐름을 앱 버튼에서 시작
-- Gemini Apps Usage Limits 창을 앱 버튼에서 열고 표시 가능한 5시간/주간 한도 요약을 캐시
+- Gemini Apps Usage Limits 창을 앱 버튼에서 열고 표시 가능한 주간/주기 한도 요약을 캐시
 - Node.js/npm이 없을 때 앱 안에서 Node.js 다운로드 페이지 열기
-- 계정 이메일, access token, refresh token, account ID를 UI와 로그에 표시하지 않음
+- 공급자 제공 계정 이메일은 마스킹된 형태로만 dashboard와 overlay에 표시
+- access token, refresh token, account ID는 UI와 로그에 표시하지 않음
 
 ## 주요 화면
 
 ### 사용량 대시보드
 
-대시보드는 ChatGPT, Claude, Gemini 카드를 보여줍니다. Gemini 카드는 사용자의 Gemini 사용량 페이지에서 확인한 구독 플랜과 Gemini Apps 한도, Antigravity CLI에서 확인한 Antigravity 5시간 한도를 별도 항목으로 보여줍니다. 각 카드는 provider별 플랜, quota, reset 상태를 표시하고, 연동이 필요한 경우 카드 안에서 필요한 조치를 안내합니다.
+대시보드는 ChatGPT, Claude, Gemini 카드를 보여줍니다. 사용량 창은 주간 사용량을 먼저, 그 다음 주기 사용량을 표시합니다. Gemini 카드는 사용자의 Gemini 사용량 페이지에서 확인한 구독 플랜과 Gemini Apps 한도, Antigravity CLI에서 확인한 Antigravity 주기 한도를 별도 항목으로 보여줍니다.
 
 ### 설정
 
-Settings에서는 overlay 켜기/끄기, 창 닫기 동작, provider별 overlay 표시 여부, provider별 표시 항목, overlay 투명도, provider별 수집 경로 안내를 조정할 수 있습니다.
+Settings에서는 overlay 켜기/끄기, 창 닫기 동작, provider별 overlay 표시 여부, provider별 표시 항목, provider별 수집 경로 안내를 조정할 수 있습니다. Overlay 글자 투명도는 50%로 고정됩니다.
 
 ### 오버레이
 
-Overlay는 primary display의 오른쪽 아래 근처에 표시되는 투명 always-on-top 창입니다. 클릭을 방해하지 않으면서 dashboard와 같은 provider 필드를 간단하게 보여줍니다.
+Overlay는 primary display의 오른쪽 아래에 고정되는 always-on-top 창입니다. 화면 높이의 1/3을 넘지 않도록 내용에 따라 글자 크기와 창 높이를 조절하며, 클릭을 방해하지 않으면서 dashboard와 같은 provider 필드를 간단하게 보여줍니다.
 
 ## 실행 전 요구사항
 
@@ -45,8 +46,8 @@ Overlay는 primary display의 오른쪽 아래 근처에 표시되는 투명 alw
 | Windows | 필수 | Windows 데스크톱 앱으로 실행됩니다. |
 | Codex Desktop | ChatGPT 사용량 수집 시 필수 | ChatGPT/Codex 사용량 수집에는 Codex Desktop 설치와 로그인이 필요합니다. |
 | Node.js/npm | Claude, Antigravity CLI 설정 시 필수 | 앱의 `Claude CLI 설치 및 로그인`, `Antigravity CLI 설치 및 로그인` 버튼이 `npx`를 사용합니다. |
-| Claude Pro/Max 이상 계정 | Claude server quota 측정 시 필수 | Pro 이상 플랜 계정에서 Claude Code OAuth usage quota를 읽을 수 있습니다. Pro 미만 계정은 server quota 측정 대상이 아닐 수 있습니다. |
-| Claude Code OAuth login | Claude server quota 확인 시 필수 | Pro 이상 계정으로 앱 버튼 또는 `npx -y @anthropic-ai/claude-code auth login --claudeai` 명령을 진행합니다. |
+| Claude Pro/Max 이상 계정 | Claude 사용량 수집 시 필수 | Claude Code 구독 계정에서 Status Line 사용량 창을 제공합니다. |
+| Claude Code OAuth login | Claude 사용량 수집 시 필수 | Pro 이상 계정으로 앱 버튼 또는 `npx -y @anthropic-ai/claude-code auth login --claudeai` 명령을 진행합니다. |
 | Gemini Apps 로그인 | Gemini Apps 한도 확인 시 필요 | 로그인 전에는 `Gemini 로그인` 버튼을 사용하고, 로그인 확인 후에는 `사용량 확인` 버튼으로 Usage Limits 화면을 열어 수집합니다. |
 | Antigravity 실행 상태 | Antigravity local fallback 사용 시 필요 | CLI 수집이 안 될 때 실행 중인 Antigravity local server를 fallback으로 확인합니다. |
 
@@ -72,7 +73,7 @@ dist-app/win-unpacked/TokenMonitor.exe
 1. `TokenMonitor.exe`를 실행합니다.
 2. 대시보드에서 ChatGPT, Claude, Gemini 카드를 확인합니다.
 3. ChatGPT 사용량이 필요하면 Codex Desktop 설치와 로그인을 먼저 완료합니다.
-4. Claude server quota가 필요하면 Claude Pro/Max 이상 계정으로 `Claude CLI 설치 및 로그인` 버튼을 누르고 브라우저 인증을 완료합니다.
+4. Claude 사용량이 필요하면 Claude Pro/Max 이상 계정으로 `Claude CLI 설치 및 로그인` 버튼을 누르고 브라우저 인증을 완료한 뒤 Claude Code에서 대화를 시작합니다.
 5. Gemini Apps 한도는 `Gemini 로그인`으로 로그인 상태를 확인한 뒤 `사용량 확인` 버튼으로 Usage Limits 화면을 열어 확인합니다.
 6. Antigravity quota가 필요하면 `Antigravity CLI 설치 및 로그인` 버튼을 눌러 `antigravity-usage` CLI 설정과 Google 로그인을 진행합니다.
 7. Node.js/npm 안내가 표시되면 `Node.js 설치` 버튼으로 Node.js를 설치한 뒤 앱을 다시 실행합니다.
@@ -84,7 +85,7 @@ dist-app/win-unpacked/TokenMonitor.exe
 | Provider | Quota source | Requirement |
 | --- | --- | --- |
 | ChatGPT | Local ChatGPT/Codex app-server usage flow | Codex Desktop install and login |
-| Claude | Claude Code CLI OAuth, with local log fallback | Node.js/npm for CLI setup, Claude Pro/Max or higher account, and Claude Code OAuth login |
+| Claude | Claude Code Status Line snapshot | Node.js/npm, Claude Pro/Max or higher account, Claude Code OAuth login, and an active Claude Code response |
 | Gemini | Google AI plan, Gemini Apps Usage Limits, and Antigravity 5-hour quota | Gemini Apps login for Gemini limits, Node.js/npm for Antigravity CLI setup, or Antigravity running for local fallback |
 
 ## 사용량 수집 경로
@@ -113,7 +114,9 @@ Displayed fields:
 
 ### Claude
 
-Claude server quota는 Claude Pro/Max 이상 계정에서 Claude Code CLI OAuth가 가능할 때 읽습니다. Pro 미만 계정은 server quota 측정 대상이 아닐 수 있으며, 이 경우 local Claude JSONL logs는 fallback/history metadata로만 사용합니다.
+Claude 사용량은 Claude Pro/Max 이상 구독 계정의 Claude Code Status Line이 제공하는 주간·5시간 주기 사용률과 초기화 시각만 사용합니다. 대시보드의 연결 버튼은 Claude.ai OAuth 로그인과 Token Monitor용 Status Line 설정을 준비합니다. 로그인 후 Claude Code에서 한 번 응답을 받으면 Status Line이 최소 스냅샷을 기록하고 대시보드가 이를 표시합니다.
+
+Token Monitor는 Claude 인증 파일, OAuth access token, refresh token, 로컬 대화 JSONL 로그, 원본 Status Line 입력을 읽거나 저장하거나 표시하지 않습니다. 상위 터미널 또는 IDE의 `ANTHROPIC_API_KEY`도 앱이 실행한 Claude CLI 프로세스에 전달하지 않습니다.
 
 Login command:
 
@@ -121,24 +124,17 @@ Login command:
 npx -y @anthropic-ai/claude-code auth login --claudeai
 ```
 
-Local Claude paths:
-
-```text
-%USERPROFILE%/.claude/
-%USERPROFILE%/.claude.json
-```
-
 Displayed fields:
 
 - Plan
-- 5-hour quota
 - Weekly quota
+- Periodic quota
 
 ### Gemini / Antigravity
 
 Gemini 카드는 Gemini 사용량 페이지에서 파싱한 구독 플랜을 우선 표시하고, Gemini Apps 한도와 Antigravity 한도를 별도 항목으로 구분합니다.
 
-Gemini 구독 플랜과 Gemini Apps 한도는 `https://gemini.google.com/usage`에서 확인되는 플랜, 5시간 사용량, 주간 사용량, 초기화 시간을 기준으로 합니다. 이 한도는 Gemini Apps 웹/모바일 사용량에 해당하며 Gemini CLI, Gemini API, Code Assist, Antigravity quota와 같은 데이터로 취급하지 않습니다.
+Gemini 구독 플랜과 Gemini Apps 한도는 `https://gemini.google.com/usage`에서 확인되는 플랜, 주간 사용량, 주기 사용량, 초기화 시간을 기준으로 합니다. 이 한도는 Gemini Apps 웹/모바일 사용량에 해당하며 Gemini CLI, Gemini API, Code Assist, Antigravity quota와 같은 데이터로 취급하지 않습니다.
 
 Displayed Gemini Apps fields:
 
@@ -149,7 +145,7 @@ Displayed Gemini Apps fields:
 
 Antigravity quota는 `antigravity-usage`를 먼저 사용합니다. 앱의 통합 설정 버튼은 Node.js/npm이 필요하며, `npx`를 통해 CLI 설치/실행과 로그인을 시작합니다. CLI 수집이 불가능해도 Antigravity가 실행 중이면 embedded local fallback을 계속 시도합니다.
 
-Antigravity 5시간 한도는 모델별 quota 응답의 `remainingFraction` 또는 `remainingPercentage`와 `resetTime`으로 표시합니다.
+Antigravity 주기 한도는 모델별 quota 응답의 `remainingFraction` 또는 `remainingPercentage`와 `resetTime`으로 표시합니다. 주간 항목은 provider가 명시적으로 제공한 경우에만 표시합니다.
 
 1. `antigravity-usage` Google method
 
@@ -197,8 +193,9 @@ API-key and Vertex AI auth modes are not treated as personal quota window source
 
 Overlay behavior:
 
-- Transparent always-on-top window
-- Bold gray text with enlarged dark text stroke and layered shadow
+- Transparent always-on-top window, fixed to the lower-right corner
+- Double-size SBAggro 700 text at 50% opacity, with a black outline and no shadow or background panel
+- Dynamic text sizing that keeps the overlay within one-third of the display height
 - Same provider fields as the dashboard
 - Per-provider visibility control
 - Refreshes usage data every minute
@@ -214,7 +211,7 @@ System tray behavior:
 ## 개인정보와 보안
 
 - OAuth access token과 refresh token은 provider quota request가 필요할 때 로컬에서만 읽습니다.
-- Account email과 account ID는 UI에 표시하거나 로그에 기록하지 않습니다.
+- 공급자가 제공한 account email은 계정 구분을 위해 `ab***@g***.com`처럼 마스킹해 dashboard와 overlay에만 표시합니다. 원문 이메일과 account ID는 UI, 로그, cache, settings 파일에 기록하지 않습니다.
 - Provider collector는 renderer 표시 상태에 필요한 값만 반환해야 합니다.
 - Build logs, screenshots, issues, pull requests, README examples에는 secret이나 account identifier를 포함하지 않습니다.
 
@@ -224,9 +221,9 @@ System tray behavior:
 
 Codex Desktop이 설치되어 있고 로그인되어 있는지 확인하세요. 앱이 Codex 실행 파일을 찾지 못하면 `CODEX_CLI_PATH`를 설정합니다.
 
-### Claude server quota가 연결되지 않습니다.
+### Claude 사용량이 표시되지 않습니다.
 
-Claude server quota는 Claude Pro/Max 이상 계정에서 측정할 수 있습니다. Node.js/npm을 설치한 뒤 Pro 이상 계정으로 앱의 `Claude CLI 설치 및 로그인` 버튼을 누르고 브라우저 인증을 완료하세요. 직접 실행할 때는 아래 명령을 사용할 수 있습니다.
+Node.js/npm을 설치한 뒤 Pro/Max 이상 계정으로 앱의 `Claude CLI 설치 및 로그인` 버튼을 누르고 브라우저 인증을 완료하세요. 그 다음 Claude Code에서 대화를 시작하고 첫 응답을 받은 뒤 대시보드를 새로고침하세요. Status Line은 Claude Code 세션이 실행될 때만 사용량을 전달합니다.
 
 ```powershell
 npx -y @anthropic-ai/claude-code auth login --claudeai
@@ -234,7 +231,7 @@ npx -y @anthropic-ai/claude-code auth login --claudeai
 
 ### Gemini 한도가 보이지 않습니다.
 
-Gemini Apps 5시간/주간 한도는 `Gemini 로그인` 후 표시되는 `사용량 확인` 버튼으로 Usage Limits 화면을 열어야 수집됩니다. 로그인 또는 사용량 확인 창이 열린 상태에서는 대시보드 새로고침으로 현재 화면을 다시 읽습니다. Gemini CLI, Gemini API, Code Assist, Antigravity CLI의 quota는 Gemini Apps 한도로 대체 표시하지 않습니다.
+Gemini Apps 주간/주기 한도는 `Gemini 로그인` 후 표시되는 `사용량 확인` 버튼으로 Usage Limits 화면을 열어야 수집됩니다. 로그인 또는 사용량 확인 창이 열린 상태에서는 대시보드 새로고침으로 현재 화면을 다시 읽습니다. Gemini CLI, Gemini API, Code Assist, Antigravity CLI의 quota는 Gemini Apps 한도로 대체 표시하지 않습니다.
 
 ### Antigravity 사용량이 보이지 않습니다.
 

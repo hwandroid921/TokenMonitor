@@ -1,5 +1,7 @@
 import { spawn } from "node:child_process";
 import { type CodexUsageResult, getCodexUsage } from "./codex-usage.js";
+import { createClaudeOAuthEnvironment } from "./claude-oauth-env.js";
+import { maskEmail } from "./masked-email.js";
 
 export type CliSessionStatus = {
   provider: "codex" | "claude";
@@ -7,6 +9,7 @@ export type CliSessionStatus = {
   installed: boolean;
   loggedIn: boolean;
   authMethod: string | null;
+  maskedEmail: string | null;
   detail: string;
   checkedAt: string;
 };
@@ -32,6 +35,7 @@ async function getCodexSession(usageResult?: CodexUsageResult): Promise<CliSessi
       installed: false,
       loggedIn: false,
       authMethod: null,
+      maskedEmail: null,
       detail: usage.error,
       checkedAt
     };
@@ -41,8 +45,9 @@ async function getCodexSession(usageResult?: CodexUsageResult): Promise<CliSessi
     provider: "codex",
     ok: true,
     installed: true,
-    loggedIn: usage.hasAccountEmail || Boolean(usage.accountType || usage.planType),
+    loggedIn: Boolean(usage.accountType || usage.planType),
     authMethod: usage.accountType,
+    maskedEmail: usage.maskedEmail,
     detail: usage.planType ? `플랜 ${usage.planType}` : "ChatGPT 계정 확인됨",
     checkedAt
   };
@@ -50,8 +55,9 @@ async function getCodexSession(usageResult?: CodexUsageResult): Promise<CliSessi
 
 async function getClaudeSession(): Promise<CliSessionStatus> {
   const checkedAt = new Date().toISOString();
-  const direct = await runJsonCommand("claude", ["auth", "status", "--json"], 5000);
-  const result = direct.ok ? direct : await runJsonCommand("npx.cmd", ["-y", "@anthropic-ai/claude-code", "auth", "status", "--json"], 30000);
+  const environment = createClaudeOAuthEnvironment();
+  const direct = await runJsonCommand("claude", ["auth", "status", "--json"], 5000, environment);
+  const result = direct.ok ? direct : await runJsonCommand("npx.cmd", ["-y", "@anthropic-ai/claude-code", "auth", "status", "--json"], 30000, environment);
 
   if (!result.ok) {
     return {
@@ -60,7 +66,8 @@ async function getClaudeSession(): Promise<CliSessionStatus> {
       installed: false,
       loggedIn: false,
       authMethod: null,
-      detail: result.error,
+      maskedEmail: null,
+      detail: sanitizeSessionDetail(result.error),
       checkedAt
     };
   }
@@ -68,6 +75,7 @@ async function getClaudeSession(): Promise<CliSessionStatus> {
   const loggedIn = Boolean(result.data?.loggedIn);
   const authMethod = typeof result.data?.authMethod === "string" ? result.data.authMethod : null;
   const apiProvider = typeof result.data?.apiProvider === "string" ? result.data.apiProvider : null;
+  const maskedEmail = readMaskedEmail(result.data);
 
   return {
     provider: "claude",
@@ -75,19 +83,38 @@ async function getClaudeSession(): Promise<CliSessionStatus> {
     installed: true,
     loggedIn,
     authMethod,
+    maskedEmail,
     detail: loggedIn ? `로그인됨${apiProvider ? ` (${apiProvider})` : ""}` : "로그인되지 않음",
     checkedAt
   };
 }
 
-function runJsonCommand(command: string, args: string[], timeoutMs: number): Promise<{ ok: true; data: Record<string, unknown> } | { ok: false; error: string }> {
+function readMaskedEmail(data: Record<string, unknown>) {
+  const account = data.account && typeof data.account === "object" ? data.account as Record<string, unknown> : null;
+  const user = data.user && typeof data.user === "object" ? data.user as Record<string, unknown> : null;
+  return maskEmail(data.email) ?? maskEmail(account?.email) ?? maskEmail(user?.email);
+}
+
+function sanitizeSessionDetail(value: string) {
+  return value
+    .replace(/[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/gi, "[redacted-email]")
+    .replace(/\b(?:ya29|1\/\/|Bearer)\S+/gi, "[redacted-token]");
+}
+
+function runJsonCommand(
+  command: string,
+  args: string[],
+  timeoutMs: number,
+  env?: NodeJS.ProcessEnv
+): Promise<{ ok: true; data: Record<string, unknown> } | { ok: false; error: string }> {
   return new Promise((resolve) => {
     let child: ReturnType<typeof spawn>;
     try {
       child = spawn(command, args, {
         stdio: ["ignore", "pipe", "pipe"],
         windowsHide: true,
-        shell: process.platform === "win32"
+        shell: process.platform === "win32",
+        env
       });
     } catch (error) {
       resolve({ ok: false, error: error instanceof Error ? error.message : `${command} 실행 실패` });

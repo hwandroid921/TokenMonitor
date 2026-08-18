@@ -5,6 +5,8 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { getClaudeUsage } from "./claude-usage.js";
 import { getCliSessionStatus } from "./cli-session.js";
+import { createClaudeOAuthEnvironment, getClaudeOAuthEnvironmentResetCommands } from "./claude-oauth-env.js";
+import { ensureClaudeStatusLine, getClaudeStatusLineSnapshotPath } from "./claude-statusline.js";
 import { getCodexUsage, killAllActiveChildProcesses, setAppVersion } from "./codex-usage.js";
 import {
   parseGeminiAppsUsageText,
@@ -27,7 +29,7 @@ let isQuitting = false;
 let usagePromise: ReturnType<typeof getCodexUsage> | null = null;
 let usageCache: Awaited<ReturnType<typeof getCodexUsage>> | null = null;
 let usageCacheTime = 0;
-let claudeUsagePromise: ReturnType<typeof getClaudeUsage> | null = null;
+let claudeUsagePromise: Promise<ReturnType<typeof getClaudeUsage>> | null = null;
 let claudeUsageCache: Awaited<ReturnType<typeof getClaudeUsage>> | null = null;
 let claudeUsageCacheTime = 0;
 let geminiUsagePromise: ReturnType<typeof getGeminiUsage> | null = null;
@@ -267,8 +269,8 @@ function createOverlayWindow() {
   }
 
   overlayWindow = new BrowserWindow({
-    width: 420,
-    height: 310,
+    width: 620,
+    height: 180,
     frame: false,
     transparent: true,
     resizable: false,
@@ -326,6 +328,22 @@ function positionOverlayWindow() {
   });
 }
 
+function resizeOverlayWindow(request: { width?: number; height?: number }) {
+  if (!overlayWindow || overlayWindow.isDestroyed()) {
+    return { ok: false };
+  }
+
+  const workArea = screen.getPrimaryDisplay().workArea;
+  const requestedWidth = Number.isFinite(request.width) ? Number(request.width) : 620;
+  const requestedHeight = Number.isFinite(request.height) ? Number(request.height) : 180;
+  const width = Math.max(360, Math.min(Math.round(requestedWidth), workArea.width - 8));
+  const maximumHeight = Math.max(120, Math.floor(workArea.height / 3));
+  const height = Math.max(120, Math.min(Math.round(requestedHeight), maximumHeight));
+  overlayWindow.setSize(width, height);
+  positionOverlayWindow();
+  return { ok: true };
+}
+
 function applyOverlaySettings(settings: OverlaySettings) {
   overlaySettings = normalizeOverlaySettings(settings);
   saveOverlaySettings();
@@ -370,7 +388,7 @@ function readClaudeUsageShared(force = false) {
   }
 
   if (!claudeUsagePromise) {
-    claudeUsagePromise = getClaudeUsage()
+    claudeUsagePromise = Promise.resolve(getClaudeUsage(getClaudeStatusLineSnapshotPath(app.getPath("userData"))) )
       .then((result) => {
         claudeUsageCache = result;
         claudeUsageCacheTime = Date.now();
@@ -443,17 +461,25 @@ function readCliSessionShared(force = false) {
 }
 
 async function startClaudeLogin() {
-  const sessionStatus = await getCliSessionStatus();
-  const claudeUsage = await readClaudeUsageShared(true);
+  const statusLineSetup = ensureClaudeStatusLine(app.getPath("userData"));
+  if (!statusLineSetup.ok) {
+    return {
+      ok: false,
+      command: "Claude Status Line setup",
+      detail: statusLineSetup.detail
+    };
+  }
+
+  const sessionStatus = await readCliSessionShared(true);
   cliSessionCache = sessionStatus;
   cliSessionCacheTime = Date.now();
 
-  if (claudeUsage.ok && claudeUsage.oauth) {
+  if (sessionStatus.claude.loggedIn) {
     return {
       ok: true,
-      command: "claude oauth usage",
+      command: "claude auth status --json",
       skipped: true,
-      detail: "Existing Claude OAuth usage link detected"
+      detail: statusLineSetup.detail
     };
   }
 
@@ -471,7 +497,8 @@ async function startClaudeLogin() {
     const { command, launcherPath } = writeWindowsCliLauncher(
       "claude-login",
       npxCommand,
-      ["-y", "@anthropic-ai/claude-code", "auth", "login", "--claudeai"]
+      ["-y", "@anthropic-ai/claude-code", "auth", "login", "--claudeai"],
+      getClaudeOAuthEnvironmentResetCommands()
     );
     launchWindowsCliWindow(launcherPath);
     return { ok: true, command };
@@ -479,7 +506,8 @@ async function startClaudeLogin() {
 
   const child = spawn("npx", ["-y", "@anthropic-ai/claude-code", "auth", "login", "--claudeai"], {
     detached: true,
-    stdio: "ignore"
+    stdio: "ignore",
+    env: createClaudeOAuthEnvironment()
   });
   child.unref();
   return { ok: true, command: "npx -y @anthropic-ai/claude-code auth login --claudeai" };
@@ -507,11 +535,12 @@ function quoteCmdArg(value: string) {
   return `"${value.replace(/"/g, "\"\"")}"`;
 }
 
-function writeWindowsCliLauncher(name: string, commandPath: string, args: string[]) {
+function writeWindowsCliLauncher(name: string, commandPath: string, args: string[], environmentResetCommands: string[] = []) {
   const launcherPath = path.join(app.getPath("temp"), `token-monitor-${name}.cmd`);
   const command = [`call "${commandPath}"`, ...args.map(quoteCmdArg)].join(" ");
   const content = [
     "@echo off",
+    ...environmentResetCommands,
     command,
     "set TOKEN_MONITOR_EXIT_CODE=%ERRORLEVEL%",
     "echo.",
@@ -952,6 +981,7 @@ if (!gotSingleInstanceLock) {
       applyOverlaySettings(nextSettings);
       return overlaySettings;
     });
+    ipcMain.handle("overlay:resize", (_event, request: { width?: number; height?: number }) => resizeOverlayWindow(request));
 
     createWindow();
     scheduleInitialOverlayLoad();

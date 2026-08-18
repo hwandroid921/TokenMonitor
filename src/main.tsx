@@ -1,10 +1,10 @@
-import React, { useEffect, useMemo, useRef, useState } from "react";
+import React, { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { createRoot } from "react-dom/client";
 import { ExternalLink, LayoutDashboard, Link, RefreshCw, Settings, Zap } from "lucide-react";
 import "./styles.css";
 import type {
-  ClaudeOAuthWindow,
   ClaudeUsageResult,
+  ClaudeUsageWindow,
   CliSessionResult,
   CodexUsageResult,
   CodexUsageWindow,
@@ -36,7 +36,7 @@ type ProviderUsage = {
 type ProviderField = {
   label: string;
   value: string;
-  kind: "plan" | "quota" | "usage" | "remaining" | "reset";
+  kind: "identity" | "plan" | "quota" | "usage" | "remaining" | "reset";
 };
 
 type ProviderIssue = {
@@ -70,7 +70,7 @@ const defaultOverlaySettings: OverlaySettings = {
   showUsed: true,
   showRemaining: true,
   showReset: true,
-  opacity: 78
+  opacity: 50
 };
 
 const claudeLoginPollIntervalMs = 2500;
@@ -181,6 +181,7 @@ function App() {
       }
 
       if (startResult.skipped) {
+        setClaudeLoginNotice(startResult.detail ?? "Claude 연결이 확인되었습니다. Claude Code에서 대화를 시작하세요.");
         await refreshUsage();
         return;
       }
@@ -595,7 +596,7 @@ function getProviderCollectionGuide(providerId: ProviderId) {
   if (providerId === "codex") {
     return {
       title: "ChatGPT 로컬 앱 서버",
-      summary: "Codex Desktop 설치와 로그인이 완료된 상태에서 ChatGPT 5시간/주간 quota를 확인합니다.",
+      summary: "Codex Desktop 설치와 로그인이 완료된 상태에서 ChatGPT 주간/주기 quota를 확인합니다.",
       steps: [
         "Codex Desktop 설치 필수",
         "Codex Desktop 로그인 상태 확인",
@@ -607,14 +608,14 @@ function getProviderCollectionGuide(providerId: ProviderId) {
 
   if (providerId === "claude") {
     return {
-      title: "Claude Code OAuth",
-      summary: "Node.js/npm이 준비된 상태에서 Claude Pro/Max 이상 계정으로 Claude CLI 설치와 OAuth 로그인을 진행한 뒤 서버 quota를 읽습니다.",
+      title: "Claude Code Status Line",
+      summary: "Node.js/npm이 준비된 상태에서 Claude Pro/Max 이상 계정으로 Claude CLI OAuth 로그인을 진행하고, Claude Code Status Line이 제공한 사용량을 표시합니다.",
       steps: [
         "Node.js/npm 설치 상태 확인",
         "Claude Pro/Max 이상 계정 확인",
         "Claude CLI 설치 및 로그인 버튼 실행",
-        "OAuth usage endpoint에서 5시간/주간 quota 조회",
-        "서버 quota 미연동 시 local log를 보조 정보로 사용"
+        "Claude Code에서 대화를 시작해 첫 응답 수신",
+        "Status Line의 주간·주기(5시간) 사용량과 초기화 시간 표시"
       ]
     };
   }
@@ -632,13 +633,13 @@ function getProviderCollectionGuide(providerId: ProviderId) {
 
   return {
     title: "Gemini Usage Limits + Antigravity CLI",
-    summary: "Google AI 플랜은 공통으로 표시하고, Gemini Apps 한도는 gemini.google.com Usage Limits 기준으로 분리합니다. Antigravity 5시간 한도는 Node.js/npm 기반 CLI와 local fallback에서 수집합니다.",
+    summary: "Google AI 플랜은 공통으로 표시하고, Gemini Apps 한도는 gemini.google.com Usage Limits 기준으로 분리합니다. Antigravity 주기 한도는 Node.js/npm 기반 CLI와 local fallback에서 수집합니다.",
     steps: [
-      "Gemini Apps 5시간/주간 한도는 gemini.google.com의 Usage Limits 데이터가 필요",
+      "Gemini Apps 주간/주기 한도는 gemini.google.com의 Usage Limits 데이터가 필요",
       "Google 플랜은 OAuth 또는 local provider 응답의 Free/Plus/Pro/Ultra 값을 표시",
-      "Antigravity 5시간 한도는 Antigravity CLI 설치 및 로그인 버튼 실행 후 수집",
+      "Antigravity 주기 한도는 Antigravity CLI 설치 및 로그인 버튼 실행 후 수집",
       "Antigravity 실행 시 local fallback 유지",
-      "계정 이메일과 OAuth token은 UI와 로그에 표시하지 않음"
+      "계정 이메일은 마스킹된 값만 표시하고 OAuth token은 UI와 로그에 표시하지 않음"
     ]
   };
 }
@@ -783,7 +784,7 @@ async function waitForClaudeLoginCompletion({ onUpdate }: { onUpdate: (usage: { 
 }
 
 function isClaudeUsageLinked(claudeUsage: ClaudeUsageResult, cliSessions: CliSessionResult) {
-  return Boolean(cliSessions.claude.loggedIn && claudeUsage.ok && claudeUsage.oauth);
+  return Boolean(cliSessions.claude.loggedIn);
 }
 
 function makeClaudeLoginNotice(claudeUsage: ClaudeUsageResult | null, cliSessions: CliSessionResult | null) {
@@ -795,12 +796,9 @@ function makeClaudeLoginNotice(claudeUsage: ClaudeUsageResult | null, cliSession
     return `30초 안에 Claude 로그인이 확인되지 않았습니다. ${session.detail}`;
   }
   if (!claudeUsage?.ok) {
-    return `30초 안에 Claude 사용량 연동이 확인되지 않았습니다. Claude Pro/Max 이상 계정인지 확인하세요. ${claudeUsage?.error ?? "Claude OAuth 사용량 응답을 찾을 수 없습니다."}`;
+    return `Claude 연결은 확인되었습니다. Claude Code에서 대화를 시작한 뒤 첫 응답을 받으면 Status Line 사용량이 표시됩니다. ${claudeUsage?.error ?? ""}`.trim();
   }
-  if (!claudeUsage.oauth) {
-    return "30초 안에 Claude OAuth 사용량 응답을 찾을 수 없습니다. Claude Pro/Max 이상 계정으로 브라우저 로그인 완료 후 다시 새로고침하세요.";
-  }
-  return "30초 안에 Claude 연동 완료를 확인하지 못했습니다. 브라우저 인증을 마친 뒤 다시 시도하세요.";
+  return "Claude 연결은 완료됐습니다. Claude Code에서 대화를 시작하면 Status Line 사용량이 표시됩니다.";
 }
 
 function delay(ms: number) {
@@ -912,11 +910,7 @@ function SettingsPanel({ settings, onChange }: { settings: OverlaySettings; onCh
         </div>
       </section>
 
-      <label className="opacity-control">
-        <span>투명도</span>
-        <input type="range" min="35" max="95" value={settings.opacity} onChange={(event) => update({ opacity: Number(event.target.value) })} />
-        <strong>{settings.opacity}%</strong>
-      </label>
+      <p className="overlay-opacity-note">오버레이 투명도는 50%로 고정됩니다.</p>
     </section>
   );
 }
@@ -927,6 +921,8 @@ function OverlayApp() {
   const [geminiUsage, setGeminiUsage] = useState<GeminiUsageResult | null>(null);
   const [cliSessions, setCliSessions] = useState<CliSessionResult | null>(null);
   const [settings, setSettings] = useState<OverlaySettings>(defaultOverlaySettings);
+  const [fontScale, setFontScale] = useState(1);
+  const contentRef = useRef<HTMLElement | null>(null);
 
   const providers = useMemo(
     () => buildProviderUsage(codexUsage, claudeUsage, geminiUsage, cliSessions).filter((provider) => getProviderDisplay(settings, provider.id).enabled),
@@ -980,10 +976,44 @@ function OverlayApp() {
     };
   }, []);
 
-  const alpha = Math.max(0.35, Math.min(0.95, settings.opacity / 100));
+  useLayoutEffect(() => {
+    const content = contentRef.current;
+    if (!content || !window.tokenMonitor?.resizeOverlay) {
+      return;
+    }
+
+    let frameId = 0;
+    const resize = () => {
+      window.cancelAnimationFrame(frameId);
+      frameId = window.requestAnimationFrame(() => {
+        const maximumContentHeight = Math.max(100, Math.floor(window.screen.availHeight / 3) - 20);
+        const nextScale = Math.max(0.35, Math.min(1, fontScale * (maximumContentHeight / content.scrollHeight)));
+        if (Math.abs(nextScale - fontScale) > 0.01) {
+          setFontScale(nextScale);
+          return;
+        }
+        void window.tokenMonitor?.resizeOverlay({ width: 620, height: content.scrollHeight + 20 });
+      });
+    };
+
+    const observer = new ResizeObserver(resize);
+    observer.observe(content);
+    resize();
+    return () => {
+      observer.disconnect();
+      window.cancelAnimationFrame(frameId);
+    };
+  }, [providers, fontScale]);
 
   return (
-    <main className="overlay-root" style={{ "--overlay-alpha": alpha } as React.CSSProperties}>
+    <main
+      className="overlay-root"
+      ref={contentRef}
+      style={{
+        "--overlay-heading-size": `${Math.round(56 * fontScale)}px`,
+        "--overlay-detail-size": `${Math.round(48 * fontScale)}px`
+      } as React.CSSProperties}
+    >
       <section className="overlay-card">
         <div className="overlay-provider-list">
           {providers.length === 0 ? (
@@ -1018,6 +1048,9 @@ function filterProviderFields(fields: ProviderField[], display: ReturnType<typeo
   return fields.filter((field) => {
     if (field.kind === "plan") {
       return display.showPlan;
+    }
+    if (field.kind === "identity") {
+      return display.showSession;
     }
     if (field.kind === "usage") {
       return display.showUsed;
@@ -1096,8 +1129,8 @@ function buildCodexProvider(usage: CodexUsageResult | null, sessions: CliSession
       reset: "확인 중",
       fields: [
         { label: "플랜", value: "확인 중", kind: "plan" },
-        { label: "5시간", value: "확인 중", kind: "quota" },
-        { label: "주간", value: "확인 중", kind: "quota" }
+        { label: "주간", value: "확인 중", kind: "quota" },
+        { label: "주기", value: "확인 중", kind: "quota" }
       ],
       detail: "Codex Desktop 로컬 앱 서버에서 ChatGPT 사용량을 읽고 있습니다."
     };
@@ -1116,8 +1149,8 @@ function buildCodexProvider(usage: CodexUsageResult | null, sessions: CliSession
       reset: "확인 불가",
       fields: [
         { label: "플랜", value: "확인 불가", kind: "plan" },
-        { label: "5시간", value: "확인 불가", kind: "quota" },
-        { label: "주간", value: "확인 불가", kind: "quota" }
+        { label: "주간", value: "확인 불가", kind: "quota" },
+        { label: "주기", value: "확인 불가", kind: "quota" }
       ],
       detail: usage.error
     };
@@ -1130,13 +1163,14 @@ function buildCodexProvider(usage: CodexUsageResult | null, sessions: CliSession
     status: "live",
     plan: usage.planType ?? "로그인됨",
     session: formatSession(sessions?.codex),
-    used: formatWindows(usage.primary, usage.secondary, "used"),
-    remaining: formatWindows(usage.primary, usage.secondary, "remaining"),
-    reset: formatResetWindows(usage.primary, usage.secondary),
+    used: formatWindows(usage.weekly, usage.periodic, "used"),
+    remaining: formatWindows(usage.weekly, usage.periodic, "remaining"),
+    reset: formatResetWindows(usage.weekly, usage.periodic),
     fields: [
+      ...(usage.maskedEmail ? [{ label: "계정", value: usage.maskedEmail, kind: "identity" as const }] : []),
       { label: "플랜", value: usage.planType ?? "로그인됨", kind: "plan" },
-      { label: "5시간", value: formatCodexWindowSummary(usage.primary), kind: "quota" },
-      { label: "주간", value: formatCodexWindowSummary(usage.secondary), kind: "quota" }
+      { label: "주간", value: formatCodexWindowSummary(usage.weekly), kind: "quota" },
+      { label: "주기", value: formatCodexWindowSummary(usage.periodic), kind: "quota" }
     ],
     detail: `최근 갱신 ${formatTime(usage.updatedAt)}`
   };
@@ -1144,6 +1178,8 @@ function buildCodexProvider(usage: CodexUsageResult | null, sessions: CliSession
 
 function buildClaudeProvider(usage: ClaudeUsageResult | null, sessions: CliSessionResult | null): ProviderUsage {
   const canLogin = isClaudeCliLoginMissing(sessions);
+  const sessionLabel = formatSession(sessions?.claude);
+  const planLabel = sessions?.claude.loggedIn ? "Claude 구독" : "확인 필요";
 
   if (usage == null) {
     return {
@@ -1158,10 +1194,10 @@ function buildClaudeProvider(usage: ClaudeUsageResult | null, sessions: CliSessi
       reset: "확인 중",
       fields: [
         { label: "플랜", value: "확인 중", kind: "plan" },
-        { label: "5시간", value: "확인 중", kind: "quota" },
-        { label: "주간", value: "확인 중", kind: "quota" }
+        { label: "주간", value: "확인 중", kind: "quota" },
+        { label: "주기 (5시간)", value: "확인 중", kind: "quota" }
       ],
-      detail: canLogin ? "Node.js/npm 설치 후 Claude Pro/Max 이상 계정으로 Claude CLI 설치와 로그인을 진행하세요." : "Claude 로컬 사용 로그를 읽고 있습니다.",
+      detail: canLogin ? "Node.js/npm 설치 후 Claude Pro/Max 이상 계정으로 Claude CLI 설치와 로그인을 진행하세요." : "Claude Code Status Line 사용량을 확인하고 있습니다.",
       canLogin,
       actionLabel: "Claude CLI 설치 및 로그인"
     };
@@ -1180,46 +1216,58 @@ function buildClaudeProvider(usage: ClaudeUsageResult | null, sessions: CliSessi
       reset: "확인 불가",
       fields: [
         { label: "플랜", value: "확인 불가", kind: "plan" },
-        { label: "5시간", value: "확인 불가", kind: "quota" },
-        { label: "주간", value: "확인 불가", kind: "quota" }
+        { label: "주간", value: "확인 불가", kind: "quota" },
+        { label: "주기 (5시간)", value: "확인 불가", kind: "quota" }
       ],
       detail: canLogin ? "Node.js/npm 설치 후 Claude Pro/Max 이상 계정으로 Claude CLI 설치와 로그인을 진행하세요." : usage.error,
       canLogin,
-      actionLabel: "Claude CLI 설치 및 로그인"
+      actionLabel: "Claude CLI 설치 및 로그인",
+      issues: canLogin ? undefined : [{
+        reason: "Claude Status Line 사용량 대기",
+        steps: [
+          "Claude Code를 실행",
+          "대화를 시작해 첫 응답 수신",
+          "대시보드 새로고침"
+        ]
+      }]
     };
   }
 
-  const needsCliUsageLink = !usage.oauth;
-  const recentTokens = usage.windows.sevenDay.tokens;
-  const usedLabel = usage.oauth
-    ? formatClaudeOAuthWindows(usage.oauth.fiveHour, usage.oauth.sevenDay, "used")
-    : recentTokens > 0
-      ? `5시간 ${formatNumber(usage.windows.fiveHour.tokens)} / 7일 ${formatNumber(recentTokens)}`
-      : `최근 30일 0 / 전체 ${formatNumber(usage.windows.allTime.tokens)}`;
-  const remainingLabel = usage.oauth ? formatClaudeOAuthWindows(usage.oauth.fiveHour, usage.oauth.sevenDay, "remaining") : "서버 한도 미연동";
-  const resetLabel = usage.oauth ? formatClaudeOAuthResets(usage.oauth.fiveHour, usage.oauth.sevenDay) : "CLI/Web 연동 필요";
-  const extraUsage = usage.oauth?.extraUsage?.isEnabled && usage.oauth.extraUsage.monthlyLimit != null
-    ? `추가 사용 ${formatNumber(usage.oauth.extraUsage.usedCredits ?? 0)} / ${formatNumber(usage.oauth.extraUsage.monthlyLimit)} ${usage.oauth.extraUsage.currency ?? ""}`.trim()
-    : null;
+  const usedLabel = formatClaudeStatusLineWindows(usage.sevenDay, usage.fiveHour, "used");
+  const remainingLabel = formatClaudeStatusLineWindows(usage.sevenDay, usage.fiveHour, "remaining");
+  const resetLabel = formatClaudeStatusLineResets(usage.sevenDay, usage.fiveHour);
+  const modelLabel = usage.model?.displayName ?? usage.model?.id ?? null;
+  const hasQuota = Boolean(usage.fiveHour || usage.sevenDay);
+  const maskedEmail = sessions?.claude.maskedEmail;
 
   return {
     id: "claude",
     name: "Claude",
     source: "Anthropic",
-    status: "live",
-    plan: usage.planType ?? "로컬 로그",
-    session: formatSession(sessions?.claude),
+    status: hasQuota ? "live" : "pending",
+    plan: planLabel,
+    session: sessionLabel,
     used: usedLabel,
     remaining: remainingLabel,
     reset: resetLabel,
     fields: [
-      { label: "플랜", value: usage.planType ?? "로컬 로그", kind: "plan" },
-      { label: "5시간", value: formatClaudeWindowSummary(usage.oauth?.fiveHour ?? null, usage.windows.fiveHour), kind: "quota" },
-      { label: "주간", value: formatClaudeWindowSummary(usage.oauth?.sevenDay ?? null, usage.windows.sevenDay), kind: "quota" }
+      { label: "로그인", value: sessionLabel, kind: "plan" },
+      ...(maskedEmail ? [{ label: "계정", value: maskedEmail, kind: "identity" as const }] : []),
+      { label: "플랜", value: planLabel, kind: "plan" },
+      { label: "주간", value: formatClaudeStatusLineWindowSummary(usage.sevenDay), kind: "quota" },
+      { label: "주기 (5시간)", value: formatClaudeStatusLineWindowSummary(usage.fiveHour), kind: "quota" }
     ],
-    detail: extraUsage ?? `최근 갱신 ${formatTime(usage.updatedAt)}`,
-    canLogin: canLogin || needsCliUsageLink,
-    actionLabel: canLogin ? "Claude CLI 설치 및 로그인" : "Claude CLI 재연동"
+    detail: `${modelLabel ? `${modelLabel} / ` : ""}Status Line ${usage.stale ? "마지막 확인 정보" : "최근 갱신"} ${formatTime(usage.capturedAt)}`,
+    canLogin,
+    actionLabel: canLogin ? "Claude CLI 설치 및 로그인" : "Claude CLI 재연동",
+    issues: hasQuota ? undefined : [{
+      reason: "Claude Status Line 사용량 대기",
+      steps: [
+        "Claude Code를 실행",
+        "대화를 시작해 첫 응답 수신",
+        "대시보드 새로고침"
+      ]
+    }]
   };
 }
 
@@ -1237,9 +1285,10 @@ function buildGeminiProvider(usage: GeminiUsageResult | null): ProviderUsage {
       reset: "확인 중",
       fields: [
         { label: "플랜", value: "확인 중", kind: "plan" },
-        { label: "Gemini 5시간", value: "확인 중", kind: "quota" },
         { label: "Gemini 주간", value: "확인 중", kind: "quota" },
-        { label: "Antigravity 5시간", value: "확인 중", kind: "quota" }
+        { label: "Antigravity 주간", value: "확인 중", kind: "quota" },
+        { label: "Gemini 주기", value: "확인 중", kind: "quota" },
+        { label: "Antigravity 주기", value: "확인 중", kind: "quota" }
       ],
       detail: "Gemini Apps 한도와 Antigravity 5시간 한도 수집 상태를 확인하고 있습니다.",
       canLogin: true,
@@ -1261,9 +1310,10 @@ function buildGeminiProvider(usage: GeminiUsageResult | null): ProviderUsage {
       reset: "확인 불가",
       fields: [
         { label: "플랜", value: planLabel, kind: "plan" },
-        { label: "Gemini 5시간", value: formatGeminiAppsWebUsageSummary(usage.geminiApps?.fiveHour ?? null), kind: "quota" },
         { label: "Gemini 주간", value: formatGeminiAppsWebUsageSummary(usage.geminiApps?.weekly ?? null), kind: "quota" },
-        { label: "Antigravity 5시간", value: "남은 사용량 확인 불가 / 초기화 확인 불가", kind: "quota" }
+        { label: "Antigravity 주간", value: "명시적 주간 데이터 없음", kind: "quota" },
+        { label: "Gemini 주기", value: formatGeminiAppsWebUsageSummary(usage.geminiApps?.fiveHour ?? null), kind: "quota" },
+        { label: "Antigravity 주기", value: "남은 사용량 확인 불가 / 초기화 확인 불가", kind: "quota" }
       ],
       detail: usage.error,
       canLogin: true,
@@ -1273,9 +1323,16 @@ function buildGeminiProvider(usage: GeminiUsageResult | null): ProviderUsage {
   }
 
   const antigravityFiveHourWindow = pickAntigravityFiveHourWindow(usage.models);
+  const antigravityWeeklyWindow = pickAntigravityWeeklyWindow(usage.models);
   const sourceLabel = formatAntigravitySource(usage.source);
   const planLabel = usage.geminiApps?.plan ?? usage.planType ?? "확인 필요";
   const promptCredits = formatPromptCredits(usage.promptCredits);
+  const quotaFields: ProviderField[] = [
+    { label: "Gemini 주간", value: formatGeminiAppsWebUsageSummary(usage.geminiApps?.weekly ?? null), kind: "quota" },
+    ...(antigravityWeeklyWindow ? [{ label: "Antigravity 주간", value: formatGeminiWindowSummary(antigravityWeeklyWindow), kind: "quota" as const }] : []),
+    { label: "Gemini 주기", value: formatGeminiAppsWebUsageSummary(usage.geminiApps?.fiveHour ?? null), kind: "quota" },
+    { label: "Antigravity 주기", value: formatGeminiWindowSummary(antigravityFiveHourWindow), kind: "quota" }
+  ];
 
   return {
     id: "gemini",
@@ -1284,14 +1341,13 @@ function buildGeminiProvider(usage: GeminiUsageResult | null): ProviderUsage {
     status: "live",
     plan: planLabel,
     session: sourceLabel,
-    used: formatGeminiWindows(antigravityFiveHourWindow, null, null, "used"),
-    remaining: formatGeminiWindows(antigravityFiveHourWindow, null, null, "remaining"),
-    reset: formatGeminiResets(antigravityFiveHourWindow, null, null),
+    used: formatGeminiWindows(antigravityWeeklyWindow, antigravityFiveHourWindow, null, "used"),
+    remaining: formatGeminiWindows(antigravityWeeklyWindow, antigravityFiveHourWindow, null, "remaining"),
+    reset: formatGeminiResets(antigravityWeeklyWindow, antigravityFiveHourWindow, null),
     fields: [
+      ...(usage.maskedEmail ? [{ label: "계정", value: usage.maskedEmail, kind: "identity" as const }] : []),
       { label: "플랜", value: planLabel, kind: "plan" },
-      { label: "Gemini 5시간", value: formatGeminiAppsWebUsageSummary(usage.geminiApps?.fiveHour ?? null), kind: "quota" },
-      { label: "Gemini 주간", value: formatGeminiAppsWebUsageSummary(usage.geminiApps?.weekly ?? null), kind: "quota" },
-      { label: "Antigravity 5시간", value: formatGeminiWindowSummary(antigravityFiveHourWindow), kind: "quota" }
+      ...quotaFields
     ],
     detail: promptCredits ?? formatGeminiDetail(usage.geminiApps?.updatedAt ?? null, usage.geminiApps?.detail ?? null, sourceLabel, usage.updatedAt),
     issues: buildGeminiIssues(usage.geminiApps, antigravityFiveHourWindow)
@@ -1368,7 +1424,7 @@ function makeCodexError(error: string): CodexUsageResult {
 function makeClaudeError(error: string): ClaudeUsageResult {
   return {
     ok: false,
-    source: "local-logs",
+    source: "claude-code-statusline",
     error,
     updatedAt: new Date().toISOString()
   };
@@ -1392,42 +1448,45 @@ function formatSession(session: CliSessionResult["codex"] | undefined) {
   if (!session.installed) {
     return "CLI 없음";
   }
-  return session.loggedIn ? `로그인됨${session.authMethod ? ` (${session.authMethod})` : ""}` : "로그아웃";
+  if (!session.loggedIn) {
+    return "로그아웃";
+  }
+  return "로그인됨";
 }
 
-function formatWindows(primary: CodexUsageWindow | null, secondary: CodexUsageWindow | null, mode: "used" | "remaining") {
+function formatWindows(weekly: CodexUsageWindow | null, periodic: CodexUsageWindow | null, mode: "used" | "remaining") {
   const valueKey = mode === "used" ? "usedPercent" : "remainingPercent";
   const values = [
-    primary ? `5시간 ${primary[valueKey]}%` : null,
-    secondary ? `주간 ${secondary[valueKey]}%` : null
+    weekly ? `주간 ${weekly[valueKey]}%` : null,
+    periodic ? `${periodic.label} ${periodic[valueKey]}%` : null
   ].filter(Boolean);
 
   return values.length > 0 ? values.join(" / ") : "데이터 없음";
 }
 
-function formatResetWindows(primary: CodexUsageWindow | null, secondary: CodexUsageWindow | null) {
+function formatResetWindows(weekly: CodexUsageWindow | null, periodic: CodexUsageWindow | null) {
   const values = [
-    primary?.resetsAt ? `5시간 ${formatReset(primary.resetsAt)}` : null,
-    secondary?.resetsAt ? `주간 ${formatReset(secondary.resetsAt)}` : null
+    weekly?.resetsAt ? `주간 ${formatReset(weekly.resetsAt)}` : null,
+    periodic?.resetsAt ? `${periodic.label} ${formatReset(periodic.resetsAt)}` : null
   ].filter(Boolean);
 
   return values.length > 0 ? values.join(" / ") : "데이터 없음";
 }
 
-function formatClaudeOAuthWindows(fiveHour: ClaudeOAuthWindow | null, sevenDay: ClaudeOAuthWindow | null, mode: "used" | "remaining") {
+function formatClaudeStatusLineWindows(weekly: ClaudeUsageWindow | null, periodic: ClaudeUsageWindow | null, mode: "used" | "remaining") {
   const key = mode === "used" ? "usedPercent" : "remainingPercent";
   const values = [
-    fiveHour ? `5시간 ${fiveHour[key]}%` : null,
-    sevenDay ? `주간 ${sevenDay[key]}%` : null
+    weekly ? `주간 ${weekly[key]}%` : null,
+    periodic ? `주기 (5시간) ${periodic[key]}%` : null
   ].filter(Boolean);
 
   return values.length > 0 ? values.join(" / ") : "데이터 없음";
 }
 
-function formatClaudeOAuthResets(fiveHour: ClaudeOAuthWindow | null, sevenDay: ClaudeOAuthWindow | null) {
+function formatClaudeStatusLineResets(weekly: ClaudeUsageWindow | null, periodic: ClaudeUsageWindow | null) {
   const values = [
-    fiveHour?.resetsAt ? `5시간 ${formatReset(fiveHour.resetsAt)}` : null,
-    sevenDay?.resetsAt ? `주간 ${formatReset(sevenDay.resetsAt)}` : null
+    weekly?.resetsAt ? `주간 ${formatReset(weekly.resetsAt)}` : null,
+    periodic?.resetsAt ? `주기 (5시간) ${formatReset(periodic.resetsAt)}` : null
   ].filter(Boolean);
 
   return values.length > 0 ? values.join(" / ") : "데이터 없음";
@@ -1453,13 +1512,13 @@ function formatCodexWindowSummary(window: CodexUsageWindow | null) {
   return `남은 사용량 ${window.remainingPercent}% / 초기화 ${reset}`;
 }
 
-function formatClaudeWindowSummary(oauthWindow: ClaudeOAuthWindow | null, localWindow: { tokens: number } | null) {
-  if (oauthWindow) {
-    const reset = oauthWindow.resetsAt ? formatReset(oauthWindow.resetsAt) : "초기화 시간 없음";
-    return `남은 사용량 ${oauthWindow.remainingPercent}% / 초기화 ${reset}`;
+function formatClaudeStatusLineWindowSummary(window: ClaudeUsageWindow | null) {
+  if (window) {
+    const reset = window.resetsAt ? formatReset(window.resetsAt) : "초기화 시간 없음";
+    return `남은 사용량 ${window.remainingPercent}% / 초기화 ${reset}`;
   }
 
-  return "서버 한도 미연동";
+  return "Claude Code에서 대화를 시작하면 확인됩니다";
 }
 
 function formatGeminiWindowSummary(window: GeminiUsageWindow | null) {

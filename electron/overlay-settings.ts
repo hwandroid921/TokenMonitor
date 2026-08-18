@@ -40,7 +40,7 @@ export const defaultOverlaySettings: OverlaySettings = {
   showUsed: true,
   showRemaining: true,
   showReset: true,
-  opacity: 78
+  opacity: 50
 };
 
 export function normalizeOverlaySettings(value: Partial<OverlaySettings>): OverlaySettings {
@@ -56,7 +56,7 @@ export function normalizeOverlaySettings(value: Partial<OverlaySettings>): Overl
     providers,
     providerItems,
     closeToTray: Boolean(value.closeToTray ?? defaultOverlaySettings.closeToTray),
-    opacity: Math.min(95, Math.max(35, Number(value.opacity ?? defaultOverlaySettings.opacity)))
+    opacity: 50
   };
 }
 

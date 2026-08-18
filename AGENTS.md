@@ -57,7 +57,7 @@ npx electron-builder --win dir --x64 --publish never --config.win.signAndEditExe
 - Keep changes scoped to the user request. Do not perform unrelated refactors.
 - Keep changes small and verifiable.
 - Keep UI changes aligned with the current compact dashboard style.
-- Do not show account emails, access tokens, refresh tokens, or account IDs in the UI or logs.
+- Do not show access tokens, refresh tokens, or account IDs in the UI or logs.
 - Write README and user-facing project docs as final-state documentation. Do not list individual task edits or change-by-change notes there.
 - Record version-level changes only in `docs/RELEASE_VERSION_POLICY.md` Release History.
 - Keep portable artifact names in English.
@@ -102,7 +102,7 @@ npx electron-builder --win dir --x64 --publish never --config.win.signAndEditExe
 - Provider error and recovery guidance should stay compact inside provider cards.
 - Ensure text does not overflow buttons, cards, or compact panels.
 - Preserve accessibility attributes, disabled states, pending states, and focus behavior.
-- Never display account emails, tokens, account IDs, or other credential-derived identifiers.
+- Never display tokens, account IDs, or other credential-derived identifiers.
 
 ## Provider Rules
 
@@ -122,7 +122,7 @@ npx electron-builder --win dir --x64 --publish never --config.win.signAndEditExe
 
 ## Security and Privacy
 
-- Do not hardcode secrets, API keys, OAuth tokens, refresh tokens, account IDs, or account emails.
+- Do not hardcode secrets, API keys, OAuth tokens, refresh tokens, account IDs.
 - Do not modify `.env`, credential, or production config files unless the user explicitly asks and the change is safe.
 - Do not log raw provider payloads that may include sensitive data.
 - Do not include secrets or account identifiers in README examples, screenshots, test fixtures, issues, PR descriptions, or build logs.

@@ -69,7 +69,7 @@ Before `v1.0.0`, do not maintain a fixed version-by-version feature roadmap. Whe
 Current package version:
 
 ```text
-0.7.0-beta.0
+0.9.13
 ```
 
 Baseline `v0.1.0` includes:
@@ -123,9 +123,6 @@ These items are candidates for releases after the initial complete `v1.0.0` mile
 - Notification support:
   - Notify the user when a provider quota/reset window is refreshed or initialized.
   - Notify the user when remaining usage drops below a user-configured threshold.
-- Account information on provider dashboards:
-  - Show display-safe account information for each model/provider card where available.
-  - Continue to exclude account emails, access tokens, refresh tokens, account IDs, and credential-derived identifiers from UI and logs.
 - Additional usage and credits:
   - Track whether providers expose display-safe additional usage, purchased credits, or flexible usage balances.
   - Show extra usage/credit status only when the source clearly distinguishes it from base plan quota.
@@ -192,6 +189,55 @@ For each release-worthy version bump, summarize:
 - Known limitations
 
 ## Release History
+
+### 0.9.13 — 2026-08-18 — PATCH
+
+- Added a black outline to the 50%-opacity overlay text without restoring text shadows or a background panel.
+
+### 0.9.12 — 2026-08-18 — PATCH
+
+- Removed the overlay background panel and fixed overlay text opacity at 50%.
+- Doubled the base overlay font sizes while retaining automatic scaling within the display-height limit.
+
+### 0.9.11 — 2026-08-13 — PATCH
+
+- Restored the overlay to the lower-right corner of the primary display.
+
+### 0.9.10 — 2026-08-13 — PATCH
+
+- Capped the overlay height at one-third of the primary display.
+- Applied SBAggro 700 to overlay text, removed all text shadows, and added a 50% translucent contrast background.
+
+### 0.9.9 — 2026-08-13 — PATCH
+
+- Overlay window height now follows its rendered content to prevent provider rows from being clipped.
+- Overlay opacity is fixed at 50%, with larger, bolder text and no text outline.
+
+### 0.9.8 — 2026-08-12 — PATCH
+
+- Dashboard and overlay now show provider-supplied account emails only in masked form when available.
+- Raw account emails are transformed before IPC and are not written to settings, usage caches, or logs.
+
+### 0.9.7 — 2026-08-12 — PATCH
+
+- Reordered all provider quota displays to show explicit weekly usage before periodic usage.
+- ChatGPT rate-limit windows are now classified from the app-server duration rather than the `primary`/`secondary` response position.
+- Antigravity weekly usage is displayed only when the provider explicitly identifies a weekly window.
+
+### 0.9.6 — 2026-08-11 — PATCH
+
+- Claude dashboard state now distinguishes a valid Status Line snapshot that is still waiting for its first quota window from a completed quota reading.
+
+### 0.9.5 — 2026-08-11 — PATCH
+
+- Replaced the Claude OAuth usage endpoint and local JSONL log fallback with a Claude Code Status Line snapshot collector.
+- The dashboard now prepares a Token Monitor Status Line command during Claude connection, then shows only reviewed model, periodic quota, weekly quota, and reset time.
+- Claude credential files, raw Status Line payloads, local conversation logs, and API key authentication are excluded from the collection path.
+
+### 0.9.4 — 2026-08-11 — PATCH
+
+- Claude CLI status checks and login launchers now run with `ANTHROPIC_API_KEY` removed from their child-process environment.
+- Claude subscription quota collection remains limited to the Claude.ai OAuth flow; API key values are neither read, stored, logged, nor displayed.
 
 ### 0.7.0-beta.0 — 2026-06-15 — BETA
 

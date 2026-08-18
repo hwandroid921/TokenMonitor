@@ -17,6 +17,7 @@ contextBridge.exposeInMainWorld("tokenMonitor", {
   openNodeJsDownload: () => ipcRenderer.invoke("nodejs:open-download"),
   getOverlaySettings: () => ipcRenderer.invoke("overlay-settings:read"),
   updateOverlaySettings: (settings) => ipcRenderer.invoke("overlay-settings:update", settings),
+  resizeOverlay: (size) => ipcRenderer.invoke("overlay:resize", size),
   onOverlaySettingsChanged: (callback) => {
     const listener = (_event, settings) => callback(settings);
     ipcRenderer.on("overlay-settings:changed", listener);

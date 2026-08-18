@@ -2,6 +2,7 @@ import { type ChildProcess, spawn } from "node:child_process";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
+import { maskEmail } from "./masked-email.js";
 
 export const activeChildProcesses = new Set<ChildProcess>();
 
@@ -52,8 +53,8 @@ type RpcRateLimitsResponse = {
 type RpcAccountResponse = {
   account?: {
     type?: string;
-    email?: string;
     planType?: string;
+    email?: string;
   } | null;
 };
 
@@ -82,9 +83,9 @@ export type CodexUsageSnapshot = {
   source: "codex-app-server";
   accountType: string | null;
   planType: string | null;
-  hasAccountEmail: boolean;
-  primary: CodexUsageWindow | null;
-  secondary: CodexUsageWindow | null;
+  maskedEmail: string | null;
+  weekly: CodexUsageWindow | null;
+  periodic: CodexUsageWindow | null;
   credits: {
     hasCredits: boolean;
     unlimited: boolean;
@@ -212,9 +213,8 @@ export async function getCodexUsage(): Promise<CodexUsageResult> {
       source: "codex-app-server",
       accountType: accountResult?.account?.type ?? null,
       planType: accountResult?.account?.planType ?? rateLimits?.planType ?? null,
-      hasAccountEmail: Boolean(accountResult?.account?.email),
-      primary: makeWindow("5시간 한도", rateLimits?.primary ?? null),
-      secondary: makeWindow("이번 주 한도", rateLimits?.secondary ?? null),
+      maskedEmail: maskEmail(accountResult?.account?.email),
+      ...classifyRateWindows([rateLimits?.primary ?? null, rateLimits?.secondary ?? null]),
       credits: makeCredits(rateLimits?.credits ?? null),
       updatedAt: new Date().toISOString()
     };
@@ -230,7 +230,16 @@ export async function getCodexUsage(): Promise<CodexUsageResult> {
   }
 }
 
-function makeWindow(label: string, value: RpcRateWindow | null): CodexUsageWindow | null {
+function classifyRateWindows(values: Array<RpcRateWindow | null>) {
+  const windows = values
+    .map((value) => makeWindow(value))
+    .filter((value): value is CodexUsageWindow => value != null);
+  const weekly = windows.find((window) => window.windowMinutes != null && Math.abs(window.windowMinutes - 7 * 24 * 60) <= 60) ?? null;
+  const periodic = windows.find((window) => window !== weekly) ?? null;
+  return { weekly, periodic };
+}
+
+function makeWindow(value: RpcRateWindow | null): CodexUsageWindow | null {
   if (!value) {
     return null;
   }
@@ -238,12 +247,22 @@ function makeWindow(label: string, value: RpcRateWindow | null): CodexUsageWindo
   const usedPercent = clampPercent(value.usedPercent);
 
   return {
-    label,
+    label: formatWindowLabel(value.windowDurationMins ?? null),
     usedPercent,
     remainingPercent: clampPercent(100 - usedPercent),
     windowMinutes: value.windowDurationMins ?? null,
     resetsAt: value.resetsAt ? new Date(value.resetsAt * 1000).toISOString() : null
   };
+}
+
+function formatWindowLabel(windowMinutes: number | null) {
+  if (windowMinutes != null && Math.abs(windowMinutes - 7 * 24 * 60) <= 60) {
+    return "주간";
+  }
+  if (windowMinutes != null && Math.abs(windowMinutes - 5 * 60) <= 30) {
+    return "주기 (5시간)";
+  }
+  return "주기";
 }
 
 function makeCredits(value: RpcCredits | null): CodexUsageSnapshot["credits"] {

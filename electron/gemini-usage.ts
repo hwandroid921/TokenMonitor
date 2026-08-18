@@ -6,6 +6,7 @@ import os from "node:os";
 import path from "node:path";
 import type { RequestOptions } from "node:https";
 import { readGeminiAppsSessionStatus, readGeminiAppsUsageCache, type GeminiAppsSessionStatus, type GeminiAppsUsage } from "./gemini-apps-usage.js";
+import { maskEmail } from "./masked-email.js";
 
 // Cached once per process — Gemini CLI install location doesn't change at runtime.
 let oauthClientCache: { clientId: string; clientSecret: string } | null | undefined;
@@ -72,7 +73,7 @@ export type GeminiUsageResult =
       ok: true;
       source: AntigravityUsageSource;
       planType: string | null;
-      accountEmail: string | null;
+      maskedEmail: string | null;
       promptCredits: PromptCredits | null;
       geminiApps: GeminiAppsUsage | null;
       geminiAppsSession: GeminiAppsSessionStatus;
@@ -141,7 +142,7 @@ export async function getGeminiUsage(): Promise<GeminiUsageResult> {
       ok: true,
       source: "gemini-cli-oauth",
       planType: planFromCodeAssist(assist, claims.hostedDomain),
-      accountEmail: null,
+      maskedEmail: maskEmail(claims.email),
       promptCredits: null,
       geminiApps: readGeminiAppsUsageCache(),
       geminiAppsSession: readGeminiAppsSessionStatus(),
@@ -196,7 +197,7 @@ async function getAntigravityLocalUsage(): Promise<GeminiUsageResult> {
       ok: true,
       source: "antigravity-local",
       planType: normalizeGeminiPlan(readAntigravityPlan(payload)) ?? "확인 필요",
-      accountEmail: null,
+      maskedEmail: maskEmail(readAntigravityEmail(userStatus ?? payload)),
       promptCredits: parseLocalPromptCredits(payload),
       geminiApps: readGeminiAppsUsageCache(),
       geminiAppsSession: readGeminiAppsSessionStatus(),
@@ -847,7 +848,7 @@ async function getAntigravityCliUsage(method: "google" | "auto"): Promise<Gemini
       ok: true,
       source: resolvedSource,
       planType,
-      accountEmail: null,
+      maskedEmail: readGeminiMaskedEmail(),
       promptCredits: parsePromptCredits(snapshot.promptCredits),
       geminiApps: readGeminiAppsUsageCache(),
       geminiAppsSession: readGeminiAppsSessionStatus(),
@@ -880,6 +881,16 @@ async function readGeminiOauthPlanType(): Promise<string> {
     return planFromCodeAssist(assist, claims.hostedDomain);
   } catch {
     return "확인 필요";
+  }
+}
+
+function readGeminiMaskedEmail() {
+  try {
+    const credentials = readGeminiCredentials();
+    const claims = parseJwtClaims(readString(credentials?.idToken ?? credentials?.id_token));
+    return maskEmail(claims.email);
+  } catch {
+    return null;
   }
 }
 
