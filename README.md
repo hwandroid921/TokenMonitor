@@ -1,6 +1,6 @@
 # Token Monitor
 
-> Windows에서 ChatGPT, Claude, Gemini 및 Antigravity의 남은 사용량과 초기화 시간을 한눈에 확인하는 데스크톱 앱입니다.
+> ChatGPT, Claude, Gemini 및 Antigravity의 남은 사용량과 초기화 시간을 한눈에 확인하는 데스크톱 앱입니다.
 
 Token Monitor는 여러 AI 서비스의 로컬 로그인 상태와 제공자가 노출하는 사용량 정보를 읽어, 플랜·사용량·잔여량·초기화 시간을 하나의 대시보드와 화면 우측 하단 오버레이로 정리합니다. 계정을 구분해야 할 때에는 제공자가 반환한 이메일을 마스킹한 값만 표시합니다.
 
@@ -107,40 +107,6 @@ Node.js LTS를 설치하고 CLI 로그인 과정을 완료하세요. Antigravity
 ### Node.js 설치 안내가 표시됩니다
 
 Claude 및 Antigravity CLI 연결에는 `npx`가 필요합니다. 안내 버튼에서 Node.js LTS를 설치한 뒤 앱을 다시 실행하세요.
-
-## 개발 및 패키징
-
-개발 환경: Node.js, npm, Windows
-
-```powershell
-npm ci
-npm run dev
-npm run typecheck
-npm run build
-```
-
-포터블 Windows x64 패키지:
-
-```powershell
-$env:CSC_IDENTITY_AUTO_DISCOVERY='false'
-npx electron-builder --win portable --x64 --publish never --config.win.signAndEditExecutable=false
-```
-
-unpacked 패키지:
-
-```powershell
-$env:CSC_IDENTITY_AUTO_DISCOVERY='false'
-npx electron-builder --win dir --x64 --publish never --config.win.signAndEditExecutable=false
-```
-
-## 프로젝트 구조
-
-```text
-electron/  Electron main process, IPC, provider collectors, overlay settings
-src/       React dashboard, settings and overlay UI
-build/     Windows icon assets
-docs/      release policy and project documentation
-```
 
 ## 라이선스
 
