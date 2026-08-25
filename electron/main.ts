@@ -122,7 +122,7 @@ function updateTrayMenu() {
 
   const menu = Menu.buildFromTemplate([
     {
-      label: "Open Token Monitor",
+      label: "Token Monitor 열기",
       click: showMainWindow
     },
     {
@@ -130,11 +130,11 @@ function updateTrayMenu() {
       click: () => applyOverlaySettings({ ...overlaySettings, enabled: !overlaySettings.enabled })
     },
     {
-      label: "Refresh usage",
+      label: "사용량 새로고침",
       click: requestUsageRefresh
     },
     {
-      label: "Overlay items",
+      label: "오버레이 항목",
       submenu: (Object.keys(trayProviderLabels) as ProviderId[]).map((id) => ({
         label: trayProviderLabels[id],
         type: "checkbox" as const,

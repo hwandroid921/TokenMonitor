@@ -52,6 +52,13 @@ const providerLabels: Record<ProviderId, string> = {
   gemini: "Gemini"
 };
 
+const providerStatusLabels: Record<ProviderUsage["status"], string> = {
+  live: "정상",
+  pending: "정보 대기",
+  error: "연동 필요",
+  loading: "확인 중"
+};
+
 const defaultOverlaySettings: OverlaySettings = {
   enabled: false,
   closeToTray: true,
@@ -80,6 +87,8 @@ const geminiUsagePollTimeoutMs = 60_000;
 
 function App() {
   const geminiPanelRef = useRef<HTMLDivElement | null>(null);
+  const geminiDialogRef = useRef<HTMLElement | null>(null);
+  const exitDialogRef = useRef<HTMLElement | null>(null);
   const [codexUsage, setCodexUsage] = useState<CodexUsageResult | null>(null);
   const [claudeUsage, setClaudeUsage] = useState<ClaudeUsageResult | null>(null);
   const [geminiUsage, setGeminiUsage] = useState<GeminiUsageResult | null>(null);
@@ -96,16 +105,21 @@ function App() {
   const [claudeLoginNotice, setClaudeLoginNotice] = useState<string | null>(null);
   const [geminiLoginNotice, setGeminiLoginNotice] = useState<string | null>(null);
   const [geminiAppsLoginNotice, setGeminiAppsLoginNotice] = useState<string | null>(null);
+  const [refreshNotice, setRefreshNotice] = useState("사용량 정보를 불러오는 중입니다.");
+  const [settingsNotice, setSettingsNotice] = useState<string | null>(null);
+  const [isSettingsSaving, setIsSettingsSaving] = useState(false);
 
   const providers = useMemo(() => buildProviderUsage(codexUsage, claudeUsage, geminiUsage, cliSessions), [codexUsage, claudeUsage, geminiUsage, cliSessions]);
 
   async function refreshUsage() {
     setIsRefreshing(true);
+    setRefreshNotice("사용량 정보를 새로고침하고 있습니다.");
     try {
       if (!window.tokenMonitor?.getCodexUsage || !window.tokenMonitor?.getClaudeUsage || !window.tokenMonitor?.getGeminiUsage || !window.tokenMonitor?.getCliSessionStatus) {
         setCodexUsage(makeCodexError("데스크탑 앱 연결을 확인할 수 없습니다."));
         setClaudeUsage(makeClaudeError("데스크탑 앱 연결을 확인할 수 없습니다."));
         setGeminiUsage(makeGeminiError("데스크탑 앱 연결을 확인할 수 없습니다."));
+        setRefreshNotice("데스크톱 앱 연결을 확인할 수 없습니다.");
         return;
       }
 
@@ -119,20 +133,79 @@ function App() {
       setClaudeUsage(latestClaude);
       setGeminiUsage(latestGemini);
       setCliSessions(latestSessions);
+      const successCount = [latestCodex, latestClaude, latestGemini].filter((result) => result.ok).length;
+      setRefreshNotice(`${successCount}개 서비스 갱신 완료 · ${formatTime(new Date().toISOString())}`);
+    } catch {
+      setRefreshNotice("사용량 새로고침을 완료하지 못했습니다. 다시 시도하세요.");
     } finally {
       setIsRefreshing(false);
     }
   }
 
   async function updateOverlaySettings(nextSettings: OverlaySettings) {
+    const previousSettings = overlaySettings;
     setOverlaySettings(nextSettings);
+    setIsSettingsSaving(true);
+    setSettingsNotice("설정을 저장하고 있습니다.");
 
-    if (!window.tokenMonitor?.updateOverlaySettings) {
+    try {
+      if (!window.tokenMonitor?.updateOverlaySettings) {
+        throw new Error("설정 저장 API를 사용할 수 없습니다.");
+      }
+      const saved = await window.tokenMonitor.updateOverlaySettings(nextSettings);
+      setOverlaySettings(saved);
+      setSettingsNotice("설정이 저장되었습니다.");
+    } catch {
+      setOverlaySettings(previousSettings);
+      setSettingsNotice("설정을 저장하지 못했습니다. 이전 설정으로 되돌렸습니다.");
+    } finally {
+      setIsSettingsSaving(false);
+    }
+  }
+
+  function closeExitConfirm() {
+    setShowExitConfirm(false);
+  }
+
+  function closeGeminiPanel() {
+    setIsGeminiPanelOpen(false);
+    setIsGeminiUsageCheckBlocking(false);
+    setIsGeminiAppsLoginPending(false);
+    void window.tokenMonitor?.closeGeminiView();
+  }
+
+  function handleTabKeyDown(event: React.KeyboardEvent<HTMLButtonElement>) {
+    if (event.key !== "ArrowLeft" && event.key !== "ArrowRight") {
       return;
     }
+    event.preventDefault();
+    const nextTab = activeTab === "dashboard" ? "settings" : "dashboard";
+    setActiveTab(nextTab);
+    window.requestAnimationFrame(() => document.getElementById(`${nextTab}-tab`)?.focus());
+  }
 
-    const saved = await window.tokenMonitor.updateOverlaySettings(nextSettings);
-    setOverlaySettings(saved);
+  function handleDialogKeyDown(event: React.KeyboardEvent<HTMLElement>, onClose: () => void) {
+    if (event.key === "Escape") {
+      event.preventDefault();
+      onClose();
+      return;
+    }
+    if (event.key !== "Tab") {
+      return;
+    }
+    const focusable = Array.from(event.currentTarget.querySelectorAll<HTMLElement>("button:not(:disabled), [href], input:not(:disabled), [tabindex]:not([tabindex='-1'])"));
+    if (focusable.length === 0) {
+      return;
+    }
+    const first = focusable[0];
+    const last = focusable[focusable.length - 1];
+    if (event.shiftKey && document.activeElement === first) {
+      event.preventDefault();
+      last.focus();
+    } else if (!event.shiftKey && document.activeElement === last) {
+      event.preventDefault();
+      first.focus();
+    }
   }
 
   function getGeminiPanelBounds() {
@@ -312,6 +385,24 @@ function App() {
     return () => unsubscribe?.();
   }, []);
 
+  useEffect(() => {
+    if (!showExitConfirm) {
+      return;
+    }
+    const previouslyFocused = document.activeElement as HTMLElement | null;
+    exitDialogRef.current?.querySelector<HTMLElement>("[data-autofocus]")?.focus();
+    return () => previouslyFocused?.focus();
+  }, [showExitConfirm]);
+
+  useEffect(() => {
+    if (!isGeminiPanelOpen) {
+      return;
+    }
+    const previouslyFocused = document.activeElement as HTMLElement | null;
+    geminiDialogRef.current?.querySelector<HTMLElement>("button")?.focus();
+    return () => previouslyFocused?.focus();
+  }, [isGeminiPanelOpen]);
+
   return (
     <main className="app-root">
       <section className="main-panel">
@@ -327,7 +418,7 @@ function App() {
           </div>
 
           <div className="header-actions">
-            <button className="icon-button" type="button" onClick={refreshUsage} aria-label="사용량 새로고침" title="사용량 새로고침">
+            <button className="icon-button" type="button" onClick={refreshUsage} disabled={isRefreshing} aria-busy={isRefreshing} aria-label="사용량 새로고침" title="사용량 새로고침">
               <RefreshCw size={17} aria-hidden="true" className={isRefreshing ? "spinning" : ""} />
             </button>
             <button
@@ -342,20 +433,21 @@ function App() {
           </div>
         </header>
 
-        <nav className="tab-bar" aria-label="화면 전환">
-          <button className={activeTab === "dashboard" ? "active" : ""} type="button" onClick={() => setActiveTab("dashboard")}>
+        <p className="app-refresh-status" role="status" aria-live="polite">{refreshNotice}</p>
+
+        <nav className="tab-bar" role="tablist" aria-label="화면 전환">
+          <button id="dashboard-tab" role="tab" aria-selected={activeTab === "dashboard"} aria-controls="dashboard-panel" tabIndex={activeTab === "dashboard" ? 0 : -1} className={activeTab === "dashboard" ? "active" : ""} type="button" onKeyDown={handleTabKeyDown} onClick={() => setActiveTab("dashboard")}>
             <LayoutDashboard size={16} aria-hidden="true" />
             사용량 대시보드
           </button>
-          <button className={activeTab === "settings" ? "active" : ""} type="button" onClick={() => setActiveTab("settings")}>
+          <button id="settings-tab" role="tab" aria-selected={activeTab === "settings"} aria-controls="settings-panel" tabIndex={activeTab === "settings" ? 0 : -1} className={activeTab === "settings" ? "active" : ""} type="button" onKeyDown={handleTabKeyDown} onClick={() => setActiveTab("settings")}>
             <Settings size={16} aria-hidden="true" />
             설정
           </button>
         </nav>
 
         {activeTab === "dashboard" ? (
-          <>
-          <section className="provider-grid" aria-label="서비스별 사용량">
+          <section id="dashboard-panel" role="tabpanel" aria-labelledby="dashboard-tab" className="provider-grid" aria-label="서비스별 사용량">
             {providers.map((provider) => (
               <ProviderCard
                 key={provider.id}
@@ -371,25 +463,24 @@ function App() {
               />
             ))}
           </section>
-          </>
         ) : (
-          <SettingsPanel settings={overlaySettings} onChange={updateOverlaySettings} />
+          <div id="settings-panel" role="tabpanel" aria-labelledby="settings-tab">
+            <SettingsPanel settings={overlaySettings} onChange={updateOverlaySettings} notice={settingsNotice} isSaving={isSettingsSaving} />
+          </div>
         )}
       </section>
 
       {isGeminiPanelOpen ? (
-        <section className="gemini-browser-panel" aria-label="Gemini 브라우저">
+        <section ref={geminiDialogRef} className="gemini-browser-panel" role="dialog" aria-modal="true" aria-labelledby="gemini-browser-title" onKeyDown={(event) => handleDialogKeyDown(event, closeGeminiPanel)}>
           <div className="gemini-browser-panel-header">
-            <strong>{geminiUsage?.geminiAppsSession.loggedIn ? "Gemini 사용량 확인" : "Gemini 로그인"}</strong>
+            <div>
+              <strong id="gemini-browser-title">{geminiUsage?.geminiAppsSession.loggedIn ? "Gemini 사용량 확인" : "Gemini 로그인"}</strong>
+              {isGeminiUsageCheckBlocking ? <span className="gemini-browser-status" role="status" aria-live="polite">Usage Limits 정보를 확인하고 있습니다.</span> : null}
+            </div>
             <button
               className="provider-secondary-action"
               type="button"
-              onClick={() => {
-                setIsGeminiPanelOpen(false);
-                setIsGeminiUsageCheckBlocking(false);
-                setIsGeminiAppsLoginPending(false);
-                void window.tokenMonitor?.closeGeminiView();
-              }}
+              onClick={closeGeminiPanel}
             >
               닫기
             </button>
@@ -400,11 +491,11 @@ function App() {
 
       {showExitConfirm ? (
         <div className="app-dialog-backdrop" role="presentation">
-          <section className="app-dialog" role="dialog" aria-modal="true" aria-labelledby="exit-dialog-title">
+          <section ref={exitDialogRef} className="app-dialog" role="dialog" aria-modal="true" aria-labelledby="exit-dialog-title" onKeyDown={(event) => handleDialogKeyDown(event, closeExitConfirm)}>
             <h2 id="exit-dialog-title">프로그램 종료</h2>
             <p>지금 종료하면 Token Monitor와 오버레이가 모두 종료됩니다.</p>
             <div className="app-dialog-actions">
-              <button className="secondary-button" type="button" onClick={() => setShowExitConfirm(false)}>
+              <button className="secondary-button" type="button" data-autofocus onClick={closeExitConfirm}>
                 취소
               </button>
               {overlaySettings.closeToTray ? (
@@ -444,6 +535,7 @@ function ProviderCard({
   onGeminiLogin: () => void;
   onGeminiAppsLogin: () => void;
 }) {
+  const effectiveStatus = provider.status === "live" && (provider.issues ?? getProviderIssues(provider)).length > 0 ? "pending" : provider.status;
   const isActionPending = provider.id === "claude" && isClaudeLoginPending || provider.id === "gemini" && isGeminiLoginPending;
   const actionLabel = isActionPending ? "연동 확인 중" : (provider.actionLabel ?? "사용량 수집 연동");
   const isGeminiAppsLoggedIn = provider.id === "gemini" && Boolean(geminiUsage?.geminiAppsSession.loggedIn);
@@ -464,8 +556,11 @@ function ProviderCard({
           <span className="provider-source">{provider.source}</span>
           <h2>{provider.name}</h2>
         </div>
-        {showHeaderActions ? (
-          <div className="provider-header-actions">
+        <span className={`status-badge ${effectiveStatus}`}>{providerStatusLabels[effectiveStatus]}</span>
+      </div>
+
+      {showHeaderActions ? (
+        <div className="provider-header-actions">
             {provider.id === "gemini" ? (
               <button
                 className="provider-action provider-header-action provider-header-action-secondary"
@@ -494,18 +589,14 @@ function ProviderCard({
                 <span>{actionLabel}</span>
               </button>
             ) : null}
-          </div>
-        ) : null}
-      </div>
+        </div>
+      ) : null}
 
-      <dl className="usage-fields">
-        {(provider.fields ?? defaultProviderFields(provider)).map((field) => (
-          <div key={field.label}>
-            <dt>{field.label}</dt>
-            <dd>{field.value}</dd>
-          </div>
-        ))}
-      </dl>
+      {provider.id === "claude" && provider.canLogin ? (
+        <p className="provider-onboarding-note">로그인 후 Claude Code에서 대화를 한 번 진행해야 사용량이 표시됩니다.</p>
+      ) : null}
+
+      <ProviderFields provider={provider} />
 
       {actionNotice ? (
         <div className="provider-action-notice">
@@ -519,7 +610,46 @@ function ProviderCard({
         </div>
       ) : null}
       <ProviderIssueNotice provider={provider} />
+      <p className="provider-meta">{provider.detail}</p>
     </article>
+  );
+}
+
+function ProviderFields({ provider }: { provider: ProviderUsage }) {
+  const fields = provider.fields ?? defaultProviderFields(provider);
+  if (provider.id !== "gemini") {
+    return <UsageFieldList fields={fields} />;
+  }
+
+  const commonFields = fields.filter((field) => !field.label.startsWith("Gemini ") && !field.label.startsWith("Antigravity "));
+  const geminiFields = fields.filter((field) => field.label.startsWith("Gemini "));
+  const antigravityFields = fields.filter((field) => field.label.startsWith("Antigravity "));
+
+  return (
+    <div className="gemini-usage-groups">
+      {commonFields.length > 0 ? <UsageFieldList fields={commonFields} /> : null}
+      <section className="usage-field-group" aria-labelledby="gemini-apps-fields">
+        <h3 id="gemini-apps-fields">Gemini Apps</h3>
+        <UsageFieldList fields={geminiFields} trimPrefix="Gemini " />
+      </section>
+      <section className="usage-field-group" aria-labelledby="antigravity-fields">
+        <h3 id="antigravity-fields">Antigravity</h3>
+        <UsageFieldList fields={antigravityFields} trimPrefix="Antigravity " />
+      </section>
+    </div>
+  );
+}
+
+function UsageFieldList({ fields, trimPrefix = "" }: { fields: ProviderField[]; trimPrefix?: string }) {
+  return (
+    <dl className="usage-fields">
+      {fields.map((field) => (
+        <div key={field.label}>
+          <dt>{trimPrefix ? field.label.replace(trimPrefix, "") : field.label}</dt>
+          <dd>{field.value}</dd>
+        </div>
+      ))}
+    </dl>
   );
 }
 
@@ -532,17 +662,17 @@ function ProviderIssueNotice({ provider }: { provider: ProviderUsage }) {
   return (
     <div className="provider-issues" aria-label={`${provider.name} 사용량 확인 필요`}>
       {issues.map((issue) => (
-        <section className="provider-issue" key={issue.reason}>
-          <div className="provider-issue-heading">
+        <details className="provider-issue" key={issue.reason}>
+          <summary>
             <span>필요한 조치</span>
             <strong>{issue.reason}</strong>
-          </div>
+          </summary>
           <ol>
             {issue.steps.map((step) => (
               <li key={step}>{step}</li>
             ))}
           </ol>
-        </section>
+        </details>
       ))}
     </div>
   );
@@ -552,18 +682,17 @@ function ProviderCollectionGuide({ providerId }: { providerId: ProviderId }) {
   const guide = getProviderCollectionGuide(providerId);
 
   return (
-    <section className="collection-guide" aria-label={`${providerLabels[providerId]} 수집 경로`}>
-      <div className="collection-guide-heading">
-        <span>수집 경로</span>
-        <strong>{guide.title}</strong>
+    <details className="collection-guide">
+      <summary>연동 및 수집 방법 <span>{guide.title}</span></summary>
+      <div className="collection-guide-body" aria-label={`${providerLabels[providerId]} 수집 경로`}>
+        <p>{guide.summary}</p>
+        <ol>
+          {guide.steps.map((step) => (
+            <li key={step}>{step}</li>
+          ))}
+        </ol>
       </div>
-      <p>{guide.summary}</p>
-      <ol>
-        {guide.steps.map((step) => (
-          <li key={step}>{step}</li>
-        ))}
-      </ol>
-    </section>
+    </details>
   );
 }
 
@@ -605,18 +734,6 @@ function getProviderCollectionGuide(providerId: ProviderId) {
       "Antigravity CLI 설치 및 로그인 버튼 실행"
     ]
   };
-
-  return {
-    title: "Gemini Usage Limits + Antigravity CLI",
-    summary: "Google AI 플랜은 공통으로 표시하고, Gemini Apps 한도는 gemini.google.com Usage Limits 기준으로 분리합니다. Antigravity 주기 한도는 Node.js/npm 기반 CLI와 local fallback에서 수집합니다.",
-    steps: [
-      "Gemini Apps 주간/주기 한도는 gemini.google.com의 Usage Limits 데이터가 필요",
-      "Google 플랜은 OAuth 또는 local provider 응답의 Free/Plus/Pro/Ultra 값을 표시",
-      "Antigravity 주기 한도는 Antigravity CLI 설치 및 로그인 버튼 실행 후 수집",
-      "Antigravity 실행 시 local fallback 유지",
-      "계정 이메일은 마스킹된 값만 표시하고 OAuth token은 UI와 로그에 표시하지 않음"
-    ]
-  };
 }
 
 function getProviderIssues(provider: ProviderUsage): ProviderIssue[] {
@@ -653,82 +770,6 @@ function getProviderIssues(provider: ProviderUsage): ProviderIssue[] {
 
 function isUnavailableValue(value: string) {
   return /확인 불가|확인 필요|미연동|연동 필요|데이터 없음|서버 한도 미연동/.test(value);
-}
-
-function getProviderIssue(provider: ProviderUsage) {
-  const hasUnavailableField = (provider.fields ?? defaultProviderFields(provider)).some((field) => /확인 불가|확인 필요|미연동|연동 필요/.test(field.value));
-  if (provider.status !== "error" && !hasUnavailableField) {
-    return null;
-  }
-
-  if (provider.id === "codex") {
-    return {
-      reason: "ChatGPT 로그인 필요",
-      steps: [
-        "Codex Desktop 설치",
-        "Codex Desktop 로그인",
-        "필요 시 CODEX_CLI_PATH 설정"
-      ]
-    };
-  }
-
-  if (provider.id === "claude") {
-    return {
-      reason: "Claude CLI 로그인 필요",
-      steps: [
-        "Node.js LTS 설치",
-        "Claude Pro/Max 이상 계정 준비",
-        "Claude CLI 설치 및 로그인 버튼 실행",
-        "브라우저 인증 완료"
-      ]
-    };
-  }
-
-  return {
-    reason: "Gemini 또는 Antigravity 로그인 필요",
-    steps: [
-      "Gemini 로그인 버튼 실행",
-      "로그인 완료 후 사용량 확인 버튼 실행",
-      "Antigravity 한도가 필요하면 Node.js LTS 설치",
-      "Antigravity CLI 설치 및 로그인 버튼 실행"
-    ]
-  };
-
-  if (provider.id === "codex") {
-    return {
-      reason: "ChatGPT 연결 확인 필요",
-      steps: [
-        "Codex Desktop 설치 확인",
-        "Codex Desktop 로그인 완료",
-        "codex.exe 경로 확인",
-        "필요 시 CODEX_CLI_PATH 설정"
-      ]
-    };
-  }
-
-  if (provider.id === "claude") {
-    return {
-      reason: "Claude OAuth 연동 필요",
-      steps: [
-        "Node.js LTS 설치 확인",
-        "Claude Pro/Max 이상 계정 확인",
-        "Claude CLI 설치 및 로그인 버튼 실행",
-        "브라우저 인증 완료",
-        "대시보드 새로고침"
-      ]
-    };
-  }
-
-  return {
-    reason: "Google 사용량 수집 확인 필요",
-    steps: [
-      "대시보드 새로고침",
-      "Gemini Apps 한도는 gemini.google.com Usage Limits에서 확인",
-      "Node.js LTS 설치 확인",
-      "Antigravity CLI 설치 및 로그인 버튼 실행",
-      "Antigravity 실행 또는 Google 로그인 완료"
-    ]
-  };
 }
 
 async function waitForClaudeLoginCompletion({ onUpdate }: { onUpdate: (usage: { claudeUsage: ClaudeUsageResult; cliSessions: CliSessionResult }) => void }) {
@@ -808,7 +849,17 @@ function defaultProviderFields(provider: ProviderUsage): ProviderField[] {
   ];
 }
 
-function SettingsPanel({ settings, onChange }: { settings: OverlaySettings; onChange: (settings: OverlaySettings) => void }) {
+function SettingsPanel({
+  settings,
+  onChange,
+  notice,
+  isSaving
+}: {
+  settings: OverlaySettings;
+  onChange: (settings: OverlaySettings) => void;
+  notice: string | null;
+  isSaving: boolean;
+}) {
   function update(patch: Partial<OverlaySettings>) {
     onChange({ ...settings, ...patch });
   }
@@ -828,7 +879,7 @@ function SettingsPanel({ settings, onChange }: { settings: OverlaySettings; onCh
   }
 
   return (
-    <section className="settings-panel" aria-label="설정">
+    <section className="settings-panel" aria-label="설정" aria-busy={isSaving}>
       <div className="settings-heading">
         <div>
           <span className="eyebrow">기본 설정</span>
@@ -838,49 +889,61 @@ function SettingsPanel({ settings, onChange }: { settings: OverlaySettings; onCh
       </div>
 
       <label className="switch-row">
-        <input type="checkbox" checked={settings.enabled} onChange={(event) => update({ enabled: event.target.checked })} />
+        <input type="checkbox" checked={settings.enabled} disabled={isSaving} onChange={(event) => update({ enabled: event.target.checked })} />
         <span>오버레이 켜기</span>
       </label>
 
       <label className="switch-row">
-        <input type="checkbox" checked={settings.closeToTray} onChange={(event) => update({ closeToTray: event.target.checked })} />
+        <input type="checkbox" checked={settings.closeToTray} disabled={isSaving} onChange={(event) => update({ closeToTray: event.target.checked })} />
         <span>프로그램 종료 시 시스템 트레이로 최소화</span>
       </label>
 
+      <p className={`settings-save-status${notice?.includes("못했습니다") ? " error" : ""}`} role="status" aria-live="polite" aria-busy={isSaving}>
+        {notice ?? "변경한 설정은 자동으로 저장됩니다."}
+      </p>
+
       <section className="setting-group">
-        <h2>모델별 오버레이 표시</h2>
+        <h2>서비스별 오버레이 표시</h2>
         <div className="provider-settings-list">
           {(Object.keys(providerLabels) as ProviderId[]).map((id) => {
             const item = settings.providerItems[id];
             return (
               <article className="provider-settings" key={id}>
                 <label className="switch-row provider-toggle">
-                  <input type="checkbox" checked={item.enabled} onChange={(event) => updateProviderItem(id, { enabled: event.target.checked })} />
+                  <input type="checkbox" checked={item.enabled} disabled={isSaving} onChange={(event) => updateProviderItem(id, { enabled: event.target.checked })} />
                   <span>{providerLabels[id]}</span>
                 </label>
 
-                <div className="check-list compact">
-                  <label>
-                    <input type="checkbox" checked={item.showSession} onChange={(event) => updateProviderItem(id, { showSession: event.target.checked })} />
-                    계정 (마스킹 이메일)
-                  </label>
-                  <label>
-                    <input type="checkbox" checked={item.showPlan} onChange={(event) => updateProviderItem(id, { showPlan: event.target.checked })} />
-                    현재 플랜
-                  </label>
-                  <label>
-                    <input type="checkbox" checked={item.showUsed} onChange={(event) => updateProviderItem(id, { showUsed: event.target.checked })} />
-                    사용량
-                  </label>
-                  <label>
-                    <input type="checkbox" checked={item.showRemaining} onChange={(event) => updateProviderItem(id, { showRemaining: event.target.checked })} />
-                    잔여량
-                  </label>
-                  <label>
-                    <input type="checkbox" checked={item.showReset} onChange={(event) => updateProviderItem(id, { showReset: event.target.checked })} />
-                    초기화 시간
-                  </label>
-                </div>
+                {!item.enabled ? <p className="provider-disabled-note">현재 오버레이에는 표시되지 않습니다.</p> : null}
+
+                <details className="provider-display-options" open>
+                  <summary>표시 항목 사용자화</summary>
+                  <fieldset disabled={!item.enabled || isSaving}>
+                    <legend className="visually-hidden">{providerLabels[id]} 표시 항목</legend>
+                    <div className="check-list compact">
+                      <label>
+                        <input type="checkbox" checked={item.showSession} onChange={(event) => updateProviderItem(id, { showSession: event.target.checked })} />
+                        계정 (마스킹 이메일)
+                      </label>
+                      <label>
+                        <input type="checkbox" checked={item.showPlan} onChange={(event) => updateProviderItem(id, { showPlan: event.target.checked })} />
+                        현재 플랜
+                      </label>
+                      <label>
+                        <input type="checkbox" checked={item.showUsed} onChange={(event) => updateProviderItem(id, { showUsed: event.target.checked })} />
+                        사용량
+                      </label>
+                      <label>
+                        <input type="checkbox" checked={item.showRemaining} onChange={(event) => updateProviderItem(id, { showRemaining: event.target.checked })} />
+                        잔여량
+                      </label>
+                      <label>
+                        <input type="checkbox" checked={item.showReset} onChange={(event) => updateProviderItem(id, { showReset: event.target.checked })} />
+                        초기화 시간
+                      </label>
+                    </div>
+                  </fieldset>
+                </details>
 
                 <ProviderCollectionGuide providerId={id} />
               </article>
@@ -889,7 +952,7 @@ function SettingsPanel({ settings, onChange }: { settings: OverlaySettings; onCh
         </div>
       </section>
 
-      <p className="overlay-opacity-note">오버레이 투명도는 50%로 고정됩니다.</p>
+      <p className="overlay-opacity-note">오버레이는 배경을 가리지 않도록 50% 투명도로 표시됩니다.</p>
     </section>
   );
 }
@@ -1529,13 +1592,6 @@ function formatUsedFromRemaining(remaining: string | null) {
     return null;
   }
   return `${Math.max(0, Math.min(100, 100 - Number(match[1])))}%`;
-}
-
-function formatGeminiAppsUsageSummary(window: GeminiAppsUsageWindow | null) {
-  if (!window) {
-    return "남은 사용량 미연동 / 초기화 미연동";
-  }
-  return "남은 사용량 미연동 / 초기화 미연동";
 }
 
 function pickAntigravityFiveHourWindow(models: GeminiQuotaModelView[]): GeminiUsageWindow | null {

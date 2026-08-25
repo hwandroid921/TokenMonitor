@@ -69,10 +69,10 @@ Before `v1.0.0`, do not maintain a fixed version-by-version feature roadmap. Whe
 Current package version:
 
 ```text
-1.0.0
+1.0.1
 ```
 
-`v1.0.0` is the first complete release. It includes:
+`v1.0.1` is the current dashboard and settings usability patch built on the first complete `v1.0.0` release. The complete release includes:
 
 - ChatGPT quota display through the Codex Desktop local usage flow
 - Claude quota display
@@ -189,6 +189,29 @@ For each release-worthy version bump, summarize:
 - Known limitations
 
 ## Release History
+
+### 1.0.1 — 2026-08-25 — PATCH
+
+**Change category:** PATCH (dashboard and settings UI/UX polish)
+
+**User-visible changes:**
+- Prevented Gemini quota rows from being clipped and separated Gemini Apps from Antigravity usage information.
+- Added provider status badges, refresh feedback, recent source/detail metadata, and clearer Claude onboarding guidance.
+- Simplified settings with collapsible collection guidance, automatic-save feedback, and disabled child options for hidden providers.
+- Added a two-column intermediate layout and improved tabs, dialogs, focus visibility, keyboard navigation, and live status announcements.
+- Localized the remaining system tray menu labels in Korean.
+
+**Provider/data-source changes:**
+- No provider collection source or quota interpretation changes.
+
+**Packaging notes:**
+- Package version updated to `1.0.1`.
+- No portable executable packaged because patch releases do not produce portable artifacts by default.
+
+**Known limitations:**
+- Provider web and CLI surface changes can still require parser or guidance updates.
+
+---
 
 ### 1.0.0 — 2026-08-18 — MAJOR
 
