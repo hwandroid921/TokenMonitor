@@ -6,13 +6,37 @@ export type CodexUsageWindow = {
   resetsAt: string | null;
 };
 
+export type AccountProvider = "codex" | "claude" | "gemini-apps" | "antigravity";
+export type AccountIdentityConfidence = "verified" | "inferred";
+
+export type AccountAliasState = {
+  detected: boolean;
+  alias: string | null;
+  aliasRequired: boolean;
+  accountChanged: boolean;
+  confidence: AccountIdentityConfidence | null;
+};
+
+export type AccountAliasView = {
+  recordId: string;
+  provider: AccountProvider;
+  maskedEmail: string;
+  alias: string | null;
+  isCurrent: boolean;
+  confidence: AccountIdentityConfidence;
+  createdAt: string;
+  lastSeenAt: string;
+};
+
+export type GoogleAccountComparison = "same" | "different" | "needs-confirmation" | "antigravity-unknown" | "gemini-apps-unknown" | "both-unknown";
+
 export type CodexUsageResult =
   | {
       ok: true;
       source: "codex-app-server";
       accountType: string | null;
       planType: string | null;
-      maskedEmail: string | null;
+      account: AccountAliasState;
       weekly: CodexUsageWindow | null;
       periodic: CodexUsageWindow | null;
       credits: {
@@ -37,7 +61,7 @@ export type CliSessionStatus = {
   installed: boolean;
   loggedIn: boolean;
   authMethod: string | null;
-  maskedEmail: string | null;
+  account: AccountAliasState;
   detail: string;
   checkedAt: string;
 };
@@ -112,7 +136,9 @@ export type GeminiUsageResult =
       ok: true;
       source: "antigravity-cli-google" | "antigravity-cli-local" | "antigravity-local" | "gemini-cli-oauth";
       planType: string | null;
-      maskedEmail: string | null;
+      account: AccountAliasState;
+      geminiAppsAccount: AccountAliasState;
+      googleAccountComparison: GoogleAccountComparison;
       promptCredits: {
         available: number | null;
         monthly: number | null;
@@ -138,6 +164,9 @@ export type GeminiUsageResult =
       ok: false;
       source: "antigravity-cli-google" | "antigravity-cli-local" | "antigravity-local" | "gemini-cli-oauth";
       error: string;
+      account: AccountAliasState;
+      geminiAppsAccount: AccountAliasState;
+      googleAccountComparison: GoogleAccountComparison;
       geminiApps: GeminiAppsUsage | null;
       geminiAppsSession: GeminiAppsSessionStatus;
       updatedAt: string;
@@ -185,6 +214,12 @@ declare global {
       getOverlaySettings: () => Promise<OverlaySettings>;
       updateOverlaySettings: (settings: OverlaySettings) => Promise<OverlaySettings>;
       resizeOverlay: (size: { width?: number; height?: number }) => Promise<{ ok: boolean }>;
+      listAccountAliases: () => Promise<AccountAliasView[]>;
+      renameAccountAlias: (recordId: string, alias: string) => Promise<{ ok: boolean; detail?: string; account?: AccountAliasView | null }>;
+      deleteAccountAlias: (recordId: string) => Promise<{ ok: boolean; detail?: string }>;
+      deleteProviderAliases: (provider: AccountProvider) => Promise<{ ok: boolean }>;
+      deleteAllAccountAliases: () => Promise<{ ok: boolean }>;
+      onAccountAliasesChanged: (callback: (aliases: AccountAliasView[]) => void) => () => void;
       onOverlaySettingsChanged: (callback: (settings: OverlaySettings) => void) => () => void;
       onExitConfirmRequested: (callback: () => void) => () => void;
       onUsageRefreshRequested: (callback: () => void) => () => void;

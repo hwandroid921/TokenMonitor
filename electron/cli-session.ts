@@ -1,7 +1,7 @@
 import { spawn } from "node:child_process";
 import { type CodexUsageResult, getCodexUsage } from "./codex-usage.js";
 import { createClaudeOAuthEnvironment } from "./claude-oauth-env.js";
-import { maskEmail } from "./masked-email.js";
+import { observeAccount, type AccountAliasState } from "./account-aliases.js";
 
 export type CliSessionStatus = {
   provider: "codex" | "claude";
@@ -9,7 +9,7 @@ export type CliSessionStatus = {
   installed: boolean;
   loggedIn: boolean;
   authMethod: string | null;
-  maskedEmail: string | null;
+  account: AccountAliasState;
   detail: string;
   checkedAt: string;
 };
@@ -35,7 +35,7 @@ async function getCodexSession(usageResult?: CodexUsageResult): Promise<CliSessi
       installed: false,
       loggedIn: false,
       authMethod: null,
-      maskedEmail: null,
+      account: emptyAccountState(),
       detail: usage.error,
       checkedAt
     };
@@ -47,7 +47,7 @@ async function getCodexSession(usageResult?: CodexUsageResult): Promise<CliSessi
     installed: true,
     loggedIn: Boolean(usage.accountType || usage.planType),
     authMethod: usage.accountType,
-    maskedEmail: usage.maskedEmail,
+    account: usage.account,
     detail: usage.planType ? `플랜 ${usage.planType}` : "ChatGPT 계정 확인됨",
     checkedAt
   };
@@ -66,7 +66,7 @@ async function getClaudeSession(): Promise<CliSessionStatus> {
       installed: false,
       loggedIn: false,
       authMethod: null,
-      maskedEmail: null,
+      account: emptyAccountState(),
       detail: "Claude CLI 상태를 확인할 수 없습니다. Node.js/npm 및 Claude 로그인을 확인하세요.",
       checkedAt
     };
@@ -75,7 +75,7 @@ async function getClaudeSession(): Promise<CliSessionStatus> {
   const loggedIn = Boolean(result.data?.loggedIn);
   const authMethod = typeof result.data?.authMethod === "string" ? result.data.authMethod : null;
   const apiProvider = typeof result.data?.apiProvider === "string" ? result.data.apiProvider : null;
-  const maskedEmail = readMaskedEmail(result.data);
+  const account = readAccount(result.data);
 
   return {
     provider: "claude",
@@ -83,16 +83,20 @@ async function getClaudeSession(): Promise<CliSessionStatus> {
     installed: true,
     loggedIn,
     authMethod,
-    maskedEmail,
+    account,
     detail: loggedIn ? `로그인됨${apiProvider ? ` (${apiProvider})` : ""}` : "로그인되지 않음",
     checkedAt
   };
 }
 
-function readMaskedEmail(data: Record<string, unknown>) {
+function readAccount(data: Record<string, unknown>) {
   const account = data.account && typeof data.account === "object" ? data.account as Record<string, unknown> : null;
   const user = data.user && typeof data.user === "object" ? data.user as Record<string, unknown> : null;
-  return maskEmail(data.email) ?? maskEmail(account?.email) ?? maskEmail(user?.email);
+  return observeAccount("claude", data.email ?? account?.email ?? user?.email);
+}
+
+function emptyAccountState(): AccountAliasState {
+  return { detected: false, alias: null, aliasRequired: false, accountChanged: false, confidence: null };
 }
 
 function runJsonCommand(

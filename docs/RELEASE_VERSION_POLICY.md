@@ -60,6 +60,10 @@ Documentation-only or instruction-only changes do not require an app/exe version
 
 Portable executable packaging is performed only for milestone release versions such as `0.3.0`, `0.4.0`, and later `MINOR.0` or `MAJOR.0` release points. Patch releases such as `0.3.1`, `0.3.2`, and `0.3.3` do not produce a portable executable by default unless explicitly requested.
 
+For every `MINOR` or `MAJOR` release, release delivery is automatic: update the version files and Release History, run verification and required packaging, commit, push the release branch, and create the PR without requiring a separate upload request. After the release commit is merged to the stable release branch, create and push the matching Git tag and create the matching GitHub Release. Tags and GitHub Releases must never be created from an unmerged feature branch.
+
+For `PATCH` releases, remote upload, PR creation, tagging, GitHub Release creation, and portable packaging remain opt-in unless the user explicitly requests them.
+
 Beta/prerelease versions may produce portable artifacts when the user explicitly requests tag/release work or when the beta is intended for external validation.
 
 Before `v1.0.0`, do not maintain a fixed version-by-version feature roadmap. When work is completed, decide whether it is patch, minor, or major according to the actual change and record the completed content in Release History.
@@ -69,10 +73,10 @@ Before `v1.0.0`, do not maintain a fixed version-by-version feature roadmap. Whe
 Current package version:
 
 ```text
-1.0.1
+1.1.0
 ```
 
-`v1.0.1` is the current dashboard and settings usability patch built on the first complete `v1.0.0` release. The complete release includes:
+`v1.1.0` is the account alias management milestone built on the first complete `v1.0.0` release. It adds encrypted account-to-alias mapping, settings-only masked email review, and Google account mismatch guidance.
 
 - ChatGPT quota display through the Codex Desktop local usage flow
 - Claude quota display
@@ -175,6 +179,8 @@ Rules:
   - verification and packaging status
 - Ensure `package.json`, `package-lock.json`, Release History, packaged artifacts, Git tag, and remote release entry all refer to the same version.
 - `v1.0.0` and every later release must have a corresponding Git tag and remote release entry.
+- For `MINOR` and `MAJOR` releases, commit/push/PR are mandatory as part of the release workflow; after stable-branch merge, tag and remote release creation are mandatory without requiring a separate user request.
+- Use the merged stable-branch commit as the tag target. Never tag a feature branch, a release candidate, or an open PR head.
 
 ## Release Notes Checklist
 
@@ -189,6 +195,36 @@ For each release-worthy version bump, summarize:
 - Known limitations
 
 ## Release History
+
+### 1.1.0 — 2026-08-26 — MINOR
+
+**Change category:** MINOR (account alias management and account-aware identity display)
+
+**User-visible changes:**
+- Dashboard and overlay account rows now show user-defined aliases and never show email addresses.
+- Settings now lists current and previously detected ChatGPT, Claude, Gemini Apps, and Antigravity accounts with masked email addresses for alias assignment, rename, and deletion.
+- Newly detected accounts request an alias, while returning accounts restore their saved alias automatically.
+- Gemini Apps and Antigravity show an account mismatch warning only when both Google identities are verified and different; inferred identities request confirmation instead.
+
+**Provider/data-source changes:**
+- Provider email values are converted in the Electron main process into HMAC account identities and masked settings-only values before public usage results are created.
+- Gemini Apps inspects account-related accessible labels in memory to identify the signed-in Google account without persisting raw page text or raw email.
+- Antigravity local and OAuth fallback identities are treated as verified; the separate Gemini CLI credential used beside `antigravity-usage` remains explicitly inferred.
+
+**Privacy and security review:**
+- Raw email addresses, HMAC account identities, tokens, account IDs, and raw provider payloads remain excluded from the renderer and logs.
+- Alias mappings, masked emails, and the local HMAC secret are encrypted with Electron `safeStorage` under the Windows user account.
+- Masked emails are available only through the settings account-management IPC; dashboard and overlay usage IPC results contain alias state only.
+
+**Packaging notes:**
+- Package version updated to `1.1.0`.
+- Portable Windows x64 packaging and SHA256 verification are required for this milestone release.
+
+**Known limitations:**
+- Gemini Apps identity detection depends on Google account-related accessible labels and can report an unknown account when Google changes or omits those labels.
+- `antigravity-usage` account identity is marked inferred when only a separate Gemini CLI credential is available.
+
+---
 
 ### 1.0.1 — 2026-08-25 — PATCH
 

@@ -9,6 +9,17 @@ import { createClaudeOAuthEnvironment, getClaudeOAuthEnvironmentResetCommands } 
 import { ensureClaudeStatusLine, getClaudeStatusLineSnapshotPath } from "./claude-statusline.js";
 import { getCodexUsage, killAllActiveChildProcesses, setAppVersion } from "./codex-usage.js";
 import {
+  deleteAccountAlias,
+  deleteAllAccountAliases,
+  deleteProviderAliases,
+  initializeAccountAliases,
+  listAccountAliases,
+  observeAccount,
+  renameAccountAlias,
+  type AccountProvider
+} from "./account-aliases.js";
+import {
+  clearGeminiAppsUsageCache,
   parseGeminiAppsUsageText,
   readGeminiAppsSessionStatus,
   writeGeminiAppsSessionStatus,
@@ -325,6 +336,18 @@ function positionOverlayWindow() {
     width,
     height
   });
+}
+
+function notifyAccountAliasesChanged() {
+  const aliases = listAccountAliases();
+  if (mainWindow && !mainWindow.isDestroyed()) {
+    mainWindow.webContents.send("account-aliases:changed", aliases);
+  }
+  requestUsageRefresh();
+}
+
+function isMainWindowSender(event: Electron.IpcMainInvokeEvent) {
+  return Boolean(mainWindow && !mainWindow.isDestroyed() && event.sender === mainWindow.webContents);
 }
 
 function resizeOverlayWindow(request: { width?: number; height?: number }) {
@@ -718,6 +741,12 @@ async function inspectEmbeddedGeminiView() {
   }
 
   const state = await readEmbeddedGeminiState(geminiBrowserView);
+  if (state.email) {
+    const account = observeAccount("gemini-apps", state.email);
+    if (account.accountChanged) {
+      clearGeminiAppsUsageCache();
+    }
+  }
   if (geminiBrowserMode === "login" && state.loggedIn) {
     writeGeminiAppsSessionStatus({ loggedIn: true, checkedAt: new Date().toISOString() });
     closeEmbeddedGeminiView("login-complete");
@@ -741,13 +770,15 @@ async function inspectEmbeddedGeminiView() {
 
 async function readEmbeddedGeminiState(view: BrowserView) {
   try {
-    const text = await view.webContents.executeJavaScript(geminiReadableTextScript(), true) as string;
+    const page = await view.webContents.executeJavaScript(geminiReadableTextScript(), true) as { text?: string; accountEmail?: string | null };
+    const text = typeof page.text === "string" ? page.text : "";
     return {
       loggedIn: isGeminiLoggedInText(text),
-      usage: parseGeminiAppsUsageText(text)
+      usage: parseGeminiAppsUsageText(text),
+      email: typeof page.accountEmail === "string" ? page.accountEmail : null
     };
   } catch {
-    return { loggedIn: false, usage: null };
+    return { loggedIn: false, usage: null, email: null };
   }
 }
 
@@ -762,7 +793,11 @@ function geminiReadableTextScript() {
       };
       push(document.body && document.body.innerText ? document.body.innerText : "");
       const nodes = Array.from(document.querySelectorAll("*"));
+      const accountCandidates = [];
       for (const node of nodes) {
+        const accountLabel = [node.getAttribute && node.getAttribute("aria-label"), node.getAttribute && node.getAttribute("title"), node.getAttribute && node.getAttribute("alt")]
+          .filter(Boolean).join(" ").replace(/\\s+/g, " ").trim();
+        if (/@/.test(accountLabel) && /account|계정|profile|프로필|google/i.test(accountLabel)) accountCandidates.push(accountLabel);
         push(node.getAttribute && node.getAttribute("aria-label"));
         push(node.getAttribute && node.getAttribute("aria-valuetext"));
         push(node.getAttribute && node.getAttribute("title"));
@@ -775,7 +810,9 @@ function geminiReadableTextScript() {
         push(node.getAttribute && node.getAttribute("aria-valuemax"));
         push(node.getAttribute && node.getAttribute("aria-valuemin"));
       }
-      return Array.from(new Set(values)).join("\\n");
+      const accountText = accountCandidates.join(" ");
+      const emailMatch = accountText.match(/[A-Z0-9._%+-]+@[A-Z0-9.-]+\\.[A-Z]{2,}/i);
+      return { text: Array.from(new Set(values)).join("\\n"), accountEmail: emailMatch ? emailMatch[0] : null };
     })()
   `;
 }
@@ -965,6 +1002,7 @@ if (!gotSingleInstanceLock) {
 
   app.whenReady().then(() => {
     setAppVersion(app.getVersion());
+    initializeAccountAliases(app.getPath("userData"));
     loadOverlaySettings();
     installKoreanMenu();
     createTray();
@@ -988,6 +1026,43 @@ if (!gotSingleInstanceLock) {
       return overlaySettings;
     });
     ipcMain.handle("overlay:resize", (_event, request: { width?: number; height?: number }) => resizeOverlayWindow(request));
+    ipcMain.handle("account-aliases:list", (event) => isMainWindowSender(event) ? listAccountAliases() : []);
+    ipcMain.handle("account-aliases:rename", (event, recordId: string, alias: string) => {
+      if (!isMainWindowSender(event)) {
+        return { ok: false, detail: "계정 별칭 설정은 기본 설정 창에서만 변경할 수 있습니다." };
+      }
+      const result = renameAccountAlias(recordId, alias);
+      if (result.ok) {
+        notifyAccountAliasesChanged();
+      }
+      return result;
+    });
+    ipcMain.handle("account-aliases:delete", (event, recordId: string) => {
+      if (!isMainWindowSender(event)) {
+        return { ok: false, detail: "계정 별칭 설정은 기본 설정 창에서만 변경할 수 있습니다." };
+      }
+      const result = deleteAccountAlias(recordId);
+      if (result.ok) {
+        notifyAccountAliasesChanged();
+      }
+      return result;
+    });
+    ipcMain.handle("account-aliases:delete-provider", (event, provider: AccountProvider) => {
+      if (!isMainWindowSender(event)) {
+        return { ok: false };
+      }
+      const result = deleteProviderAliases(provider);
+      notifyAccountAliasesChanged();
+      return result;
+    });
+    ipcMain.handle("account-aliases:delete-all", (event) => {
+      if (!isMainWindowSender(event)) {
+        return { ok: false };
+      }
+      const result = deleteAllAccountAliases();
+      notifyAccountAliasesChanged();
+      return result;
+    });
 
     createWindow();
     scheduleInitialOverlayLoad();

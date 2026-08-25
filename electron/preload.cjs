@@ -18,6 +18,16 @@ contextBridge.exposeInMainWorld("tokenMonitor", {
   getOverlaySettings: () => ipcRenderer.invoke("overlay-settings:read"),
   updateOverlaySettings: (settings) => ipcRenderer.invoke("overlay-settings:update", settings),
   resizeOverlay: (size) => ipcRenderer.invoke("overlay:resize", size),
+  listAccountAliases: () => ipcRenderer.invoke("account-aliases:list"),
+  renameAccountAlias: (recordId, alias) => ipcRenderer.invoke("account-aliases:rename", recordId, alias),
+  deleteAccountAlias: (recordId) => ipcRenderer.invoke("account-aliases:delete", recordId),
+  deleteProviderAliases: (provider) => ipcRenderer.invoke("account-aliases:delete-provider", provider),
+  deleteAllAccountAliases: () => ipcRenderer.invoke("account-aliases:delete-all"),
+  onAccountAliasesChanged: (callback) => {
+    const listener = (_event, aliases) => callback(aliases);
+    ipcRenderer.on("account-aliases:changed", listener);
+    return () => ipcRenderer.removeListener("account-aliases:changed", listener);
+  },
   onOverlaySettingsChanged: (callback) => {
     const listener = (_event, settings) => callback(settings);
     ipcRenderer.on("overlay-settings:changed", listener);

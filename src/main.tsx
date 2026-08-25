@@ -3,6 +3,8 @@ import { createRoot } from "react-dom/client";
 import { ExternalLink, LayoutDashboard, Link, RefreshCw, Settings, Zap } from "lucide-react";
 import "./styles.css";
 import type {
+  AccountAliasView,
+  AccountProvider,
   ClaudeUsageResult,
   ClaudeUsageWindow,
   CliSessionResult,
@@ -30,6 +32,7 @@ type ProviderUsage = {
   detail: string;
   canLogin?: boolean;
   actionLabel?: string;
+  needsAlias?: boolean;
   issues?: ProviderIssue[];
 };
 
@@ -50,6 +53,13 @@ const providerLabels: Record<ProviderId, string> = {
   codex: "ChatGPT",
   claude: "Claude",
   gemini: "Gemini"
+};
+
+const accountProviderLabels: Record<AccountProvider, string> = {
+  codex: "ChatGPT",
+  claude: "Claude",
+  "gemini-apps": "Gemini Apps",
+  antigravity: "Antigravity"
 };
 
 const providerStatusLabels: Record<ProviderUsage["status"], string> = {
@@ -108,6 +118,8 @@ function App() {
   const [refreshNotice, setRefreshNotice] = useState("사용량 정보를 불러오는 중입니다.");
   const [settingsNotice, setSettingsNotice] = useState<string | null>(null);
   const [isSettingsSaving, setIsSettingsSaving] = useState(false);
+  const [accountAliases, setAccountAliases] = useState<AccountAliasView[]>([]);
+  const [accountAliasNotice, setAccountAliasNotice] = useState<string | null>(null);
 
   const providers = useMemo(() => buildProviderUsage(codexUsage, claudeUsage, geminiUsage, cliSessions), [codexUsage, claudeUsage, geminiUsage, cliSessions]);
 
@@ -161,6 +173,45 @@ function App() {
     } finally {
       setIsSettingsSaving(false);
     }
+  }
+
+  async function refreshAccountAliases() {
+    if (window.tokenMonitor?.listAccountAliases) {
+      setAccountAliases(await window.tokenMonitor.listAccountAliases());
+    }
+  }
+
+  async function handleRenameAccountAlias(recordId: string, alias: string) {
+    const result = await window.tokenMonitor?.renameAccountAlias(recordId, alias);
+    if (!result?.ok) {
+      setAccountAliasNotice(result?.detail ?? "별칭을 저장하지 못했습니다.");
+      return false;
+    }
+    setAccountAliasNotice("계정 별칭을 저장했습니다.");
+    await refreshAccountAliases();
+    return true;
+  }
+
+  async function handleDeleteAccountAlias(recordId: string) {
+    const result = await window.tokenMonitor?.deleteAccountAlias(recordId);
+    if (!result?.ok) {
+      setAccountAliasNotice(result?.detail ?? "계정 별칭을 삭제하지 못했습니다.");
+      return;
+    }
+    setAccountAliasNotice("Token Monitor의 계정 별칭 등록을 삭제했습니다. 공급자 로그인에는 영향을 주지 않습니다.");
+    await refreshAccountAliases();
+  }
+
+  async function handleDeleteProviderAliases(provider: AccountProvider) {
+    await window.tokenMonitor?.deleteProviderAliases(provider);
+    setAccountAliasNotice("해당 서비스의 저장된 별칭을 모두 삭제했습니다.");
+    await refreshAccountAliases();
+  }
+
+  async function handleDeleteAllAccountAliases() {
+    await window.tokenMonitor?.deleteAllAccountAliases();
+    setAccountAliasNotice("저장된 모든 계정 별칭을 삭제했습니다.");
+    await refreshAccountAliases();
   }
 
   function closeExitConfirm() {
@@ -349,6 +400,23 @@ function App() {
   }, []);
 
   useEffect(() => {
+    if (activeTab === "settings") {
+      void refreshAccountAliases();
+    } else {
+      setAccountAliases([]);
+    }
+  }, [activeTab]);
+
+  useEffect(() => {
+    const unsubscribe = window.tokenMonitor?.onAccountAliasesChanged((aliases) => {
+      if (activeTab === "settings") {
+        setAccountAliases(aliases);
+      }
+    });
+    return () => unsubscribe?.();
+  }, [activeTab]);
+
+  useEffect(() => {
     const unsubscribe = window.tokenMonitor?.onExitConfirmRequested(() => setShowExitConfirm(true));
     return () => unsubscribe?.();
   }, []);
@@ -460,12 +528,25 @@ function App() {
                 onClaudeLogin={handleClaudeLogin}
                 onGeminiLogin={handleGeminiLogin}
                 onGeminiAppsLogin={handleGeminiAppsLogin}
+                onManageAliases={() => setActiveTab("settings")}
               />
             ))}
           </section>
         ) : (
           <div id="settings-panel" role="tabpanel" aria-labelledby="settings-tab">
-            <SettingsPanel settings={overlaySettings} onChange={updateOverlaySettings} notice={settingsNotice} isSaving={isSettingsSaving} />
+            <SettingsPanel
+              settings={overlaySettings}
+              onChange={updateOverlaySettings}
+              notice={settingsNotice}
+              isSaving={isSettingsSaving}
+              accounts={accountAliases}
+              accountNotice={accountAliasNotice}
+              onRenameAccount={handleRenameAccountAlias}
+              onDeleteAccount={handleDeleteAccountAlias}
+              onDeleteProviderAccounts={handleDeleteProviderAliases}
+              onDeleteAllAccounts={handleDeleteAllAccountAliases}
+              googleAccountComparison={geminiUsage?.googleAccountComparison ?? "both-unknown"}
+            />
           </div>
         )}
       </section>
@@ -523,7 +604,8 @@ function ProviderCard({
   actionNotice,
   onClaudeLogin,
   onGeminiLogin,
-  onGeminiAppsLogin
+  onGeminiAppsLogin,
+  onManageAliases
 }: {
   provider: ProviderUsage;
   geminiUsage: GeminiUsageResult | null;
@@ -534,8 +616,9 @@ function ProviderCard({
   onClaudeLogin: () => void;
   onGeminiLogin: () => void;
   onGeminiAppsLogin: () => void;
+  onManageAliases: () => void;
 }) {
-  const effectiveStatus = provider.status === "live" && (provider.issues ?? getProviderIssues(provider)).length > 0 ? "pending" : provider.status;
+  const effectiveStatus = provider.needsAlias || provider.status === "live" && (provider.issues ?? getProviderIssues(provider)).length > 0 ? "pending" : provider.status;
   const isActionPending = provider.id === "claude" && isClaudeLoginPending || provider.id === "gemini" && isGeminiLoginPending;
   const actionLabel = isActionPending ? "연동 확인 중" : (provider.actionLabel ?? "사용량 수집 연동");
   const isGeminiAppsLoggedIn = provider.id === "gemini" && Boolean(geminiUsage?.geminiAppsSession.loggedIn);
@@ -543,7 +626,7 @@ function ProviderCard({
     ? isGeminiAppsLoggedIn ? "사용량 확인 중" : "Gemini 로그인 확인 중"
     : isGeminiAppsLoggedIn ? "사용량 확인" : "Gemini 로그인";
   const handleAction = provider.id === "gemini" ? onGeminiLogin : onClaudeLogin;
-  const showHeaderActions = Boolean(provider.canLogin || provider.id === "gemini");
+  const showHeaderActions = Boolean(provider.canLogin || provider.id === "gemini" || provider.needsAlias);
   const showNodeInstallAction = Boolean(actionNotice?.includes("Node.js/npm"));
   const handleNodeInstall = () => {
     void window.tokenMonitor?.openNodeJsDownload();
@@ -561,6 +644,12 @@ function ProviderCard({
 
       {showHeaderActions ? (
         <div className="provider-header-actions">
+            {provider.needsAlias ? (
+              <button className="provider-action provider-header-action provider-header-action-secondary" type="button" onClick={onManageAliases}>
+                <Settings size={15} aria-hidden="true" />
+                <span>별칭 지정</span>
+              </button>
+            ) : null}
             {provider.id === "gemini" ? (
               <button
                 className="provider-action provider-header-action provider-header-action-secondary"
@@ -853,12 +942,26 @@ function SettingsPanel({
   settings,
   onChange,
   notice,
-  isSaving
+  isSaving,
+  accounts,
+  accountNotice,
+  onRenameAccount,
+  onDeleteAccount,
+  onDeleteProviderAccounts,
+  onDeleteAllAccounts,
+  googleAccountComparison
 }: {
   settings: OverlaySettings;
   onChange: (settings: OverlaySettings) => void;
   notice: string | null;
   isSaving: boolean;
+  accounts: AccountAliasView[];
+  accountNotice: string | null;
+  onRenameAccount: (recordId: string, alias: string) => Promise<boolean>;
+  onDeleteAccount: (recordId: string) => Promise<void>;
+  onDeleteProviderAccounts: (provider: AccountProvider) => Promise<void>;
+  onDeleteAllAccounts: () => Promise<void>;
+  googleAccountComparison: GeminiUsageResult["googleAccountComparison"];
 }) {
   function update(patch: Partial<OverlaySettings>) {
     onChange({ ...settings, ...patch });
@@ -902,6 +1005,16 @@ function SettingsPanel({
         {notice ?? "변경한 설정은 자동으로 저장됩니다."}
       </p>
 
+      <AccountAliasManager
+        accounts={accounts}
+        notice={accountNotice}
+        googleAccountComparison={googleAccountComparison}
+        onRename={onRenameAccount}
+        onDelete={onDeleteAccount}
+        onDeleteProvider={onDeleteProviderAccounts}
+        onDeleteAll={onDeleteAllAccounts}
+      />
+
       <section className="setting-group">
         <h2>서비스별 오버레이 표시</h2>
         <div className="provider-settings-list">
@@ -923,7 +1036,7 @@ function SettingsPanel({
                     <div className="check-list compact">
                       <label>
                         <input type="checkbox" checked={item.showSession} onChange={(event) => updateProviderItem(id, { showSession: event.target.checked })} />
-                        계정 (마스킹 이메일)
+                        계정 별칭
                       </label>
                       <label>
                         <input type="checkbox" checked={item.showPlan} onChange={(event) => updateProviderItem(id, { showPlan: event.target.checked })} />
@@ -954,6 +1067,168 @@ function SettingsPanel({
 
       <p className="overlay-opacity-note">오버레이는 배경을 가리지 않도록 50% 투명도로 표시됩니다.</p>
     </section>
+  );
+}
+
+function AccountAliasManager({
+  accounts,
+  notice,
+  googleAccountComparison,
+  onRename,
+  onDelete,
+  onDeleteProvider,
+  onDeleteAll
+}: {
+  accounts: AccountAliasView[];
+  notice: string | null;
+  googleAccountComparison: GeminiUsageResult["googleAccountComparison"];
+  onRename: (recordId: string, alias: string) => Promise<boolean>;
+  onDelete: (recordId: string) => Promise<void>;
+  onDeleteProvider: (provider: AccountProvider) => Promise<void>;
+  onDeleteAll: () => Promise<void>;
+}) {
+  const currentGemini = accounts.find((account) => account.provider === "gemini-apps" && account.isCurrent);
+  const currentAntigravity = accounts.find((account) => account.provider === "antigravity" && account.isCurrent);
+
+  return (
+    <section className="setting-group account-alias-manager" aria-labelledby="account-alias-heading">
+      <div className="account-alias-heading">
+        <div>
+          <h2 id="account-alias-heading">계정 및 별칭 관리</h2>
+          <p>이메일은 이 설정에서만 마스킹해 표시합니다. 대시보드와 오버레이에는 별칭만 표시됩니다.</p>
+        </div>
+        {accounts.length > 0 ? (
+          <button
+            className="danger-outline-button"
+            type="button"
+            onClick={() => {
+              if (window.confirm("저장된 모든 계정 별칭을 삭제하시겠습니까? 공급자 로그인에는 영향을 주지 않습니다.")) {
+                void onDeleteAll();
+              }
+            }}
+          >
+            전체 별칭 삭제
+          </button>
+        ) : null}
+      </div>
+
+      {googleAccountComparison === "different" ? (
+        <div className="account-mismatch-warning" role="alert">
+          <strong>Google 계정 불일치</strong>
+          <p>Antigravity는 “{currentAntigravity?.alias ?? "별칭 미지정"}”, Gemini Apps는 “{currentGemini?.alias ?? "별칭 미지정"}” 계정으로 연결되어 있습니다.</p>
+        </div>
+      ) : googleAccountComparison === "needs-confirmation" ? (
+        <div className="account-confirmation-note" role="status">
+          Antigravity 계정이 추정 정보이므로 Gemini Apps 계정과의 일치 여부를 확정할 수 없습니다.
+        </div>
+      ) : null}
+
+      {notice ? <p className="account-alias-notice" role="status" aria-live="polite">{notice}</p> : null}
+
+      <div className="account-provider-list">
+        {(Object.keys(accountProviderLabels) as AccountProvider[]).map((provider) => {
+          const providerAccounts = accounts.filter((account) => account.provider === provider);
+          return (
+            <article className="account-provider-card" key={provider}>
+              <div className="account-provider-heading">
+                <div>
+                  <h3>{accountProviderLabels[provider]}</h3>
+                  <span>{providerAccounts.some((account) => account.isCurrent) ? "현재 계정 감지됨" : "현재 계정 미감지"}</span>
+                </div>
+                {providerAccounts.length > 0 ? (
+                  <button
+                    className="text-button danger-text"
+                    type="button"
+                    onClick={() => {
+                      if (window.confirm(`${accountProviderLabels[provider]}의 저장된 별칭을 모두 삭제하시겠습니까?`)) {
+                        void onDeleteProvider(provider);
+                      }
+                    }}
+                  >
+                    모두 삭제
+                  </button>
+                ) : null}
+              </div>
+
+              {providerAccounts.length === 0 ? (
+                <p className="account-empty">로그인 계정이 확인되면 마스킹 이메일과 별칭 입력란이 표시됩니다.</p>
+              ) : (
+                <div className="account-record-list">
+                  {providerAccounts.map((account) => (
+                    <AccountAliasRow key={account.recordId} account={account} onRename={onRename} onDelete={onDelete} />
+                  ))}
+                </div>
+              )}
+            </article>
+          );
+        })}
+      </div>
+      <p className="account-alias-privacy">이메일·실명 대신 계정을 구분할 수 있는 짧은 별칭을 사용하세요.</p>
+    </section>
+  );
+}
+
+function AccountAliasRow({
+  account,
+  onRename,
+  onDelete
+}: {
+  account: AccountAliasView;
+  onRename: (recordId: string, alias: string) => Promise<boolean>;
+  onDelete: (recordId: string) => Promise<void>;
+}) {
+  const [alias, setAlias] = useState(account.alias ?? "");
+  const [isSaving, setIsSaving] = useState(false);
+
+  useEffect(() => {
+    setAlias(account.alias ?? "");
+  }, [account.alias]);
+
+  async function submit(event: React.FormEvent) {
+    event.preventDefault();
+    setIsSaving(true);
+    try {
+      await onRename(account.recordId, alias);
+    } finally {
+      setIsSaving(false);
+    }
+  }
+
+  return (
+    <form className={`account-record${account.isCurrent ? " current" : ""}`} onSubmit={submit}>
+      <div className="account-record-identity">
+        <span className="account-current-badge">{account.isCurrent ? "현재 로그인" : "이전 계정"}</span>
+        <strong>{account.maskedEmail}</strong>
+        {account.confidence === "inferred" ? <small>계정 정보 추정</small> : null}
+      </div>
+      <label>
+        <span>별칭</span>
+        <input
+          type="text"
+          value={alias}
+          maxLength={24}
+          placeholder="예: 업무용"
+          autoComplete="off"
+          disabled={isSaving}
+          onChange={(event) => setAlias(event.target.value)}
+        />
+      </label>
+      <div className="account-record-actions">
+        <button className="secondary-button" type="submit" disabled={isSaving || !alias.trim()}>{isSaving ? "저장 중" : account.alias ? "변경" : "별칭 저장"}</button>
+        <button
+          className="danger-outline-button"
+          type="button"
+          disabled={isSaving}
+          onClick={() => {
+            if (window.confirm(`${account.maskedEmail}의 Token Monitor 별칭 등록을 삭제하시겠습니까?`)) {
+              void onDelete(account.recordId);
+            }
+          }}
+        >
+          등록 삭제
+        </button>
+      </div>
+    </form>
   );
 }
 
@@ -1214,12 +1489,13 @@ function buildCodexProvider(usage: CodexUsageResult | null, sessions: CliSession
     remaining: formatWindows(usage.weekly, usage.periodic, "remaining"),
     reset: formatResetWindows(usage.weekly, usage.periodic),
     fields: [
-      ...(usage.maskedEmail ? [{ label: "계정", value: usage.maskedEmail, kind: "identity" as const }] : []),
+      ...(usage.account.detected ? [{ label: "계정", value: formatAccountAlias(usage.account), kind: "identity" as const }] : []),
       { label: "플랜", value: usage.planType ?? "로그인됨", kind: "plan" },
       { label: "주간", value: formatCodexWindowSummary(usage.weekly), kind: "quota" },
       { label: "주기", value: formatCodexWindowSummary(usage.periodic), kind: "quota" }
     ],
-    detail: `최근 갱신 ${formatTime(usage.updatedAt)}`
+    detail: `최근 갱신 ${formatTime(usage.updatedAt)}`,
+    needsAlias: usage.account.aliasRequired
   };
 }
 
@@ -1285,7 +1561,7 @@ function buildClaudeProvider(usage: ClaudeUsageResult | null, sessions: CliSessi
   const resetLabel = formatClaudeStatusLineResets(usage.sevenDay, usage.fiveHour);
   const modelLabel = usage.model?.displayName ?? usage.model?.id ?? null;
   const hasQuota = Boolean(usage.fiveHour || usage.sevenDay);
-  const maskedEmail = sessions?.claude.maskedEmail;
+  const account = sessions?.claude.account;
 
   return {
     id: "claude",
@@ -1299,7 +1575,7 @@ function buildClaudeProvider(usage: ClaudeUsageResult | null, sessions: CliSessi
     reset: resetLabel,
     fields: [
       { label: "로그인", value: sessionLabel, kind: "session" },
-      ...(maskedEmail ? [{ label: "계정", value: maskedEmail, kind: "identity" as const }] : []),
+      ...(account?.detected ? [{ label: "계정", value: formatAccountAlias(account), kind: "identity" as const }] : []),
       { label: "플랜", value: planLabel, kind: "plan" },
       { label: "주간", value: formatClaudeStatusLineWindowSummary(usage.sevenDay), kind: "quota" },
       { label: "주기 (5시간)", value: formatClaudeStatusLineWindowSummary(usage.fiveHour), kind: "quota" }
@@ -1307,6 +1583,7 @@ function buildClaudeProvider(usage: ClaudeUsageResult | null, sessions: CliSessi
     detail: `${modelLabel ? `${modelLabel} / ` : ""}Status Line ${usage.stale ? "마지막 확인 정보" : "최근 갱신"} ${formatTime(usage.capturedAt)}`,
     canLogin,
     actionLabel: canLogin ? "Claude CLI 설치 및 로그인" : "Claude CLI 재연동",
+    needsAlias: Boolean(account?.aliasRequired),
     issues: hasQuota ? undefined : [{
       reason: "Claude Status Line 사용량 대기",
       steps: [
@@ -1356,6 +1633,8 @@ function buildGeminiProvider(usage: GeminiUsageResult | null): ProviderUsage {
       remaining: "확인 불가",
       reset: "확인 불가",
       fields: [
+        ...(usage.geminiAppsAccount.detected ? [{ label: "Gemini 계정", value: formatAccountAlias(usage.geminiAppsAccount), kind: "identity" as const }] : []),
+        ...(usage.account.detected ? [{ label: "Antigravity 계정", value: formatAccountAlias(usage.account), kind: "identity" as const }] : []),
         { label: "플랜", value: planLabel, kind: "plan" },
         { label: "Gemini 주간", value: formatGeminiAppsWebUsageSummary(usage.geminiApps?.weekly ?? null), kind: "quota" },
         { label: "Antigravity 주간", value: "명시적 주간 데이터 없음", kind: "quota" },
@@ -1365,7 +1644,8 @@ function buildGeminiProvider(usage: GeminiUsageResult | null): ProviderUsage {
       detail: usage.error,
       canLogin: true,
       actionLabel: "Antigravity CLI 설치 및 로그인",
-      issues: buildGeminiIssues(usage.geminiApps, null)
+      needsAlias: usage.account.aliasRequired || usage.geminiAppsAccount.aliasRequired,
+      issues: buildGeminiIssues(usage.geminiApps, null, usage)
     };
   }
 
@@ -1392,12 +1672,14 @@ function buildGeminiProvider(usage: GeminiUsageResult | null): ProviderUsage {
     remaining: formatGeminiWindows(antigravityWeeklyWindow, antigravityFiveHourWindow, null, "remaining"),
     reset: formatGeminiResets(antigravityWeeklyWindow, antigravityFiveHourWindow, null),
     fields: [
-      ...(usage.maskedEmail ? [{ label: "계정", value: usage.maskedEmail, kind: "identity" as const }] : []),
+      ...(usage.geminiAppsAccount.detected ? [{ label: "Gemini 계정", value: formatAccountAlias(usage.geminiAppsAccount), kind: "identity" as const }] : []),
+      ...(usage.account.detected ? [{ label: "Antigravity 계정", value: formatAccountAlias(usage.account), kind: "identity" as const }] : []),
       { label: "플랜", value: planLabel, kind: "plan" },
       ...quotaFields
     ],
     detail: promptCredits ?? formatGeminiDetail(usage.geminiApps?.updatedAt ?? null, usage.geminiApps?.detail ?? null, sourceLabel, usage.updatedAt),
-    issues: buildGeminiIssues(usage.geminiApps, antigravityFiveHourWindow)
+    needsAlias: usage.account.aliasRequired || usage.geminiAppsAccount.aliasRequired,
+    issues: buildGeminiIssues(usage.geminiApps, antigravityFiveHourWindow, usage)
   };
 }
 
@@ -1407,8 +1689,23 @@ function formatGeminiDetail(geminiAppsUpdatedAt: string | null, parsedGeminiApps
   return `${updateDetail}${parsedDetail} / Antigravity ${antigravitySource} 기준 최근 갱신 ${formatTime(antigravityUpdatedAt)}`;
 }
 
-function buildGeminiIssues(geminiApps: GeminiAppsUsage | null, antigravityFiveHourWindow: GeminiUsageWindow | null): ProviderIssue[] {
+function buildGeminiIssues(geminiApps: GeminiAppsUsage | null, antigravityFiveHourWindow: GeminiUsageWindow | null, usage: GeminiUsageResult): ProviderIssue[] {
   const issues: ProviderIssue[] = [];
+  if (usage.googleAccountComparison === "different") {
+    issues.push({
+      reason: "Google 계정 불일치",
+      steps: [
+        `Gemini Apps: ${formatAccountAlias(usage.geminiAppsAccount)}`,
+        `Antigravity: ${formatAccountAlias(usage.account)}`,
+        "설정에서 마스킹 이메일을 확인하거나 Gemini 계정을 다시 로그인"
+      ]
+    });
+  } else if (usage.googleAccountComparison === "needs-confirmation") {
+    issues.push({
+      reason: "Google 계정 일치 여부 확인 필요",
+      steps: ["Antigravity 계정 정보가 추정 상태입니다.", "설정에서 각 계정의 마스킹 이메일과 별칭을 확인"]
+    });
+  }
   if (!geminiApps?.plan || !geminiApps.fiveHour || !geminiApps.weekly) {
     issues.push({
       reason: "Gemini 앱 사용량 확인 필요",
@@ -1432,6 +1729,13 @@ function buildGeminiIssues(geminiApps: GeminiAppsUsage | null, antigravityFiveHo
   }
 
   return issues;
+}
+
+function formatAccountAlias(account: { detected: boolean; alias: string | null }) {
+  if (!account.detected) {
+    return "계정 확인 불가";
+  }
+  return account.alias ?? "별칭 미지정";
 }
 
 function formatAntigravitySource(source: Extract<GeminiUsageResult, { ok: true }>["source"]) {
@@ -1478,10 +1782,14 @@ function makeClaudeError(error: string): ClaudeUsageResult {
 }
 
 function makeGeminiError(error: string): GeminiUsageResult {
+  const account = { detected: false, alias: null, aliasRequired: false, accountChanged: false, confidence: null } as const;
   return {
     ok: false,
     source: "gemini-cli-oauth",
     error,
+    account,
+    geminiAppsAccount: account,
+    googleAccountComparison: "both-unknown",
     geminiApps: null,
     geminiAppsSession: { loggedIn: false, checkedAt: null },
     updatedAt: new Date().toISOString()
