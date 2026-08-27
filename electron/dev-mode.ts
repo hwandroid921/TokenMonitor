@@ -1,5 +1,4 @@
 import fs from "node:fs";
-import { execFileSync } from "node:child_process";
 import path from "node:path";
 import type { AccountAliasState } from "./account-aliases.js";
 
@@ -52,13 +51,14 @@ export function loadDeveloperEnv() {
     return;
   }
 
-  const parsed = readDeveloperEnvValue();
+  const candidates = getDeveloperEnvCandidates();
+  const parsed = readDeveloperEnvValue(candidates);
   if (parsed) {
     process.env[developerEnvKey] = parsed.value;
     envStatus = {
       enabled: parsed.value === "1",
       source: "env-file",
-      checkedPathCount: parsed.checkedPathCount,
+      checkedPathCount: candidates.length,
       loadedFileName: parsed.fileName
     };
     return;
@@ -67,7 +67,7 @@ export function loadDeveloperEnv() {
   envStatus = {
     enabled: false,
     source: "default",
-    checkedPathCount: getDeveloperEnvCandidates().length,
+    checkedPathCount: candidates.length,
     loadedFileName: null
   };
 }
@@ -85,15 +85,13 @@ export function getDeveloperEnvStatus(): DeveloperEnvStatus {
   };
 }
 
-function readDeveloperEnvValue() {
-  const candidates = getDeveloperEnvCandidates();
+function readDeveloperEnvValue(candidates: string[]) {
   for (const file of candidates) {
     try {
       const parsed = parseDeveloperEnv(fs.readFileSync(file, "utf8"));
       if (parsed != null) {
         return {
           value: parsed,
-          checkedPathCount: candidates.length,
           fileName: path.basename(file)
         };
       }
@@ -105,6 +103,10 @@ function readDeveloperEnvValue() {
   return null;
 }
 
+// Cheap, synchronous candidate locations only. A launcher-relative `.env` is
+// found through cwd / INIT_CWD; portable builds through PORTABLE_EXECUTABLE_*.
+// No process-tree walk here: it cost several blocking `powershell.exe` spawns
+// during startup for every user, developer or not.
 function getDeveloperEnvCandidates() {
   const candidates = new Set<string>();
   const push = (base: string | undefined) => {
@@ -115,6 +117,7 @@ function getDeveloperEnvCandidates() {
   };
 
   push(process.cwd());
+  push(process.env.INIT_CWD);
   push(path.dirname(process.execPath));
   push(path.resolve(path.dirname(process.execPath), ".."));
   push(path.resolve(path.dirname(process.execPath), "..", ".."));
@@ -124,68 +127,7 @@ function getDeveloperEnvCandidates() {
     push(path.dirname(process.env.PORTABLE_EXECUTABLE_FILE));
   }
 
-  for (const parentDir of getWindowsParentProcessDirs()) {
-    push(parentDir);
-  }
-
-  if (process.env.INIT_CWD) {
-    push(process.env.INIT_CWD);
-  }
-
   return [...candidates];
-}
-
-function getWindowsParentProcessDirs() {
-  if (process.platform !== "win32") {
-    return [];
-  }
-
-  const dirs: string[] = [];
-  let nextPid = process.ppid;
-
-  for (let index = 0; index < 4 && nextPid; index += 1) {
-    const info = readWindowsProcessInfo(nextPid);
-    if (!info) {
-      break;
-    }
-
-    if (info.executablePath) {
-      dirs.push(path.dirname(info.executablePath));
-    }
-
-    nextPid = info.parentProcessId;
-  }
-
-  return dirs;
-}
-
-function readWindowsProcessInfo(processId: number) {
-  if (!Number.isInteger(processId) || processId <= 0) {
-    return null;
-  }
-
-  try {
-    const output = execFileSync(
-      "powershell.exe",
-      [
-        "-NoProfile",
-        "-Command",
-        `Get-CimInstance Win32_Process -Filter "ProcessId = ${processId}" | Select-Object ParentProcessId,ExecutablePath | ConvertTo-Json -Compress`
-      ],
-      { encoding: "utf8", timeout: 1500, windowsHide: true }
-    ).trim();
-    if (!output) {
-      return null;
-    }
-
-    const parsed = JSON.parse(output) as { ParentProcessId?: unknown; ExecutablePath?: unknown };
-    return {
-      parentProcessId: typeof parsed.ParentProcessId === "number" ? parsed.ParentProcessId : 0,
-      executablePath: typeof parsed.ExecutablePath === "string" ? parsed.ExecutablePath : null
-    };
-  } catch {
-    return null;
-  }
 }
 
 function parseDeveloperEnv(content: string) {

@@ -312,20 +312,28 @@ export async function validateCodexExecutablePath(candidate: string): Promise<{
   ok: boolean;
   connection: CodexPathStatus["connection"];
   detail: string;
+  usage?: CodexUsageResult;
 }> {
   const normalized = candidate.trim();
   if (!path.isAbsolute(normalized)) {
-    return { ok: false, connection: "failed", detail: "전체 경로를 입력해 주세요." };
+    return { ok: false, connection: "failed", detail: "codex.exe 전체 경로를 입력해 주세요." };
   }
   if (path.basename(normalized).toLowerCase() !== "codex.exe" || !isExecutableFile(normalized)) {
     return { ok: false, connection: "failed", detail: "선택한 위치에서 codex.exe를 찾을 수 없습니다." };
   }
 
-  const result = await getCodexUsage(normalized);
-  if (result.ok) {
-    return { ok: true, connection: "connected", detail: "Codex Desktop 연결을 확인했습니다." };
+  // The path points at a real codex.exe. Try a live connection, but do not block
+  // saving on it: Codex Desktop may just be logged out or not running yet.
+  const usage = await getCodexUsage(normalized);
+  if (usage.ok) {
+    return { ok: true, connection: "connected", detail: "Codex Desktop 연결을 확인했습니다.", usage };
   }
-  return { ok: false, connection: "failed", detail: result.error };
+  return {
+    ok: true,
+    connection: "failed",
+    detail: "codex.exe 경로를 저장했습니다. Codex Desktop 로그인 또는 실행 상태를 확인하세요.",
+    usage
+  };
 }
 
 export function getCodexPathStatus(connection: CodexPathStatus["connection"] = "unchecked", detail?: string): CodexPathStatus {

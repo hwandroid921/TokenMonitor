@@ -1426,11 +1426,14 @@ body.overlay-body #root {
 
 .codex-path-notice {
   margin: 0;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.codex-path-notice.visible {
   padding: 8px 10px;
   color: #315844;
   background: #edf6ed;
   border: 1px solid #d7e8d7;
   border-radius: 7px;
-  font-size: 12px;
-  font-weight: 700;
 }

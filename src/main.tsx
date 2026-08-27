@@ -283,6 +283,9 @@ function App() {
       ? ["dashboard", "settings", "developer"]
       : ["dashboard", "settings"];
     const currentIndex = tabs.indexOf(activeTab);
+    if (currentIndex === -1) {
+      return;
+    }
     const delta = event.key === "ArrowRight" ? 1 : -1;
     const nextTab = tabs[(currentIndex + delta + tabs.length) % tabs.length];
     setActiveTab(nextTab);
@@ -633,7 +636,7 @@ function App() {
               onDeleteProviderAccounts={handleDeleteProviderAliases}
               onDeleteAllAccounts={handleDeleteAllAccountAliases}
             />
-            <CodexPathSettings />
+            {window.tokenMonitor?.platform === "win32" ? <CodexPathSettings /> : null}
           </div>
         ) : (
           <div id="developer-panel" role="tabpanel" aria-labelledby="developer-tab">
@@ -2151,12 +2154,20 @@ function CodexPathSettings() {
   const [input, setInput] = useState("");
   const [pending, setPending] = useState(false);
   const [notice, setNotice] = useState<string | null>(null);
+  const mountedRef = useRef(true);
 
   useEffect(() => {
+    mountedRef.current = true;
     void window.tokenMonitor?.getCodexPathStatus().then((next) => {
+      if (!mountedRef.current) {
+        return;
+      }
       setStatus(next);
       setInput(next.configuredPath ?? "");
     });
+    return () => {
+      mountedRef.current = false;
+    };
   }, []);
 
   function applyResult(
@@ -2164,6 +2175,9 @@ function CodexPathSettings() {
     successNotice: string,
     missingNotice: string
   ) {
+    if (!mountedRef.current) {
+      return;
+    }
     if (!result) {
       setNotice(missingNotice);
       return;
@@ -2182,16 +2196,20 @@ function CodexPathSettings() {
     try {
       await run();
     } catch (error) {
-      setNotice(error instanceof Error ? error.message : "Codex 경로 작업을 완료하지 못했습니다.");
+      if (mountedRef.current) {
+        setNotice(error instanceof Error ? error.message : "Codex 경로 작업을 완료하지 못했습니다.");
+      }
     } finally {
-      setPending(false);
+      if (mountedRef.current) {
+        setPending(false);
+      }
     }
   }
 
   const saveNotice = "Codex 경로를 저장하고 연결을 확인했습니다.";
 
   return (
-    <section className="setting-group codex-path-settings" aria-labelledby="codex-path-heading">
+    <section className="setting-group codex-path-settings" aria-labelledby="codex-path-heading" aria-busy={pending}>
       <h2 id="codex-path-heading">Codex 실행 파일 경로</h2>
       <p className="codex-path-hint">
         Codex Desktop을 자동으로 찾지 못할 때 codex.exe 전체 경로를 지정합니다. 지정하지 않으면 자동 탐색과 <code>CODEX_CLI_PATH</code> 환경 변수를 사용합니다.
@@ -2274,7 +2292,7 @@ function CodexPathSettings() {
           자동 탐색으로 복원
         </button>
       </div>
-      {notice ? <p className="codex-path-notice" role="status">{notice}</p> : null}
+      <p className={`codex-path-notice${notice ? " visible" : ""}`} role="status" aria-live="polite">{notice}</p>
     </section>
   );
 }
@@ -2322,7 +2340,7 @@ function DeveloperPanel({
   const cache = diagnostics?.cacheSummary;
 
   return (
-    <section className="developer-panel" aria-label="개발자 모드">
+    <section className="developer-panel" aria-label="개발자 모드" aria-busy={isRefreshing}>
       <div className="settings-heading">
         <div>
           <span className="eyebrow">Developer Mode</span>

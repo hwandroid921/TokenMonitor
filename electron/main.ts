@@ -426,9 +426,9 @@ function applyOverlaySettings(settings: OverlaySettings) {
   updateTrayMenu();
 }
 
-function readCodexUsageShared() {
+function readCodexUsageShared(force = false) {
   const now = Date.now();
-  if (usageCache && now - usageCacheTime < 15_000) {
+  if (!force && usageCache && now - usageCacheTime < 15_000) {
     return Promise.resolve(usageCache);
   }
 
@@ -447,14 +447,30 @@ function readCodexUsageShared() {
   return usagePromise;
 }
 
+// Matches clearUsageCaches(): drop the cached value but leave any in-flight
+// read alone so its .finally can still clear usagePromise.
 function invalidateCodexCache() {
   usageCache = null;
   usageCacheTime = 0;
-  usagePromise = null;
 }
 
 function readCodexPathSettings() {
   return getCodexPathStatus(codexPathConnection, codexPathDetail);
+}
+
+// Non-main-window senders (overlay) never need the configured path.
+function blankCodexPathStatus(): CodexPathStatus {
+  return {
+    configuredPath: null,
+    activePath: null,
+    source: "none",
+    desktopInstalled: false,
+    executableFound: false,
+    configuredPathValid: null,
+    connection: "unchecked",
+    detail: "",
+    checkedAt: new Date().toISOString()
+  };
 }
 
 async function applyCodexExecutablePath(candidate: string) {
@@ -468,9 +484,11 @@ async function applyCodexExecutablePath(candidate: string) {
     setCodexExecutablePath(providerSettings.codexExecutablePath);
     codexPathConnection = validation.connection;
     codexPathDetail = validation.detail;
+    // validation already fetched usage for this exact path; reuse it and let the
+    // shared cache re-fetch lazily on the next read.
     invalidateCodexCache();
-    const usage = await readCodexUsageShared();
-    return { ok: true, canceled: false, status: readCodexPathSettings(), usage };
+    const usage = validation.usage ?? (await readCodexUsageShared(true));
+    return { ok: true, canceled: false, status: readCodexPathSettings(), detail: validation.detail, usage };
   } catch {
     return {
       ok: false,
@@ -503,8 +521,8 @@ async function resetCodexExecutablePath() {
     codexPathConnection = "unchecked";
     codexPathDetail = "Codex 실행 경로를 자동으로 탐색합니다.";
     invalidateCodexCache();
-    const usage = await readCodexUsageShared();
-    return { ok: usage.ok, canceled: false, status: readCodexPathSettings(), usage };
+    const usage = await readCodexUsageShared(true);
+    return { ok: true, canceled: false, status: readCodexPathSettings(), usage };
   } catch {
     return {
       ok: false,
@@ -616,13 +634,16 @@ async function readDeveloperDiagnostics() {
   }
 
   const [codex, claude, gemini, sessions] = await Promise.all([
-    readCodexUsageShared(),
+    readCodexUsageShared(true),
     readClaudeUsageShared(true),
     readGeminiUsageShared(true),
     readCliSessionShared(true)
   ]);
 
   const codexPath = readCodexPathSettings();
+  // Provider-supplied labels are display-safe (tier/model names), but cap length
+  // so a malformed local response cannot flood the developer view.
+  const label = (value: string | null | undefined) => (value ? value.slice(0, 60) : "unknown");
 
   const providers: DeveloperProviderDiagnostic[] = [
     {
@@ -639,7 +660,7 @@ async function readDeveloperDiagnostics() {
           method: "Codex Desktop app-server",
           status: codex.ok ? "success" : "failed",
           detail: codex.ok
-            ? `plan=${codex.planType ?? "unknown"}, weekly=${codex.weekly ? `${codex.weekly.remainingPercent}%` : "none"}, periodic=${codex.periodic ? `${codex.periodic.remainingPercent}%` : "none"}`
+            ? `plan=${label(codex.planType)}, weekly=${codex.weekly ? `${codex.weekly.remainingPercent}%` : "none"}, periodic=${codex.periodic ? `${codex.periodic.remainingPercent}%` : "none"}`
             : codex.error
         },
         {
@@ -674,7 +695,7 @@ async function readDeveloperDiagnostics() {
           method: "Claude Code Status Line 스냅샷",
           status: claude.ok ? "success" : "failed",
           detail: claude.ok
-            ? `model=${claude.model?.displayName ?? claude.model?.id ?? "unknown"}, fiveHour=${claude.fiveHour ? `${claude.fiveHour.remainingPercent}%` : "none"}, weekly=${claude.sevenDay ? `${claude.sevenDay.remainingPercent}%` : "none"}, stale=${claude.stale}`
+            ? `model=${label(claude.model?.displayName ?? claude.model?.id)}, fiveHour=${claude.fiveHour ? `${claude.fiveHour.remainingPercent}%` : "none"}, weekly=${claude.sevenDay ? `${claude.sevenDay.remainingPercent}%` : "none"}, stale=${claude.stale}`
             : claude.error
         }
       ]
@@ -694,7 +715,7 @@ async function readDeveloperDiagnostics() {
           method: "Gemini Apps Usage Limits",
           status: gemini.geminiApps ? "success" : gemini.geminiAppsSession.loggedIn ? "failed" : "skipped",
           detail: gemini.geminiApps
-            ? `plan=${gemini.geminiApps.plan ?? "unknown"}, fiveHour=${gemini.geminiApps.fiveHour?.remaining ?? "none"}, weekly=${gemini.geminiApps.weekly?.remaining ?? "none"}`
+            ? `plan=${label(gemini.geminiApps.plan)}, fiveHour=${gemini.geminiApps.fiveHour?.remaining ?? "none"}, weekly=${gemini.geminiApps.weekly?.remaining ?? "none"}`
             : gemini.geminiAppsSession.loggedIn
               ? "로그인됨. 사용량 확인 버튼으로 Usage Limits 수집 필요"
               : "Gemini 웹 로그인 필요"
@@ -1444,9 +1465,9 @@ if (!gotSingleInstanceLock) {
     ipcMain.handle("claude-usage:read", (_event, force?: boolean) => readClaudeUsageShared(Boolean(force)));
     ipcMain.handle("gemini-usage:read", (_event, force?: boolean) => readGeminiUsageShared(Boolean(force)));
     ipcMain.handle("cli-session:read", (_event, force?: boolean) => readCliSessionShared(Boolean(force)));
-    ipcMain.handle("developer-mode:read", () => ({ enabled: isDeveloperMode() }));
+    ipcMain.handle("developer-mode:read", (event) => ({ enabled: isMainWindowSender(event) && isDeveloperMode() }));
     ipcMain.handle("developer-diagnostics:read", (event) => isMainWindowSender(event) ? readDeveloperDiagnostics() : { enabled: false, generatedAt: new Date().toISOString(), environment: getDeveloperEnvStatus(), providers: [], geminiParser: null });
-    ipcMain.handle("codex-path:read", () => readCodexPathSettings());
+    ipcMain.handle("codex-path:read", (event) => isMainWindowSender(event) ? readCodexPathSettings() : blankCodexPathStatus());
     ipcMain.handle("codex-path:select", (event) => isMainWindowSender(event) ? selectCodexExecutablePath() : { ok: false, canceled: true, status: readCodexPathSettings() });
     ipcMain.handle("codex-path:update", (event, candidate: string) => isMainWindowSender(event) ? applyCodexExecutablePath(candidate) : { ok: false, canceled: false, status: readCodexPathSettings() });
     ipcMain.handle("codex-path:reset", (event) => isMainWindowSender(event) ? resetCodexExecutablePath() : { ok: false, canceled: false, status: readCodexPathSettings() });
