@@ -21,15 +21,21 @@ $resolvedTempOutput = [System.IO.Path]::GetFullPath($tempOutput)
 $resolvedSourcePath = [System.IO.Path]::GetFullPath($sourcePath)
 $resolvedTargetPath = [System.IO.Path]::GetFullPath($targetPath)
 
-if (-not $resolvedTempOutput.StartsWith($resolvedRoot, [System.StringComparison]::OrdinalIgnoreCase)) {
+function Test-PathWithin([string]$ChildPath, [string]$ParentPath) {
+  $parentWithSeparator = $ParentPath.TrimEnd([System.IO.Path]::DirectorySeparatorChar, [System.IO.Path]::AltDirectorySeparatorChar) + [System.IO.Path]::DirectorySeparatorChar
+  return $ChildPath.Equals($ParentPath, [System.StringComparison]::OrdinalIgnoreCase) -or
+    $ChildPath.StartsWith($parentWithSeparator, [System.StringComparison]::OrdinalIgnoreCase)
+}
+
+if (-not (Test-PathWithin $resolvedTempOutput $resolvedRoot)) {
   throw "Portable output path is outside the project root."
 }
 
-if (-not $resolvedSourcePath.StartsWith($resolvedTempOutput, [System.StringComparison]::OrdinalIgnoreCase)) {
+if (-not (Test-PathWithin $resolvedSourcePath $resolvedTempOutput)) {
   throw "Portable source path is outside the temporary output folder."
 }
 
-if (-not $resolvedTargetPath.StartsWith($resolvedRoot, [System.StringComparison]::OrdinalIgnoreCase)) {
+if (-not (Test-PathWithin $resolvedTargetPath $resolvedRoot)) {
   throw "Portable target path is outside the project root."
 }
 
@@ -43,7 +49,7 @@ Get-ChildItem -LiteralPath $resolvedRoot -Filter "TokenMonitor-*-x64.exe" -File 
   Where-Object { $_.FullName -ne $resolvedTargetPath } |
   ForEach-Object {
     $candidatePath = [System.IO.Path]::GetFullPath($_.FullName)
-    if (-not $candidatePath.StartsWith($resolvedRoot, [System.StringComparison]::OrdinalIgnoreCase)) {
+    if (-not (Test-PathWithin $candidatePath $resolvedRoot)) {
       throw "Portable cleanup candidate is outside the project root."
     }
     Remove-Item -LiteralPath $candidatePath -Force

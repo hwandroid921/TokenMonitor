@@ -152,10 +152,14 @@ function App() {
   const [isSettingsSaving, setIsSettingsSaving] = useState(false);
   const [accountAliases, setAccountAliases] = useState<AccountAliasView[]>([]);
   const [accountAliasNotice, setAccountAliasNotice] = useState<string | null>(null);
+  const refreshRequestRef = useRef(0);
+  const notificationSettingsRef = useRef(notificationSettings);
+  const notificationSaveRequestRef = useRef(0);
 
   const providers = useMemo(() => buildProviderUsage(codexUsage, claudeUsage, geminiUsage, cliSessions), [codexUsage, claudeUsage, geminiUsage, cliSessions]);
 
   async function refreshUsage(forceGemini = true) {
+    const requestId = ++refreshRequestRef.current;
     setIsRefreshing(true);
     setRefreshNotice("사용량 정보를 새로고침하고 있습니다.");
     try {
@@ -173,6 +177,9 @@ function App() {
         window.tokenMonitor.getGeminiUsage(forceGemini),
         window.tokenMonitor.getCliSessionStatus()
       ]);
+      if (requestId !== refreshRequestRef.current) {
+        return;
+      }
       setCodexUsage(latestCodex);
       setClaudeUsage(latestClaude);
       setGeminiUsage(latestGemini);
@@ -180,9 +187,13 @@ function App() {
       const successCount = [latestCodex, latestClaude, latestGemini].filter((result) => result.ok).length;
       setRefreshNotice(`${successCount}개 서비스 갱신 완료 · ${formatTime(new Date().toISOString())}`);
     } catch {
-      setRefreshNotice("사용량 새로고침을 완료하지 못했습니다. 다시 시도하세요.");
+      if (requestId === refreshRequestRef.current) {
+        setRefreshNotice("사용량 새로고침을 완료하지 못했습니다. 다시 시도하세요.");
+      }
     } finally {
-      setIsRefreshing(false);
+      if (requestId === refreshRequestRef.current) {
+        setIsRefreshing(false);
+      }
     }
   }
 
@@ -207,8 +218,10 @@ function App() {
     }
   }
 
-  async function saveNotificationSettings(nextSettings: NotificationSettings) {
-    const previousSettings = notificationSettings;
+  async function saveNotificationSettings(patch: Partial<NotificationSettings>) {
+    const requestId = ++notificationSaveRequestRef.current;
+    const nextSettings = { ...notificationSettingsRef.current, ...patch };
+    notificationSettingsRef.current = nextSettings;
     setNotificationSettings(nextSettings);
     setNotificationNotice("알림 설정을 저장하고 있습니다.");
     try {
@@ -216,11 +229,15 @@ function App() {
         throw new Error("알림 설정 API를 사용할 수 없습니다.");
       }
       const saved = await window.tokenMonitor.updateNotificationSettings(nextSettings);
-      setNotificationSettings(saved);
-      setNotificationNotice("알림 설정이 저장되었습니다.");
+      if (requestId === notificationSaveRequestRef.current) {
+        notificationSettingsRef.current = saved;
+        setNotificationSettings(saved);
+        setNotificationNotice("알림 설정이 저장되었습니다.");
+      }
     } catch {
-      setNotificationSettings(previousSettings);
-      setNotificationNotice("알림 설정을 저장하지 못했습니다.");
+      if (requestId === notificationSaveRequestRef.current) {
+        setNotificationNotice("알림 설정을 저장하지 못했습니다. 다시 시도하세요.");
+      }
     }
   }
 
@@ -466,7 +483,10 @@ function App() {
   useEffect(() => {
     void refreshUsage();
     void window.tokenMonitor?.getOverlaySettings().then(setOverlaySettings);
-    void window.tokenMonitor?.getNotificationSettings().then(setNotificationSettings);
+    void window.tokenMonitor?.getNotificationSettings().then((settings) => {
+      notificationSettingsRef.current = settings;
+      setNotificationSettings(settings);
+    });
     void window.tokenMonitor?.getDeveloperMode().then((mode) => {
       setDeveloperMode(mode);
       if (mode.enabled) {
@@ -1057,7 +1077,7 @@ function SettingsPanel({
   isSaving: boolean;
   notificationSettings: NotificationSettings;
   notificationNotice: string | null;
-  onNotificationChange: (settings: NotificationSettings) => Promise<void>;
+  onNotificationChange: (patch: Partial<NotificationSettings>) => Promise<void>;
   accounts: AccountAliasView[];
   accountNotice: string | null;
   onRenameAccount: (recordId: string, alias: string) => Promise<boolean>;
@@ -1183,12 +1203,12 @@ function NotificationSettingsPanel({
 }: {
   settings: NotificationSettings;
   notice: string | null;
-  onChange: (settings: NotificationSettings) => Promise<void>;
+  onChange: (patch: Partial<NotificationSettings>) => Promise<void>;
 }) {
   const [isTesting, setIsTesting] = useState(false);
 
   function update(patch: Partial<NotificationSettings>) {
-    void onChange({ ...settings, ...patch });
+    void onChange(patch);
   }
 
   function toggleThreshold(threshold: number) {
@@ -1419,6 +1439,7 @@ function OverlayApp() {
   const [notificationSettings, setNotificationSettings] = useState<NotificationSettings>(defaultNotificationSettings);
   const [fontScale, setFontScale] = useState(1);
   const contentRef = useRef<HTMLElement | null>(null);
+  const refreshRequestRef = useRef(0);
 
   const providers = useMemo(
     () => buildProviderUsage(codexUsage, claudeUsage, geminiUsage, cliSessions).filter((provider) => getProviderDisplay(settings, provider.id).enabled),
@@ -1448,6 +1469,7 @@ function OverlayApp() {
 
   useEffect(() => {
     async function refresh() {
+      const requestId = ++refreshRequestRef.current;
       if (!window.tokenMonitor?.getCodexUsage || !window.tokenMonitor?.getClaudeUsage || !window.tokenMonitor?.getGeminiUsage || !window.tokenMonitor?.getCliSessionStatus) {
         setCodexUsage(makeCodexError("데스크탑 앱 연결을 확인할 수 없습니다."));
         setClaudeUsage(makeClaudeError("데스크탑 앱 연결을 확인할 수 없습니다."));
@@ -1461,6 +1483,9 @@ function OverlayApp() {
         window.tokenMonitor.getGeminiUsage(),
         window.tokenMonitor.getCliSessionStatus()
       ]);
+      if (requestId !== refreshRequestRef.current) {
+        return;
+      }
       setCodexUsage(latestCodex);
       setClaudeUsage(latestClaude);
       setGeminiUsage(latestGemini);
@@ -2221,7 +2246,7 @@ function CodexPathSettings() {
         </div>
         <div>
           <dt>사용 중 경로</dt>
-          <dd>{status?.activePath ?? "확인되지 않음"}</dd>
+          <dd>{formatCodexPathForDisplay(status?.activePath)}</dd>
         </div>
         <div>
           <dt>탐색 방식</dt>
@@ -2234,8 +2259,9 @@ function CodexPathSettings() {
       </dl>
       <div className="codex-path-input-row">
         <input
-          type="text"
+          type="password"
           aria-label="codex.exe 전체 경로"
+          autoComplete="off"
           placeholder="C:\\Users\\...\\codex.exe"
           value={input}
           onChange={(event) => setInput(event.target.value)}
@@ -2295,6 +2321,13 @@ function CodexPathSettings() {
       <p className={`codex-path-notice${notice ? " visible" : ""}`} role="status" aria-live="polite">{notice}</p>
     </section>
   );
+}
+
+function formatCodexPathForDisplay(value: string | null | undefined) {
+  if (!value) {
+    return "확인되지 않음";
+  }
+  return value.replace(/^(.*?[\\/]Users[\\/])[^\\/]+/i, "$1***");
 }
 
 function formatCodexPathConnection(status: CodexPathStatus | null) {

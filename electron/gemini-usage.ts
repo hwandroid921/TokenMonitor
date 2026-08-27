@@ -187,7 +187,7 @@ async function getAntigravityLocalUsage(): Promise<GeminiUsageResult> {
       return makeError("Antigravity local ports not found.", "antigravity-local");
     }
 
-    const endpoint = await resolveAntigravityEndpoint(candidatePorts, processInfo.csrfToken, processInfo.extensionServerCSRFToken);
+    const endpoint = await resolveAntigravityEndpoint(candidatePorts, processInfo.csrfToken);
     if (!endpoint) {
       return makeError("Antigravity local endpoint probe failed.", "antigravity-local");
     }
@@ -223,7 +223,6 @@ type AntigravityProcessInfo = {
   commandLine: string;
   csrfToken: string;
   extensionPort: number | null;
-  extensionServerCSRFToken: string | null;
 };
 
 type AntigravityEndpoint = {
@@ -249,8 +248,7 @@ async function findAntigravityProcess(): Promise<AntigravityProcessInfo | null> 
       pid: Number(processInfo.ProcessId),
       commandLine: command,
       csrfToken,
-      extensionPort: readPort(extractFlag(command, "--extension_server_port")),
-      extensionServerCSRFToken: extractFlag(command, "--extension_server_csrf_token")
+      extensionPort: readPort(extractFlag(command, "--extension_server_port"))
     };
   }
 
@@ -292,11 +290,8 @@ async function findListeningPorts(pid: number) {
   return values.map((value) => Number(value)).filter((value) => Number.isInteger(value) && value > 0);
 }
 
-async function resolveAntigravityEndpoint(ports: number[], languageServerToken: string, extensionServerToken: string | null): Promise<AntigravityEndpoint | null> {
-  const candidates = ports.flatMap((port) => [
-    { scheme: "https" as const, port, csrfToken: languageServerToken },
-    { scheme: "http" as const, port, csrfToken: extensionServerToken ?? languageServerToken }
-  ]);
+async function resolveAntigravityEndpoint(ports: number[], languageServerToken: string): Promise<AntigravityEndpoint | null> {
+  const candidates = ports.map((port) => ({ scheme: "https" as const, port, csrfToken: languageServerToken }));
 
   for (const candidate of candidates) {
     try {
@@ -318,7 +313,6 @@ function postLocalJson(endpoint: AntigravityEndpoint, requestPath: string, csrfT
     port: endpoint.port,
     path: requestPath,
     method: "POST",
-    rejectUnauthorized: false,
     headers: {
       "content-type": "application/json",
       "content-length": Buffer.byteLength(body),

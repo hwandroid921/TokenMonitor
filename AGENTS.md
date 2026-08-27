@@ -230,7 +230,7 @@ For feature implementation work, create a task-specific branch under `feature/` 
 
 Rules:
 
-- Keep `main` as the stable base branch.
+- Keep `main` as the long-lived base branch and use `dev` as the stable integration and release branch.
 - Create `dev` from `main` when a development branch is needed.
 - Create each implementation branch from `dev`.
 - Use `feature/<short-feature-name>` for feature branch names.
@@ -262,7 +262,7 @@ For a `MINOR` or `MAJOR` release, treat the remote delivery sequence as part of 
 5. After the release commit is merged to the stable release branch, create and push the matching annotated Git tag.
 6. Create the GitHub Release from that tag with Korean notes, including concise summary, verification, and artifact/hash details.
 
-Never create a release tag or GitHub Release for a feature branch or an unmerged PR. If the merge has not occurred, finish by reporting the PR and that the tag/release is pending the stable-branch merge.
+Never create a release tag or GitHub Release for a feature branch or an unmerged PR. Create them from the merged `dev` release commit; if the merge has not occurred, finish by reporting the PR and that the tag/release is pending the `dev` merge.
 
 Remote upload commit message format:
 

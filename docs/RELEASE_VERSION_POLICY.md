@@ -73,10 +73,10 @@ Before `v1.0.0`, do not maintain a fixed version-by-version feature roadmap. Whe
 Current package version:
 
 ```text
-1.3.0
+1.3.1
 ```
 
-`v1.3.0` is the developer-mode reintegration milestone. It brings the previously diverged developer diagnostics view and Codex executable path override onto the v1.2.0 architecture (account alias identity, Claude Status Line snapshot, weekly/periodic Codex windows).
+`v1.3.1` is the security and reliability maintenance release following the developer-mode reintegration milestone.
 
 - ChatGPT quota display through the Codex Desktop local usage flow, with an optional user-set `codex.exe` path
 - Claude quota display
@@ -181,7 +181,7 @@ Rules:
 - Ensure `package.json`, `package-lock.json`, Release History, packaged artifacts, Git tag, and remote release entry all refer to the same version.
 - `v1.0.0` and every later release must have a corresponding Git tag and remote release entry.
 - For `MINOR` and `MAJOR` releases, commit/push/PR are mandatory as part of the release workflow; after stable-branch merge, tag and remote release creation are mandatory without requiring a separate user request.
-- Use the merged stable-branch commit as the tag target. Never tag a feature branch, a release candidate, or an open PR head.
+- Use the merged `dev` release-branch commit as the tag target. Never tag a feature branch, a release candidate, or an open PR head.
 
 ## Release Notes Checklist
 
@@ -197,6 +197,29 @@ For each release-worthy version bump, summarize:
 - Known limitations
 
 ## Release History
+
+### 1.3.1 — 2026-08-27 — PATCH
+
+**Change category:** PATCH (security, privacy, concurrency, and release-path remediation)
+
+**User-visible changes:**
+- Gemini login and usage pages no longer open unapproved popup destinations in the system browser.
+- Codex path status masks the Windows profile segment in the display-only path summary.
+- Overlapping usage refreshes and rapid notification setting changes preserve the newest requested state.
+
+**Privacy and security review:**
+- Gemini parser diagnostics retain only parsing metadata and percentage candidates; page-text snippets are no longer written to the local cache or developer panel.
+- Main-window actions are rejected from the overlay, and usage reads are limited to the main and overlay windows.
+- Antigravity local collection uses certificate-verified HTTPS only; the prior plaintext HTTP fallback no longer receives a CSRF token.
+
+**Packaging notes:**
+- Package version updated to `1.3.1`.
+- This PATCH release does not regenerate a portable executable by default.
+- Portable packaging output is standardized to `dist-app/`; the legacy root-placement script now uses separator-aware containment checks.
+
+**Known limitations:**
+- Antigravity local fallback requires a certificate-valid HTTPS language server.
+- The user-selected Codex path remains editable in Settings, but its display-only status summary masks the Windows profile segment.
 
 ### 1.3.0 — 2026-08-27 — MINOR
 
