@@ -1,4 +1,4 @@
-import { app, BrowserWindow, shell } from "electron";
+import { app, BrowserWindow } from "electron";
 import fs from "node:fs";
 import path from "node:path";
 
@@ -20,7 +20,6 @@ export type GeminiAppsUsage = {
 type GeminiAppsParseDebug = {
   updatedAt: string;
   percentCandidates: string[];
-  snippets: string[];
   usageDetected: boolean;
 };
 
@@ -119,9 +118,16 @@ export function openGeminiAppsUsageWindow(onCaptured: () => void) {
       };
     }
 
-    void shell.openExternal(url);
     return { action: "deny" };
   });
+
+  const blockUnexpectedNavigation = (event: Electron.Event, url: string) => {
+    if (!isGoogleLoginUrl(url) && !isGeminiUrl(url)) {
+      event.preventDefault();
+    }
+  };
+  usageWindow.webContents.on("will-navigate", blockUnexpectedNavigation);
+  usageWindow.webContents.on("will-redirect", blockUnexpectedNavigation);
 
   usageWindow.webContents.on("did-finish-load", () => {
     void handleGeminiWindowLoaded(onCaptured);
@@ -415,51 +421,14 @@ function formatParseDetail(debug: GeminiAppsParseDebug, plan: string | null) {
 }
 
 function buildParseDebug(rawText: string): GeminiAppsParseDebug {
-  const text = sanitizeDebugText(rawText.replace(/\s+/g, " ").trim());
+  const text = rawText.replace(/\s+/g, " ").trim();
   const percentCandidates = uniqueStrings(Array.from(text.matchAll(/[0-9]+(?:\.[0-9]+)?\s*%/g)).map((match) => match[0].replace(/\s+/g, ""))).slice(0, 20);
-  const snippets = buildKeywordSnippets(text, [
-    "usage limits",
-    "usage limit",
-    "remaining",
-    "left",
-    "reset",
-    "현재 사용량",
-    "초기화",
-    "주간 한도",
-    "pro",
-    "5-hour",
-    "5 hour",
-    "weekly",
-    "week",
-    "limits"
-  ]);
 
   return {
     updatedAt: new Date().toISOString(),
     percentCandidates,
-    snippets,
     usageDetected: /usage limits|usage limit|limits/i.test(text)
   };
-}
-
-function buildKeywordSnippets(text: string, keywords: string[]) {
-  const lower = text.toLowerCase();
-  const snippets: string[] = [];
-  for (const keyword of keywords) {
-    const index = lower.indexOf(keyword.toLowerCase());
-    if (index < 0) {
-      continue;
-    }
-    snippets.push(text.slice(Math.max(0, index - 120), index + 220));
-  }
-  return uniqueStrings(snippets).slice(0, 12);
-}
-
-function sanitizeDebugText(value: string) {
-  return value
-    .replace(/[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/gi, "[email]")
-    .replace(/\b(?:ya29|1\/\/|Bearer)\S+/gi, "[token]")
-    .slice(0, 8000);
 }
 
 function uniqueStrings(values: string[]) {

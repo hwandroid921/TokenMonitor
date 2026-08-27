@@ -92,6 +92,7 @@ let resetMonitorTimer: NodeJS.Timeout | null = null;
 let alertWindowTimer: NodeJS.Timeout | null = null;
 let alertWindow: BrowserWindow | null = null;
 let backgroundUsagePromise: Promise<void> | null = null;
+let backgroundUsageEventsPromise: Promise<QuotaAlertEvent[]> | null = null;
 let latestQuotaSamples: NormalizedQuotaSample[] = [];
 let resetRetryAttempt = 0;
 const gotSingleInstanceLock = app.requestSingleInstanceLock();
@@ -392,6 +393,14 @@ function notifyAccountAliasesChanged() {
 
 function isMainWindowSender(event: Electron.IpcMainInvokeEvent) {
   return Boolean(mainWindow && !mainWindow.isDestroyed() && event.sender === mainWindow.webContents);
+}
+
+function isOverlayWindowSender(event: Electron.IpcMainInvokeEvent) {
+  return Boolean(overlayWindow && !overlayWindow.isDestroyed() && event.sender === overlayWindow.webContents);
+}
+
+function isAppWindowSender(event: Electron.IpcMainInvokeEvent) {
+  return isMainWindowSender(event) || isOverlayWindowSender(event);
 }
 
 function resizeOverlayWindow(request: { width?: number; height?: number }) {
@@ -815,10 +824,14 @@ async function runResetCollection() {
 
 function runBackgroundUsageCollection(reason: "interval" | "reset" | "resume", force = false): Promise<QuotaAlertEvent[]> {
   if (backgroundUsagePromise) {
-    return backgroundUsagePromise.then(() => []);
+    if (force) {
+      return backgroundUsagePromise.then(() => runBackgroundUsageCollection(reason, true));
+    }
+    return backgroundUsageEventsPromise ?? backgroundUsagePromise.then(() => []);
   }
   let resolveEvents: (events: QuotaAlertEvent[]) => void = () => undefined;
   const eventResult = new Promise<QuotaAlertEvent[]>((resolve) => { resolveEvents = resolve; });
+  backgroundUsageEventsPromise = eventResult;
   backgroundUsagePromise = Promise.resolve()
     .then(async () => {
       if (force) {
@@ -845,6 +858,7 @@ function runBackgroundUsageCollection(reason: "interval" | "reset" | "resume", f
     .catch(() => resolveEvents([]))
     .finally(() => {
       backgroundUsagePromise = null;
+      backgroundUsageEventsPromise = null;
     });
   return eventResult;
 }
@@ -1113,7 +1127,6 @@ function configureGeminiBrowserView(view: BrowserView) {
       return { action: "deny" };
     }
 
-    void shell.openExternal(url);
     return { action: "deny" };
   });
 
@@ -1461,32 +1474,35 @@ if (!gotSingleInstanceLock) {
     installKoreanMenu();
     createTray();
 
-    ipcMain.handle("codex-usage:read", () => readCodexUsageShared());
-    ipcMain.handle("claude-usage:read", (_event, force?: boolean) => readClaudeUsageShared(Boolean(force)));
-    ipcMain.handle("gemini-usage:read", (_event, force?: boolean) => readGeminiUsageShared(Boolean(force)));
-    ipcMain.handle("cli-session:read", (_event, force?: boolean) => readCliSessionShared(Boolean(force)));
+    ipcMain.handle("codex-usage:read", (event) => isAppWindowSender(event) ? readCodexUsageShared() : null);
+    ipcMain.handle("claude-usage:read", (event, force?: boolean) => isAppWindowSender(event) ? readClaudeUsageShared(Boolean(force)) : null);
+    ipcMain.handle("gemini-usage:read", (event, force?: boolean) => isAppWindowSender(event) ? readGeminiUsageShared(Boolean(force)) : null);
+    ipcMain.handle("cli-session:read", (event, force?: boolean) => isAppWindowSender(event) ? readCliSessionShared(Boolean(force)) : null);
     ipcMain.handle("developer-mode:read", (event) => ({ enabled: isMainWindowSender(event) && isDeveloperMode() }));
     ipcMain.handle("developer-diagnostics:read", (event) => isMainWindowSender(event) ? readDeveloperDiagnostics() : { enabled: false, generatedAt: new Date().toISOString(), environment: getDeveloperEnvStatus(), providers: [], geminiParser: null });
     ipcMain.handle("codex-path:read", (event) => isMainWindowSender(event) ? readCodexPathSettings() : blankCodexPathStatus());
     ipcMain.handle("codex-path:select", (event) => isMainWindowSender(event) ? selectCodexExecutablePath() : { ok: false, canceled: true, status: readCodexPathSettings() });
     ipcMain.handle("codex-path:update", (event, candidate: string) => isMainWindowSender(event) ? applyCodexExecutablePath(candidate) : { ok: false, canceled: false, status: readCodexPathSettings() });
     ipcMain.handle("codex-path:reset", (event) => isMainWindowSender(event) ? resetCodexExecutablePath() : { ok: false, canceled: false, status: readCodexPathSettings() });
-    ipcMain.handle("claude-login:start", () => startClaudeLogin());
-    ipcMain.handle("gemini-login:start", () => startGeminiLogin());
-    ipcMain.handle("gemini-apps-login:start", (_event, bounds?: Partial<GeminiViewBounds>) => startGeminiAppsLogin(bounds));
-    ipcMain.handle("gemini-view:bounds", (_event, bounds?: Partial<GeminiViewBounds>) => updateEmbeddedGeminiBounds(bounds));
-    ipcMain.handle("gemini-view:close", () => closeEmbeddedGeminiView("manual"));
-    ipcMain.handle("app:minimize-to-tray", () => minimizeMainWindowToTray());
-    ipcMain.handle("app:quit", () => quitApp());
-    ipcMain.handle("codex-usage:open-dashboard", () => shell.openExternal("https://chatgpt.com/codex/settings/usage"));
-    ipcMain.handle("nodejs:open-download", () => shell.openExternal("https://nodejs.org/ko/download"));
-    ipcMain.handle("overlay-settings:read", () => overlaySettings);
-    ipcMain.handle("overlay-settings:update", (_event, nextSettings: OverlaySettings) => {
+    ipcMain.handle("claude-login:start", (event) => isMainWindowSender(event) ? startClaudeLogin() : { ok: false, detail: "기본 창에서만 실행할 수 있습니다." });
+    ipcMain.handle("gemini-login:start", (event) => isMainWindowSender(event) ? startGeminiLogin() : { ok: false, detail: "기본 창에서만 실행할 수 있습니다." });
+    ipcMain.handle("gemini-apps-login:start", (event, bounds?: Partial<GeminiViewBounds>) => isMainWindowSender(event) ? startGeminiAppsLogin(bounds) : { ok: false, detail: "기본 창에서만 실행할 수 있습니다." });
+    ipcMain.handle("gemini-view:bounds", (event, bounds?: Partial<GeminiViewBounds>) => isMainWindowSender(event) ? updateEmbeddedGeminiBounds(bounds) : { ok: false });
+    ipcMain.handle("gemini-view:close", (event) => isMainWindowSender(event) ? closeEmbeddedGeminiView("manual") : undefined);
+    ipcMain.handle("app:minimize-to-tray", (event) => isMainWindowSender(event) ? minimizeMainWindowToTray() : undefined);
+    ipcMain.handle("app:quit", (event) => isMainWindowSender(event) ? quitApp() : undefined);
+    ipcMain.handle("codex-usage:open-dashboard", (event) => isMainWindowSender(event) ? shell.openExternal("https://chatgpt.com/codex/settings/usage") : undefined);
+    ipcMain.handle("nodejs:open-download", (event) => isMainWindowSender(event) ? shell.openExternal("https://nodejs.org/ko/download") : undefined);
+    ipcMain.handle("overlay-settings:read", (event) => isAppWindowSender(event) ? overlaySettings : defaultOverlaySettings);
+    ipcMain.handle("overlay-settings:update", (event, nextSettings: OverlaySettings) => {
+      if (!isMainWindowSender(event)) {
+        return overlaySettings;
+      }
       applyOverlaySettings(nextSettings);
       return overlaySettings;
     });
-    ipcMain.handle("overlay:resize", (_event, request: { width?: number; height?: number }) => resizeOverlayWindow(request));
-    ipcMain.handle("notification-settings:read", () => notificationSettings);
+    ipcMain.handle("overlay:resize", (event, request: { width?: number; height?: number }) => isOverlayWindowSender(event) ? resizeOverlayWindow(request) : { ok: false });
+    ipcMain.handle("notification-settings:read", (event) => isAppWindowSender(event) ? notificationSettings : defaultNotificationSettings);
     ipcMain.handle("notification-settings:update", (event, nextSettings: Partial<NotificationSettings>) => {
       if (!isMainWindowSender(event)) {
         return notificationSettings;
