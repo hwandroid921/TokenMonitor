@@ -1,41 +1,24 @@
 # Token Monitor
 
-> ChatGPT, Claude, Gemini 및 Antigravity의 남은 사용량과 초기화 시간을 한눈에 확인하는 데스크톱 앱입니다.
+> 대표 LLM 서비스들의 잔여 사용량과 초기화 시간을 한눈에 확인하는 데스크톱 앱입니다.
 
-Token Monitor는 여러 AI 서비스의 로컬 로그인 상태와 제공자가 노출하는 사용량 정보를 읽어, 플랜·사용량·잔여량·초기화 시간을 하나의 대시보드와 화면 우측 하단 오버레이로 정리합니다. 로그인 계정은 설정에서 마스킹 이메일을 확인해 별칭을 지정하며, 대시보드와 오버레이에는 별칭만 표시합니다.
+Token Monitor는 여러 AI 서비스의 로컬 로그인 상태와 제공자가 제공하는 사용량 정보를 읽어, 플랜·사용량·잔여량·초기화 시간을 대시보드와 화면 우측 하단 오버레이로 표시합니다. 해당 프로그램은 ChatGPT, Claude, Gemini 유료 플랜 이상 구독 사용자를 대상으로 합니다.
 
-**지원 환경:** Windows x64 · **정식 릴리즈:** `v1.2.0` · **배포 형식:** 포터블 실행 파일 및 설치형 Windows 패키지
+**지원 환경:** Windows x64 · **정식 릴리즈:** `v1.2.0` · **배포 형식:** 포터블 Windows 실행 파일
 
-[릴리즈 다운로드](https://github.com/hwandroid921/TokenMonitor/releases) · [릴리즈 정책](docs/RELEASE_VERSION_POLICY.md)
+[릴리즈 다운로드](https://github.com/hwandroid921/TokenMonitor/releases)
 
 ## 핵심 기능
 
-- ChatGPT/Codex, Claude, Gemini, Antigravity의 상태를 공급자 카드로 분리해 표시
-- 주간 사용량을 먼저, 주기 사용량을 다음에 표시
-- 설정에서 계정별 마스킹 이메일을 확인하고 별칭을 지정·변경·삭제
-- 대시보드와 오버레이에는 이메일 대신 계정 별칭만 표시
-- Gemini Apps와 Antigravity의 Google 계정 감지 및 별칭을 하나로 통합
-- 5분 백그라운드 수집과 사용자 지정 잔여량 임계치·소진·실제 초기화 알림
-- 잔여량 30% 미만과 소진 상태를 구분하는 선택형 오버레이 색상 강조
-- 화면 우측 하단의 클릭 통과형 오버레이와 시스템 트레이 최소화
-- Claude Code 및 Antigravity CLI의 로그인 흐름을 앱에서 시작
-- Gemini Apps 사용량을 앱 내 브라우저에서 로그인·확인
-
-## 제공자별 범위
-
-| 제공자 | 수집 방식 | 표시 범위 | 전제 조건 |
-| --- | --- | --- | --- |
-| ChatGPT | Codex Desktop 로컬 app-server | 플랜, 주간/주기 사용량·잔여량·초기화 | Codex Desktop 설치 및 로그인 |
-| Claude | Claude Code Status Line 최소 스냅샷 | 플랜, 주간/주기 사용량·잔여량·초기화 | Node.js/npm, Claude Code OAuth 로그인, Claude Code 응답 1회 이상 |
-| Gemini Apps | Gemini 사용량 페이지의 표시 텍스트 | 플랜, 주간/주기 잔여량·초기화 | Gemini 로그인 |
-| Antigravity | `antigravity-usage`, 로컬 probe, Gemini CLI OAuth fallback | 명시적으로 제공된 주간 한도 및 5시간 한도 | Node.js/npm 로그인 또는 실행 중인 Antigravity |
-
-Gemini Apps와 Antigravity의 한도는 서로 다른 서비스의 값입니다. 한쪽의 값을 다른 쪽 한도로 대체하지 않습니다.
+- ChatGPT/Codex, Claude, Gemini, Antigravity의 상태를 분리해 오버레이로 표시
+- 주간 사용량, 주기 사용량 표시
+- 설정에서 계정별 별칭을 지정 및 관리하여 대시보드와 오버레이에 표시해서 어떤 계정인지 빠르게 구분 가능
+- 사용자 지정 수치별 잔여 사용량 알림
 
 ## 다운로드 및 실행
 
 1. [GitHub Releases](https://github.com/hwandroid921/TokenMonitor/releases)에서 `TokenMonitor-1.2.0-x64.exe`를 다운로드합니다.
-2. 포터블 파일은 원하는 폴더에 두고 실행합니다. 설치형 패키지를 받은 경우에는 설치 과정을 완료합니다.
+2. 포터블 파일을 원하는 폴더에 두고 실행합니다.
 3. Windows 보안 경고가 표시되면 게시자와 다운로드 출처를 확인한 뒤 실행을 허용합니다.
 4. 대시보드에서 필요한 제공자의 연결 상태와 안내 버튼을 확인합니다.
 
@@ -43,14 +26,12 @@ Gemini Apps와 Antigravity의 한도는 서로 다른 서비스의 값입니다.
 
 | 항목 | 필요 대상 | 설명 |
 | --- | --- | --- |
-| Windows x64 | 모든 사용자 | 현재 Windows 전용으로 배포됩니다. |
-| 인터넷 연결 | 사용량 새로고침 | 각 제공자 로그인·사용량 확인에 필요합니다. |
+| Node.js LTS 및 npm | Claude, Antigravity 설정 | node.js 설치 필수 |
 | Codex Desktop | ChatGPT | 설치 후 로그인해야 합니다. |
-| Node.js LTS 및 npm | Claude, Antigravity 설정 | 앱의 CLI 로그인 버튼이 `npx`를 사용합니다. |
 | Claude Code 구독 및 OAuth 로그인 | Claude | Claude Code가 Status Line 사용량 정보를 제공하는 계정이 필요합니다. |
 | Gemini 로그인 | Gemini Apps | 앱 내 Gemini 로그인 후 사용량 확인을 진행합니다. |
 
-## 첫 사용 흐름
+## 유저 사용 흐름
 
 1. Token Monitor를 실행하고 대시보드의 새로고침 버튼을 누릅니다.
 2. ChatGPT는 Codex Desktop이 설치·로그인되어 있으면 자동으로 확인됩니다.
