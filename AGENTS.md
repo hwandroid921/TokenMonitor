@@ -83,6 +83,7 @@ npx electron-builder --win dir --x64 --publish never --config.win.signAndEditExe
 - For every `MINOR` or `MAJOR` app/exe release, automatically complete the release delivery workflow: update version files and release history, verify and package, commit, push the feature branch, and create the required PR. Do not wait for a separate upload or PR request.
 - A `MINOR` or `MAJOR` release must include portable packaging and cleanup of prior versioned portable executables. After the new executable and SHA256 hash are verified, remove only older `TokenMonitor-*-x64.exe` artifacts from `dist-app/` and any user-designated release delivery directory, while preserving the current release artifact.
 - After a `MINOR` or `MAJOR` release commit has been merged to the stable release branch, automatically create and push the matching `vMAJOR.MINOR.PATCH` tag and create the matching GitHub Release. Do not tag or publish an unmerged feature branch.
+- Write GitHub Release notes in Korean by default. Keep Git tags and portable artifact names in English; use another note language only when the user explicitly requests it.
 - For a `PATCH` release, push/PR, tag, GitHub Release, and portable packaging remain opt-in unless the user explicitly requests them or a more specific release instruction applies.
 - Keep document versioning, project milestone versioning, and app/exe release versioning distinct.
 - The app/exe release version remains managed by `package.json` and `package-lock.json`.
@@ -259,7 +260,7 @@ For a `MINOR` or `MAJOR` release, treat the remote delivery sequence as part of 
 3. Commit and push the release branch.
 4. Create a PR to the required integration branch.
 5. After the release commit is merged to the stable release branch, create and push the matching annotated Git tag.
-6. Create the GitHub Release from that tag, including concise summary, verification, and artifact/hash details.
+6. Create the GitHub Release from that tag with Korean notes, including concise summary, verification, and artifact/hash details.
 
 Never create a release tag or GitHub Release for a feature branch or an unmerged PR. If the merge has not occurred, finish by reporting the PR and that the tag/release is pending the stable-branch merge.
 

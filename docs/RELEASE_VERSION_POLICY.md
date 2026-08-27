@@ -172,6 +172,7 @@ Rules:
 - Create a Git tag for each release version.
 - Use tag names in the format `vMAJOR.MINOR.PATCH`, for example `v1.0.0` or `v1.1.0`.
 - Create a GitHub release or equivalent remote release entry for each tagged release.
+- Write GitHub Release notes in Korean by default. Git tags and portable artifact names remain in English; use another note language only when the user explicitly requests it.
 - Keep the release description concise and focused on:
   - core work
   - user-visible changes
@@ -186,6 +187,7 @@ Rules:
 
 For each release-worthy version bump, summarize:
 
+- Korean release notes by default
 - Version
 - Date
 - Change category: `PATCH`, `MINOR`, or `MAJOR`
