@@ -288,23 +288,25 @@ After pushing remote upload work, create the pull request as part of the same re
 
 When creating a PR, keep the PR description concise. Focus on the core work and the difference from the previous project behavior.
 
+Write PR titles and descriptions in Korean by default. Use another language only when the user explicitly requests it.
+
 PR description format:
 
 ```markdown
-## Summary
+## 주요 변경
 
-- Briefly describe the core work.
-- Briefly describe what changed compared with the previous project behavior.
+- 핵심 작업을 간단히 설명합니다.
+- 이전 동작과 달라진 점을 간단히 설명합니다.
 
-## Verification
+## 검증
 
 - npm run typecheck
 - npm run build
 - portable exe packaging, if performed
 
-## Notes
+## 참고
 
-- Mention important limitations, version changes, or packaging output.
+- 주요 제한 사항, 버전 변경 또는 패키징 산출물을 적습니다.
 ```
 
 Tell the user the branch name, commit hash, push result, and PR description draft after finishing the Git workflow.
