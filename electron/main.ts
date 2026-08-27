@@ -8,6 +8,7 @@ import { getCliSessionStatus } from "./cli-session.js";
 import { createClaudeOAuthEnvironment, getClaudeOAuthEnvironmentResetCommands } from "./claude-oauth-env.js";
 import { ensureClaudeStatusLine, getClaudeStatusLineSnapshotPath } from "./claude-statusline.js";
 import { getCodexUsage, killAllActiveChildProcesses, setAppVersion } from "./codex-usage.js";
+import { isDeveloperMode, loadDeveloperEnv } from "./dev-mode.js";
 import {
   deleteAccountAlias,
   deleteAllAccountAliases,
@@ -1201,6 +1202,7 @@ if (!gotSingleInstanceLock) {
 
   app.whenReady().then(() => {
     setAppVersion(app.getVersion());
+    loadDeveloperEnv();
     if (process.platform === "win32") {
       app.setAppUserModelId("com.tokenmonitor.app");
     }
@@ -1215,6 +1217,7 @@ if (!gotSingleInstanceLock) {
     ipcMain.handle("claude-usage:read", (_event, force?: boolean) => readClaudeUsageShared(Boolean(force)));
     ipcMain.handle("gemini-usage:read", (_event, force?: boolean) => readGeminiUsageShared(Boolean(force)));
     ipcMain.handle("cli-session:read", (_event, force?: boolean) => readCliSessionShared(Boolean(force)));
+    ipcMain.handle("developer-mode:read", () => ({ enabled: isDeveloperMode() }));
     ipcMain.handle("claude-login:start", () => startClaudeLogin());
     ipcMain.handle("gemini-login:start", () => startGeminiLogin());
     ipcMain.handle("gemini-apps-login:start", (_event, bounds?: Partial<GeminiViewBounds>) => startGeminiAppsLogin(bounds));
