@@ -24,6 +24,10 @@ contextBridge.exposeInMainWorld("tokenMonitor", {
   getOverlaySettings: () => ipcRenderer.invoke("overlay-settings:read"),
   updateOverlaySettings: (settings) => ipcRenderer.invoke("overlay-settings:update", settings),
   resizeOverlay: (size) => ipcRenderer.invoke("overlay:resize", size),
+  getOverlayPositioning: () => ipcRenderer.invoke("overlay-positioning:read"),
+  beginOverlayPositioning: () => ipcRenderer.invoke("overlay:begin-positioning"),
+  finishOverlayPositioning: () => ipcRenderer.invoke("overlay:finish-positioning"),
+  resetOverlayPosition: () => ipcRenderer.invoke("overlay:reset-position"),
   getNotificationSettings: () => ipcRenderer.invoke("notification-settings:read"),
   updateNotificationSettings: (settings) => ipcRenderer.invoke("notification-settings:update", settings),
   sendTestNotification: () => ipcRenderer.invoke("notification:test"),
@@ -41,6 +45,11 @@ contextBridge.exposeInMainWorld("tokenMonitor", {
     const listener = (_event, settings) => callback(settings);
     ipcRenderer.on("overlay-settings:changed", listener);
     return () => ipcRenderer.removeListener("overlay-settings:changed", listener);
+  },
+  onOverlayPositioningChanged: (callback) => {
+    const listener = (_event, isPositioning) => callback(isPositioning);
+    ipcRenderer.on("overlay-positioning:changed", listener);
+    return () => ipcRenderer.removeListener("overlay-positioning:changed", listener);
   },
   onNotificationSettingsChanged: (callback) => {
     const listener = (_event, settings) => callback(settings);

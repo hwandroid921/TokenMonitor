@@ -20,6 +20,14 @@ export type OverlaySettings = {
   showRemaining: boolean;
   showReset: boolean;
   opacity: number;
+  position: OverlayPosition;
+};
+
+export type OverlayPosition = {
+  mode: "default" | "custom";
+  displayId?: number;
+  right?: number;
+  bottom?: number;
 };
 
 export const defaultOverlaySettings: OverlaySettings = {
@@ -40,7 +48,8 @@ export const defaultOverlaySettings: OverlaySettings = {
   showUsed: true,
   showRemaining: true,
   showReset: true,
-  opacity: 50
+  opacity: 50,
+  position: { mode: "default" }
 };
 
 export function normalizeOverlaySettings(value: Partial<OverlaySettings>): OverlaySettings {
@@ -56,8 +65,20 @@ export function normalizeOverlaySettings(value: Partial<OverlaySettings>): Overl
     providers,
     providerItems,
     closeToTray: Boolean(value.closeToTray ?? defaultOverlaySettings.closeToTray),
-    opacity: 50
+    opacity: 50,
+    position: normalizeOverlayPosition(value.position)
   };
+}
+
+function normalizeOverlayPosition(value: Partial<OverlayPosition> | undefined): OverlayPosition {
+  if (value?.mode !== "custom") {
+    return { mode: "default" };
+  }
+
+  const displayId = Number.isFinite(value.displayId) ? Math.round(Number(value.displayId)) : undefined;
+  const right = Number.isFinite(value.right) ? Math.max(0, Math.round(Number(value.right))) : 4;
+  const bottom = Number.isFinite(value.bottom) ? Math.max(0, Math.round(Number(value.bottom))) : 4;
+  return { mode: "custom", displayId, right, bottom };
 }
 
 function normalizeProviderItems(value: Partial<OverlaySettings>, providers: Record<ProviderId, boolean>) {

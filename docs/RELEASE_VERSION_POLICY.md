@@ -73,10 +73,10 @@ Before `v1.0.0`, do not maintain a fixed version-by-version feature roadmap. Whe
 Current package version:
 
 ```text
-1.3.1
+1.3.2
 ```
 
-`v1.3.1` is the security and reliability maintenance release following the developer-mode reintegration milestone.
+`v1.3.2` is the overlay positioning and layout maintenance release following the developer-mode reintegration milestone.
 
 - ChatGPT quota display through the Codex Desktop local usage flow, with an optional user-set `codex.exe` path
 - Claude quota display
@@ -197,6 +197,22 @@ For each release-worthy version bump, summarize:
 - Known limitations
 
 ## Release History
+
+### 1.3.2 — 2026-08-27 — PATCH
+
+**Change category:** PATCH (overlay lower-edge alignment and manual positioning)
+
+**User-visible changes:**
+- Overlay content is bottom-aligned, so reducing displayed items no longer leaves visible empty space below the text.
+- Added Settings controls to enter overlay position adjustment mode and to restore the default lower-right position.
+- During position adjustment, the overlay can be dragged to another screen or location and provides an in-overlay completion button.
+
+**Packaging notes:**
+- Package version updated to `1.3.2`.
+- This PATCH release does not regenerate a portable executable by default.
+
+**Known limitations:**
+- Custom positions are retained relative to the selected display's right and bottom work-area edges. If that display is unavailable, the overlay falls back to the primary display.
 
 ### 1.3.1 — 2026-08-27 — PATCH
 
