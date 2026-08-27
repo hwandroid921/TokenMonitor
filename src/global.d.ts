@@ -188,6 +188,19 @@ export type ProviderDisplaySettings = {
   showReset: boolean;
 };
 
+export type AlertProviderId = "codex" | "claude" | "antigravity";
+
+export type NotificationSettings = {
+  enabled: boolean;
+  windowsNotifications: boolean;
+  alwaysOnTopAlerts: boolean;
+  overlayWarnings: boolean;
+  notifyExhausted: boolean;
+  notifyReset: boolean;
+  thresholds: number[];
+  providers: Record<AlertProviderId, boolean>;
+};
+
 declare global {
   interface Window {
     tokenMonitor?: {
@@ -208,6 +221,9 @@ declare global {
       getOverlaySettings: () => Promise<OverlaySettings>;
       updateOverlaySettings: (settings: OverlaySettings) => Promise<OverlaySettings>;
       resizeOverlay: (size: { width?: number; height?: number }) => Promise<{ ok: boolean }>;
+      getNotificationSettings: () => Promise<NotificationSettings>;
+      updateNotificationSettings: (settings: NotificationSettings) => Promise<NotificationSettings>;
+      sendTestNotification: () => Promise<{ ok: boolean }>;
       listAccountAliases: () => Promise<AccountAliasView[]>;
       renameAccountAlias: (recordId: string, alias: string) => Promise<{ ok: boolean; detail?: string; account?: AccountAliasView | null }>;
       deleteAccountAlias: (recordId: string) => Promise<{ ok: boolean; detail?: string }>;
@@ -215,6 +231,7 @@ declare global {
       deleteAllAccountAliases: () => Promise<{ ok: boolean }>;
       onAccountAliasesChanged: (callback: (aliases: AccountAliasView[]) => void) => () => void;
       onOverlaySettingsChanged: (callback: (settings: OverlaySettings) => void) => () => void;
+      onNotificationSettingsChanged: (callback: (settings: NotificationSettings) => void) => () => void;
       onExitConfirmRequested: (callback: () => void) => () => void;
       onUsageRefreshRequested: (callback: () => void) => () => void;
       onGeminiViewClosed: (callback: (payload: { reason: "login-complete" | "usage-complete" | "manual" | "hidden" }) => void) => () => void;

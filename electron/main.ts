@@ -1,4 +1,4 @@
-import { app, BrowserView, BrowserWindow, Menu, Tray, ipcMain, screen, shell } from "electron";
+import { app, BrowserView, BrowserWindow, Menu, Notification, Tray, ipcMain, powerMonitor, screen, shell } from "electron";
 import { spawn } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
@@ -27,6 +27,21 @@ import {
 } from "./gemini-apps-usage.js";
 import { getGeminiUsage } from "./gemini-usage.js";
 import { defaultOverlaySettings, normalizeOverlaySettings, type OverlaySettings, type ProviderId } from "./overlay-settings.js";
+import {
+  defaultNotificationSettings,
+  getNotificationSettings,
+  initializeNotificationSettings,
+  updateNotificationSettings,
+  type NotificationSettings
+} from "./notification-settings.js";
+import {
+  evaluateQuotaAlerts,
+  getUpcomingResetTimes,
+  initializeQuotaAlertState,
+  normalizeQuotaSamples,
+  type NormalizedQuotaSample,
+  type QuotaAlertEvent
+} from "./quota-alerts.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const isDev = process.env.VITE_DEV_SERVER_URL || !app.isPackaged;
@@ -35,6 +50,7 @@ let mainWindow: BrowserWindow | null = null;
 let overlayWindow: BrowserWindow | null = null;
 let tray: Tray | null = null;
 let overlaySettings: OverlaySettings = defaultOverlaySettings;
+let notificationSettings: NotificationSettings = defaultNotificationSettings;
 let isQuitting = false;
 let usagePromise: ReturnType<typeof getCodexUsage> | null = null;
 let usageCache: Awaited<ReturnType<typeof getCodexUsage>> | null = null;
@@ -53,8 +69,18 @@ let geminiBrowserBounds: GeminiViewBounds | null = null;
 let cliSessionPromise: ReturnType<typeof getCliSessionStatus> | null = null;
 let cliSessionCache: Awaited<ReturnType<typeof getCliSessionStatus>> | null = null;
 let cliSessionCacheTime = 0;
+let usageMonitorTimer: NodeJS.Timeout | null = null;
+let resetMonitorTimer: NodeJS.Timeout | null = null;
+let alertWindowTimer: NodeJS.Timeout | null = null;
+let alertWindow: BrowserWindow | null = null;
+let backgroundUsagePromise: Promise<void> | null = null;
+let latestQuotaSamples: NormalizedQuotaSample[] = [];
+let resetRetryAttempt = 0;
 const gotSingleInstanceLock = app.requestSingleInstanceLock();
 const initialOverlayDelayMs = 1200;
+const usageMonitorIntervalMs = 5 * 60 * 1000;
+const resetGraceMs = 20_000;
+const resetRetryDelaysMs = [60_000, 5 * 60_000, 10 * 60_000];
 const trayProviderLabels: Record<ProviderId, string> = {
   codex: "ChatGPT",
   claude: "Claude",
@@ -480,6 +506,179 @@ function readCliSessionShared(force = false) {
   }
 
   return cliSessionPromise;
+}
+
+function startUsageMonitor() {
+  scheduleNextUsageMonitor(10_000);
+  scheduleNextResetMonitor();
+}
+
+function stopUsageMonitor() {
+  if (usageMonitorTimer) {
+    clearTimeout(usageMonitorTimer);
+    usageMonitorTimer = null;
+  }
+  if (resetMonitorTimer) {
+    clearTimeout(resetMonitorTimer);
+    resetMonitorTimer = null;
+  }
+}
+
+function scheduleNextUsageMonitor(delayMs = usageMonitorIntervalMs) {
+  if (usageMonitorTimer) {
+    clearTimeout(usageMonitorTimer);
+  }
+  usageMonitorTimer = setTimeout(() => {
+    void runBackgroundUsageCollection("interval").finally(() => scheduleNextUsageMonitor());
+  }, delayMs);
+}
+
+function scheduleNextResetMonitor() {
+  if (resetMonitorTimer) {
+    clearTimeout(resetMonitorTimer);
+    resetMonitorTimer = null;
+  }
+  const nextReset = getUpcomingResetTimes(latestQuotaSamples)[0];
+  if (!nextReset || !notificationSettings.enabled || !notificationSettings.notifyReset) {
+    return;
+  }
+  const delayMs = Math.max(1_000, nextReset.time - Date.now() + resetGraceMs);
+  resetMonitorTimer = setTimeout(() => {
+    resetRetryAttempt = 0;
+    void runResetCollection();
+  }, delayMs);
+}
+
+async function runResetCollection() {
+  const events = await runBackgroundUsageCollection("reset", true);
+  if (events.some((event) => event.kind === "reset")) {
+    resetRetryAttempt = 0;
+    scheduleNextResetMonitor();
+    return;
+  }
+  const retryDelay = resetRetryDelaysMs[resetRetryAttempt];
+  if (retryDelay != null) {
+    resetRetryAttempt += 1;
+    resetMonitorTimer = setTimeout(() => void runResetCollection(), retryDelay);
+    return;
+  }
+  resetRetryAttempt = 0;
+  scheduleNextResetMonitor();
+}
+
+function runBackgroundUsageCollection(reason: "interval" | "reset" | "resume", force = false): Promise<QuotaAlertEvent[]> {
+  if (backgroundUsagePromise) {
+    return backgroundUsagePromise.then(() => []);
+  }
+  let resolveEvents: (events: QuotaAlertEvent[]) => void = () => undefined;
+  const eventResult = new Promise<QuotaAlertEvent[]>((resolve) => { resolveEvents = resolve; });
+  backgroundUsagePromise = Promise.resolve()
+    .then(async () => {
+      if (force) {
+        clearUsageCaches();
+      }
+      const [codex, claude, gemini] = await Promise.all([
+        readCodexUsageShared(),
+        readClaudeUsageShared(force),
+        readGeminiUsageShared(force)
+      ]);
+      latestQuotaSamples = normalizeQuotaSamples(codex, claude, gemini);
+      const events = evaluateQuotaAlerts(latestQuotaSamples, notificationSettings);
+      dispatchQuotaAlerts(events);
+      resolveEvents(events);
+      for (const window of BrowserWindow.getAllWindows()) {
+        if (!window.isDestroyed()) {
+          window.webContents.send("usage:refresh-requested", { reason });
+        }
+      }
+      if (reason !== "reset") {
+        scheduleNextResetMonitor();
+      }
+    })
+    .catch(() => resolveEvents([]))
+    .finally(() => {
+      backgroundUsagePromise = null;
+    });
+  return eventResult;
+}
+
+function dispatchQuotaAlerts(events: QuotaAlertEvent[]) {
+  if (events.length === 0 || !notificationSettings.enabled) {
+    return;
+  }
+  if (notificationSettings.windowsNotifications && Notification.isSupported()) {
+    for (const event of events) {
+      const notification = new Notification({ title: event.title, body: event.body });
+      notification.on("click", showMainWindow);
+      notification.show();
+    }
+  }
+  if (notificationSettings.alwaysOnTopAlerts) {
+    showAlwaysOnTopAlert(events);
+  }
+}
+
+function showAlwaysOnTopAlert(events: QuotaAlertEvent[]) {
+  closeAlwaysOnTopAlert();
+  const display = screen.getPrimaryDisplay().workArea;
+  const width = Math.min(460, display.width - 24);
+  const height = 132;
+  alertWindow = new BrowserWindow({
+    width,
+    height,
+    x: display.x + display.width - width - 12,
+    y: display.y + 12,
+    frame: false,
+    transparent: true,
+    resizable: false,
+    alwaysOnTop: true,
+    skipTaskbar: true,
+    focusable: false,
+    show: false,
+    webPreferences: { contextIsolation: true, nodeIntegration: false, sandbox: true }
+  });
+  alertWindow.setIgnoreMouseEvents(true);
+  const summary = events.slice(0, 3).map((event) => `${event.title} — ${event.body}`).join("\n");
+  const html = `<!doctype html><meta charset="utf-8"><style>html,body{margin:0;background:transparent;font-family:"Segoe UI",sans-serif}.alert{margin:8px;padding:16px 18px;color:#fff;background:rgba(36,42,39,.94);border:2px solid #e05252;border-radius:10px;box-shadow:0 10px 28px rgba(0,0,0,.3)}strong{display:block;font-size:15px;margin-bottom:7px}p{margin:0;white-space:pre-line;font-size:12px;line-height:1.45}</style><section class="alert"><strong>Token Monitor 경고</strong><p>${escapeHtml(summary)}</p></section>`;
+  void alertWindow.loadURL(`data:text/html;charset=utf-8,${encodeURIComponent(html)}`);
+  alertWindow.once("ready-to-show", () => alertWindow?.showInactive());
+  alertWindow.on("closed", () => { alertWindow = null; });
+  alertWindowTimer = setTimeout(closeAlwaysOnTopAlert, 12_000);
+}
+
+function closeAlwaysOnTopAlert() {
+  if (alertWindowTimer) {
+    clearTimeout(alertWindowTimer);
+    alertWindowTimer = null;
+  }
+  if (alertWindow && !alertWindow.isDestroyed()) {
+    alertWindow.destroy();
+  }
+  alertWindow = null;
+}
+
+function escapeHtml(value: string) {
+  return value.replace(/[&<>"']/g, (character) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[character] ?? character);
+}
+
+function notifyNotificationSettingsChanged() {
+  for (const window of BrowserWindow.getAllWindows()) {
+    if (!window.isDestroyed()) {
+      window.webContents.send("notification-settings:changed", notificationSettings);
+    }
+  }
+}
+
+function sendTestNotification() {
+  const event: QuotaAlertEvent = {
+    kind: "threshold",
+    quotaKey: "test",
+    provider: "codex",
+    title: "Token Monitor 테스트 알림",
+    body: "Windows 알림과 전면 경고 설정이 정상적으로 적용되었습니다."
+  };
+  dispatchQuotaAlerts([event]);
+  return { ok: notificationSettings.windowsNotifications || notificationSettings.alwaysOnTopAlerts };
 }
 
 async function startClaudeLogin() {
@@ -1002,7 +1201,12 @@ if (!gotSingleInstanceLock) {
 
   app.whenReady().then(() => {
     setAppVersion(app.getVersion());
+    if (process.platform === "win32") {
+      app.setAppUserModelId("com.tokenmonitor.app");
+    }
     initializeAccountAliases(app.getPath("userData"));
+    notificationSettings = initializeNotificationSettings(app.getPath("userData"));
+    initializeQuotaAlertState(app.getPath("userData"));
     loadOverlaySettings();
     installKoreanMenu();
     createTray();
@@ -1026,6 +1230,17 @@ if (!gotSingleInstanceLock) {
       return overlaySettings;
     });
     ipcMain.handle("overlay:resize", (_event, request: { width?: number; height?: number }) => resizeOverlayWindow(request));
+    ipcMain.handle("notification-settings:read", () => notificationSettings);
+    ipcMain.handle("notification-settings:update", (event, nextSettings: Partial<NotificationSettings>) => {
+      if (!isMainWindowSender(event)) {
+        return notificationSettings;
+      }
+      notificationSettings = updateNotificationSettings(nextSettings);
+      notifyNotificationSettingsChanged();
+      scheduleNextResetMonitor();
+      return notificationSettings;
+    });
+    ipcMain.handle("notification:test", (event) => isMainWindowSender(event) ? sendTestNotification() : { ok: false });
     ipcMain.handle("account-aliases:list", (event) => isMainWindowSender(event) ? listAccountAliases() : []);
     ipcMain.handle("account-aliases:rename", (event, recordId: string, alias: string) => {
       if (!isMainWindowSender(event)) {
@@ -1066,8 +1281,15 @@ if (!gotSingleInstanceLock) {
 
     createWindow();
     scheduleInitialOverlayLoad();
+    startUsageMonitor();
 
     screen.on("display-metrics-changed", positionOverlayWindow);
+    powerMonitor.on("resume", () => {
+      setTimeout(() => void runBackgroundUsageCollection("resume", true), 3_000);
+    });
+    powerMonitor.on("unlock-screen", () => {
+      setTimeout(() => void runBackgroundUsageCollection("resume", true), 3_000);
+    });
 
     app.on("activate", () => {
       showMainWindow();
@@ -1077,6 +1299,8 @@ if (!gotSingleInstanceLock) {
 
 app.on("before-quit", () => {
   isQuitting = true;
+  stopUsageMonitor();
+  closeAlwaysOnTopAlert();
   killAllActiveChildProcesses();
   closeOverlayWindow();
 });

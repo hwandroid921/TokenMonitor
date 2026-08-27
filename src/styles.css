@@ -742,6 +742,80 @@ h2 {
   border-color: #f1cccc;
 }
 
+.notification-settings {
+  gap: 14px;
+}
+
+.notification-settings-heading {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 14px;
+}
+
+.notification-settings-heading p,
+.notification-help {
+  margin-top: 4px;
+  color: #68716a;
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+.notification-settings fieldset {
+  display: grid;
+  gap: 10px;
+  min-width: 0;
+  margin: 0;
+  padding: 12px;
+  border: 1px solid #e1e5dc;
+  border-radius: 8px;
+}
+
+.notification-settings fieldset:disabled {
+  opacity: 0.5;
+}
+
+.notification-settings legend {
+  padding: 0 5px;
+  color: #26322c;
+  font-size: 13px;
+  font-weight: 850;
+}
+
+.notification-subheading {
+  margin-top: 5px;
+  color: #26322c;
+  font-size: 13px;
+}
+
+.threshold-grid {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(58px, 1fr));
+  gap: 7px;
+}
+
+.threshold-grid label {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  min-height: 36px;
+  padding: 0 8px;
+  color: #4e584f;
+  background: #f7f9f4;
+  border: 1px solid #dfe5da;
+  border-radius: 7px;
+  cursor: pointer;
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.threshold-grid label.selected {
+  color: #1f4b38;
+  background: #e9f5e5;
+  border-color: #99bd89;
+}
+
 .account-alias-manager {
   padding: 16px;
   background: #f5f8f3;
@@ -1012,6 +1086,10 @@ h2 {
     grid-template-columns: 1fr;
   }
 
+  .threshold-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
   .account-provider-list {
     grid-template-columns: 1fr;
   }
@@ -1102,6 +1180,25 @@ body.overlay-body #root {
   text-shadow: none;
   font-variant-numeric: tabular-nums;
   font-feature-settings: "tnum" on, "lnum" on;
+}
+
+.overlay-remaining {
+  color: inherit;
+  font-style: normal;
+}
+
+.overlay-remaining.normal {
+  color: rgba(190, 196, 192, 0.88);
+}
+
+.overlay-remaining.warning {
+  color: rgba(255, 74, 74, 0.94);
+  -webkit-text-stroke: 1px rgba(0, 0, 0, 0.9);
+}
+
+.overlay-remaining.exhausted {
+  color: rgba(72, 76, 74, 0.96);
+  -webkit-text-stroke: 1px rgba(235, 235, 235, 0.78);
 }
 
 .overlay-provider span,
