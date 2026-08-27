@@ -4,7 +4,7 @@
 
 Token Monitor는 여러 AI 서비스의 로컬 로그인 상태와 제공자가 제공하는 사용량 정보를 읽어, 플랜·사용량·잔여량·초기화 시간을 대시보드와 화면 우측 하단 오버레이로 표시합니다. 해당 프로그램은 ChatGPT, Claude, Gemini 유료 플랜 이상 구독 사용자를 대상으로 합니다.
 
-**지원 환경:** Windows x64 · **정식 릴리즈:** `v1.2.0` · **배포 형식:** 포터블 Windows 실행 파일
+**지원 환경:** Windows x64 · **정식 릴리즈:** `v1.3.0` · **배포 형식:** 포터블 Windows 실행 파일
 
 [릴리즈 다운로드](https://github.com/hwandroid921/TokenMonitor/releases)
 
@@ -17,7 +17,7 @@ Token Monitor는 여러 AI 서비스의 로컬 로그인 상태와 제공자가 
 
 ## 다운로드 및 실행
 
-1. [GitHub Releases](https://github.com/hwandroid921/TokenMonitor/releases)에서 `TokenMonitor-1.2.0-x64.exe`를 다운로드합니다.
+1. [GitHub Releases](https://github.com/hwandroid921/TokenMonitor/releases)에서 `TokenMonitor-1.3.0-x64.exe`를 다운로드합니다.
 2. 포터블 파일을 원하는 폴더에 두고 실행합니다.
 3. Windows 보안 경고가 표시되면 게시자와 다운로드 출처를 확인한 뒤 실행을 허용합니다.
 4. 대시보드에서 필요한 제공자의 연결 상태와 안내 버튼을 확인합니다.
@@ -87,7 +87,7 @@ Claude Status Line은 Token Monitor가 만든 로컬 스크립트에 최소 상�
 
 ### ChatGPT 사용량이 보이지 않습니다
 
-Codex Desktop 설치와 로그인을 확인하세요. 앱은 일반 설치 경로, PATH, 해시된 설치 폴더를 자동 탐색합니다. 탐색에 실패하면 Windows 사용자 환경 변수 `CODEX_CLI_PATH`에 Codex 실행 파일의 전체 경로(예: `C:\Tools\codex.exe`)를 설정하고 Token Monitor를 다시 시작하세요.
+Codex Desktop 설치와 로그인을 확인하세요. 앱은 일반 설치 경로, PATH, 해시된 설치 폴더를 자동 탐색합니다. 탐색에 실패하면 설정 탭의 **Codex 실행 파일 경로**에서 `codex.exe` 전체 경로를 지정하고 연결을 테스트할 수 있습니다. Windows 사용자 환경 변수 `CODEX_CLI_PATH`(예: `C:\Tools\codex.exe`)도 계속 지원합니다.
 
 ### Claude 사용량이 표시되지 않습니다
 
