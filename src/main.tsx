@@ -5,6 +5,7 @@ import "./styles.css";
 import type {
   AccountAliasView,
   AccountProvider,
+  AlertProviderId,
   ClaudeUsageResult,
   ClaudeUsageWindow,
   CliSessionResult,
@@ -14,6 +15,7 @@ import type {
   GeminiAppsUsageWindow,
   GeminiUsageResult,
   GeminiUsageWindow,
+  NotificationSettings,
   OverlaySettings,
   ProviderId
 } from "./global";
@@ -40,6 +42,7 @@ type ProviderField = {
   label: string;
   value: string;
   kind: "identity" | "session" | "plan" | "quota" | "usage" | "remaining" | "reset";
+  remainingPercent?: number | null;
 };
 
 type ProviderIssue = {
@@ -91,6 +94,25 @@ const defaultOverlaySettings: OverlaySettings = {
   opacity: 50
 };
 
+const availableNotificationThresholds = [5, 10, 15, 20, 25, 30, 35, 40, 45, 50];
+
+const defaultNotificationSettings: NotificationSettings = {
+  enabled: false,
+  windowsNotifications: true,
+  alwaysOnTopAlerts: false,
+  overlayWarnings: true,
+  notifyExhausted: true,
+  notifyReset: true,
+  thresholds: [10, 20, 30],
+  providers: { codex: true, claude: true, antigravity: true }
+};
+
+const alertProviderLabels: Record<AlertProviderId, string> = {
+  codex: "ChatGPT",
+  claude: "Claude",
+  antigravity: "Antigravity"
+};
+
 const claudeLoginPollIntervalMs = 2500;
 const claudeLoginPollTimeoutMs = 30_000;
 const geminiUsagePollIntervalMs = 2500;
@@ -106,6 +128,7 @@ function App() {
   const [cliSessions, setCliSessions] = useState<CliSessionResult | null>(null);
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [overlaySettings, setOverlaySettings] = useState<OverlaySettings>(defaultOverlaySettings);
+  const [notificationSettings, setNotificationSettings] = useState<NotificationSettings>(defaultNotificationSettings);
   const [activeTab, setActiveTab] = useState<"dashboard" | "settings">("dashboard");
   const [showExitConfirm, setShowExitConfirm] = useState(false);
   const [isClaudeLoginPending, setIsClaudeLoginPending] = useState(false);
@@ -118,13 +141,14 @@ function App() {
   const [geminiAppsLoginNotice, setGeminiAppsLoginNotice] = useState<string | null>(null);
   const [refreshNotice, setRefreshNotice] = useState("사용량 정보를 불러오는 중입니다.");
   const [settingsNotice, setSettingsNotice] = useState<string | null>(null);
+  const [notificationNotice, setNotificationNotice] = useState<string | null>(null);
   const [isSettingsSaving, setIsSettingsSaving] = useState(false);
   const [accountAliases, setAccountAliases] = useState<AccountAliasView[]>([]);
   const [accountAliasNotice, setAccountAliasNotice] = useState<string | null>(null);
 
   const providers = useMemo(() => buildProviderUsage(codexUsage, claudeUsage, geminiUsage, cliSessions), [codexUsage, claudeUsage, geminiUsage, cliSessions]);
 
-  async function refreshUsage() {
+  async function refreshUsage(forceGemini = true) {
     setIsRefreshing(true);
     setRefreshNotice("사용량 정보를 새로고침하고 있습니다.");
     try {
@@ -139,7 +163,7 @@ function App() {
       const [latestCodex, latestClaude, latestGemini, latestSessions] = await Promise.all([
         window.tokenMonitor.getCodexUsage(),
         window.tokenMonitor.getClaudeUsage(),
-        window.tokenMonitor.getGeminiUsage(true),
+        window.tokenMonitor.getGeminiUsage(forceGemini),
         window.tokenMonitor.getCliSessionStatus()
       ]);
       setCodexUsage(latestCodex);
@@ -173,6 +197,23 @@ function App() {
       setSettingsNotice("설정을 저장하지 못했습니다. 이전 설정으로 되돌렸습니다.");
     } finally {
       setIsSettingsSaving(false);
+    }
+  }
+
+  async function saveNotificationSettings(nextSettings: NotificationSettings) {
+    const previousSettings = notificationSettings;
+    setNotificationSettings(nextSettings);
+    setNotificationNotice("알림 설정을 저장하고 있습니다.");
+    try {
+      if (!window.tokenMonitor?.updateNotificationSettings) {
+        throw new Error("알림 설정 API를 사용할 수 없습니다.");
+      }
+      const saved = await window.tokenMonitor.updateNotificationSettings(nextSettings);
+      setNotificationSettings(saved);
+      setNotificationNotice("알림 설정이 저장되었습니다.");
+    } catch {
+      setNotificationSettings(previousSettings);
+      setNotificationNotice("알림 설정을 저장하지 못했습니다.");
     }
   }
 
@@ -398,6 +439,7 @@ function App() {
   useEffect(() => {
     void refreshUsage();
     void window.tokenMonitor?.getOverlaySettings().then(setOverlaySettings);
+    void window.tokenMonitor?.getNotificationSettings().then(setNotificationSettings);
   }, []);
 
   useEffect(() => {
@@ -424,7 +466,7 @@ function App() {
 
   useEffect(() => {
     const unsubscribe = window.tokenMonitor?.onUsageRefreshRequested(() => {
-      void refreshUsage();
+      void refreshUsage(false);
     });
     return () => unsubscribe?.();
   }, []);
@@ -486,7 +528,7 @@ function App() {
           </div>
 
           <div className="header-actions">
-            <button className="icon-button" type="button" onClick={refreshUsage} disabled={isRefreshing} aria-busy={isRefreshing} aria-label="사용량 새로고침" title="사용량 새로고침">
+            <button className="icon-button" type="button" onClick={() => void refreshUsage()} disabled={isRefreshing} aria-busy={isRefreshing} aria-label="사용량 새로고침" title="사용량 새로고침">
               <RefreshCw size={17} aria-hidden="true" className={isRefreshing ? "spinning" : ""} />
             </button>
             <button
@@ -539,6 +581,9 @@ function App() {
               onChange={updateOverlaySettings}
               notice={settingsNotice}
               isSaving={isSettingsSaving}
+              notificationSettings={notificationSettings}
+              notificationNotice={notificationNotice}
+              onNotificationChange={saveNotificationSettings}
               accounts={accountAliases}
               accountNotice={accountAliasNotice}
               onRenameAccount={handleRenameAccountAlias}
@@ -942,6 +987,9 @@ function SettingsPanel({
   onChange,
   notice,
   isSaving,
+  notificationSettings,
+  notificationNotice,
+  onNotificationChange,
   accounts,
   accountNotice,
   onRenameAccount,
@@ -953,6 +1001,9 @@ function SettingsPanel({
   onChange: (settings: OverlaySettings) => void;
   notice: string | null;
   isSaving: boolean;
+  notificationSettings: NotificationSettings;
+  notificationNotice: string | null;
+  onNotificationChange: (settings: NotificationSettings) => Promise<void>;
   accounts: AccountAliasView[];
   accountNotice: string | null;
   onRenameAccount: (recordId: string, alias: string) => Promise<boolean>;
@@ -1001,6 +1052,12 @@ function SettingsPanel({
       <p className={`settings-save-status${notice?.includes("못했습니다") ? " error" : ""}`} role="status" aria-live="polite" aria-busy={isSaving}>
         {notice ?? "변경한 설정은 자동으로 저장됩니다."}
       </p>
+
+      <NotificationSettingsPanel
+        settings={notificationSettings}
+        notice={notificationNotice}
+        onChange={onNotificationChange}
+      />
 
       <AccountAliasManager
         accounts={accounts}
@@ -1061,6 +1118,92 @@ function SettingsPanel({
         </div>
       </section>
 
+    </section>
+  );
+}
+
+function NotificationSettingsPanel({
+  settings,
+  notice,
+  onChange
+}: {
+  settings: NotificationSettings;
+  notice: string | null;
+  onChange: (settings: NotificationSettings) => Promise<void>;
+}) {
+  const [isTesting, setIsTesting] = useState(false);
+
+  function update(patch: Partial<NotificationSettings>) {
+    void onChange({ ...settings, ...patch });
+  }
+
+  function toggleThreshold(threshold: number) {
+    const thresholds = settings.thresholds.includes(threshold)
+      ? settings.thresholds.filter((value) => value !== threshold)
+      : [...settings.thresholds, threshold].sort((a, b) => a - b);
+    update({ thresholds });
+  }
+
+  function toggleProvider(provider: AlertProviderId, enabled: boolean) {
+    update({ providers: { ...settings.providers, [provider]: enabled } });
+  }
+
+  async function testNotification() {
+    setIsTesting(true);
+    try {
+      await window.tokenMonitor?.sendTestNotification();
+    } finally {
+      setIsTesting(false);
+    }
+  }
+
+  return (
+    <section className="setting-group notification-settings" aria-labelledby="notification-settings-heading">
+      <div className="notification-settings-heading">
+        <div>
+          <h2 id="notification-settings-heading">사용량 알림</h2>
+          <p>앱이 트레이에서 실행 중인 동안 5분마다 사용량을 확인합니다.</p>
+        </div>
+        <button className="secondary-button" type="button" disabled={isTesting || !settings.enabled} onClick={() => void testNotification()}>
+          {isTesting ? "알림 확인 중" : "테스트 알림"}
+        </button>
+      </div>
+
+      <label className="switch-row">
+        <input type="checkbox" checked={settings.enabled} onChange={(event) => update({ enabled: event.target.checked })} />
+        <span>사용량 알림 사용</span>
+      </label>
+
+      <fieldset disabled={!settings.enabled}>
+        <legend>알림 표시 방식</legend>
+        <div className="check-list compact notification-channel-list">
+          <label><input type="checkbox" checked={settings.windowsNotifications} onChange={(event) => update({ windowsNotifications: event.target.checked })} />Windows 알림</label>
+          <label><input type="checkbox" checked={settings.alwaysOnTopAlerts} onChange={(event) => update({ alwaysOnTopAlerts: event.target.checked })} />12초 전면 경고</label>
+          <label><input type="checkbox" checked={settings.overlayWarnings} onChange={(event) => update({ overlayWarnings: event.target.checked })} />오버레이 잔여량 색상</label>
+          <label><input type="checkbox" checked={settings.notifyExhausted} onChange={(event) => update({ notifyExhausted: event.target.checked })} />모두 소진 알림</label>
+          <label><input type="checkbox" checked={settings.notifyReset} onChange={(event) => update({ notifyReset: event.target.checked })} />실제 초기화 알림</label>
+        </div>
+        <p className="notification-help">전면 경고는 Windows 알림과 별개의 비포커스 창입니다. 네이티브 알림의 표시 순서는 Windows가 관리합니다.</p>
+
+        <strong className="notification-subheading">자동 알림 대상</strong>
+        <div className="check-list compact">
+          {(Object.keys(alertProviderLabels) as AlertProviderId[]).map((provider) => (
+            <label key={provider}><input type="checkbox" checked={settings.providers[provider]} onChange={(event) => toggleProvider(provider, event.target.checked)} />{alertProviderLabels[provider]}</label>
+          ))}
+        </div>
+        <p className="notification-help">Gemini Apps 웹 캐시는 자동 갱신 데이터가 아니므로 임계치·초기화 알림에서 제외됩니다.</p>
+
+        <strong className="notification-subheading">잔여량 임계치</strong>
+        <div className="threshold-grid">
+          {availableNotificationThresholds.map((threshold) => (
+            <label key={threshold} className={settings.thresholds.includes(threshold) ? "selected" : ""}>
+              <input type="checkbox" checked={settings.thresholds.includes(threshold)} onChange={() => toggleThreshold(threshold)} />
+              {threshold}%
+            </label>
+          ))}
+        </div>
+      </fieldset>
+      {notice ? <p className={`settings-save-status${notice.includes("못했습니다") ? " error" : ""}`} role="status" aria-live="polite">{notice}</p> : null}
     </section>
   );
 }
@@ -1219,6 +1362,7 @@ function OverlayApp() {
   const [geminiUsage, setGeminiUsage] = useState<GeminiUsageResult | null>(null);
   const [cliSessions, setCliSessions] = useState<CliSessionResult | null>(null);
   const [settings, setSettings] = useState<OverlaySettings>(defaultOverlaySettings);
+  const [notificationSettings, setNotificationSettings] = useState<NotificationSettings>(defaultNotificationSettings);
   const [fontScale, setFontScale] = useState(1);
   const contentRef = useRef<HTMLElement | null>(null);
 
@@ -1239,6 +1383,12 @@ function OverlayApp() {
   useEffect(() => {
     void window.tokenMonitor?.getOverlaySettings().then(setSettings);
     const unsubscribe = window.tokenMonitor?.onOverlaySettingsChanged(setSettings);
+    return () => unsubscribe?.();
+  }, []);
+
+  useEffect(() => {
+    void window.tokenMonitor?.getNotificationSettings().then(setNotificationSettings);
+    const unsubscribe = window.tokenMonitor?.onNotificationSettingsChanged(setNotificationSettings);
     return () => unsubscribe?.();
   }, []);
 
@@ -1267,10 +1417,8 @@ function OverlayApp() {
     const unsubscribe = window.tokenMonitor?.onUsageRefreshRequested(() => {
       void refresh();
     });
-    const timer = window.setInterval(refresh, 60_000);
     return () => {
       unsubscribe?.();
-      window.clearInterval(timer);
     };
   }, []);
 
@@ -1317,7 +1465,7 @@ function OverlayApp() {
           {providers.length === 0 ? (
             <p className="overlay-muted">표시할 서비스 없음</p>
           ) : (
-            providers.map((provider) => <OverlayProvider key={provider.id} provider={provider} settings={settings} />)
+            providers.map((provider) => <OverlayProvider key={provider.id} provider={provider} settings={settings} notificationSettings={notificationSettings} />)
           )}
         </div>
       </section>
@@ -1325,7 +1473,7 @@ function OverlayApp() {
   );
 }
 
-function OverlayProvider({ provider, settings }: { provider: ProviderUsage; settings: OverlaySettings }) {
+function OverlayProvider({ provider, settings, notificationSettings }: { provider: ProviderUsage; settings: OverlaySettings; notificationSettings: NotificationSettings }) {
   const display = getProviderDisplay(settings, provider.id);
   const fields = filterProviderFields(provider.fields ?? defaultProviderFields(provider), display);
   const planField = fields.find((field) => field.kind === "plan");
@@ -1336,9 +1484,34 @@ function OverlayProvider({ provider, settings }: { provider: ProviderUsage; sett
     <article className="overlay-provider">
       <strong>{heading}</strong>
       {detailFields.map((field) => (
-        <span key={field.label}>{field.label} {formatOverlayValue(formatFieldValueForDisplay(field, display))}</span>
+        <span key={field.label}>{field.label} <OverlayFieldValue field={field} display={display} warningsEnabled={notificationSettings.enabled && notificationSettings.overlayWarnings} /></span>
       ))}
     </article>
+  );
+}
+
+function OverlayFieldValue({ field, display, warningsEnabled }: { field: ProviderField; display: ReturnType<typeof getProviderDisplay>; warningsEnabled: boolean }) {
+  const value = formatFieldValueForDisplay(field, display);
+  if (field.kind !== "quota" || field.remainingPercent == null || !display.showRemaining) {
+    return <>{formatOverlayValue(value)}</>;
+  }
+  const match = field.value.match(/^사용량\s+(.+?)\s+\/\s+잔여량\s+(.+?)\s+\/\s+초기화\s+(.+)$/);
+  if (!match) {
+    return <>{formatOverlayValue(value)}</>;
+  }
+  const stateClass = !warningsEnabled
+    ? ""
+    : field.remainingPercent <= 0
+      ? " exhausted"
+      : field.remainingPercent < 30
+        ? " warning"
+        : " normal";
+  return (
+    <>
+      {display.showUsed ? `사용 ${match[1]} · ` : null}
+      <em className={`overlay-remaining${stateClass}`}>남음 {match[2]}{warningsEnabled && field.remainingPercent <= 0 ? " · 소진" : ""}</em>
+      {display.showReset ? ` · ${match[3].replace("초기화 시간 없음", "reset 없음")}` : null}
+    </>
   );
 }
 
@@ -1472,8 +1645,8 @@ function buildCodexProvider(usage: CodexUsageResult | null, sessions: CliSession
     fields: [
       ...(usage.account.detected ? [{ label: "계정", value: formatAccountAlias(usage.account), kind: "identity" as const }] : []),
       { label: "플랜", value: usage.planType ?? "로그인됨", kind: "plan" },
-      { label: "주간", value: formatCodexWindowSummary(usage.weekly), kind: "quota" },
-      { label: "주기", value: formatCodexWindowSummary(usage.periodic), kind: "quota" }
+      { label: "주간", value: formatCodexWindowSummary(usage.weekly), kind: "quota", remainingPercent: usage.weekly?.remainingPercent ?? null },
+      { label: "주기", value: formatCodexWindowSummary(usage.periodic), kind: "quota", remainingPercent: usage.periodic?.remainingPercent ?? null }
     ],
     detail: `최근 갱신 ${formatTime(usage.updatedAt)}`,
     needsAlias: usage.account.aliasRequired
@@ -1558,8 +1731,8 @@ function buildClaudeProvider(usage: ClaudeUsageResult | null, sessions: CliSessi
       { label: "로그인", value: sessionLabel, kind: "session" },
       ...(account?.detected ? [{ label: "계정", value: formatAccountAlias(account), kind: "identity" as const }] : []),
       { label: "플랜", value: planLabel, kind: "plan" },
-      { label: "주간", value: formatClaudeStatusLineWindowSummary(usage.sevenDay), kind: "quota" },
-      { label: "주기 (5시간)", value: formatClaudeStatusLineWindowSummary(usage.fiveHour), kind: "quota" }
+      { label: "주간", value: formatClaudeStatusLineWindowSummary(usage.sevenDay), kind: "quota", remainingPercent: usage.stale ? null : usage.sevenDay?.remainingPercent ?? null },
+      { label: "주기 (5시간)", value: formatClaudeStatusLineWindowSummary(usage.fiveHour), kind: "quota", remainingPercent: usage.stale ? null : usage.fiveHour?.remainingPercent ?? null }
     ],
     detail: `${modelLabel ? `${modelLabel} / ` : ""}Status Line ${usage.stale ? "마지막 확인 정보" : "최근 갱신"} ${formatTime(usage.capturedAt)}`,
     canLogin,
@@ -1616,9 +1789,9 @@ function buildGeminiProvider(usage: GeminiUsageResult | null): ProviderUsage {
       fields: [
         ...(usage.account.detected ? [{ label: "계정", value: formatAccountAlias(usage.account), kind: "identity" as const }] : []),
         { label: "플랜", value: planLabel, kind: "plan" },
-        { label: "Gemini 주간", value: formatGeminiAppsWebUsageSummary(usage.geminiApps?.weekly ?? null), kind: "quota" },
+        { label: "Gemini 주간", value: formatGeminiAppsWebUsageSummary(usage.geminiApps?.weekly ?? null), kind: "quota", remainingPercent: parseRemainingPercent(usage.geminiApps?.weekly?.remaining ?? null) },
         { label: "Antigravity 주간", value: "명시적 주간 데이터 없음", kind: "quota" },
-        { label: "Gemini 주기", value: formatGeminiAppsWebUsageSummary(usage.geminiApps?.fiveHour ?? null), kind: "quota" },
+        { label: "Gemini 주기", value: formatGeminiAppsWebUsageSummary(usage.geminiApps?.fiveHour ?? null), kind: "quota", remainingPercent: parseRemainingPercent(usage.geminiApps?.fiveHour?.remaining ?? null) },
         { label: "Antigravity 주기", value: "남은 사용량 확인 불가 / 초기화 확인 불가", kind: "quota" }
       ],
       detail: usage.error,
@@ -1635,10 +1808,10 @@ function buildGeminiProvider(usage: GeminiUsageResult | null): ProviderUsage {
   const planLabel = usage.geminiApps?.plan ?? usage.planType ?? "확인 필요";
   const promptCredits = formatPromptCredits(usage.promptCredits);
   const quotaFields: ProviderField[] = [
-    { label: "Gemini 주간", value: formatGeminiAppsWebUsageSummary(usage.geminiApps?.weekly ?? null), kind: "quota" },
-    ...(antigravityWeeklyWindow ? [{ label: "Antigravity 주간", value: formatGeminiWindowSummary(antigravityWeeklyWindow), kind: "quota" as const }] : []),
-    { label: "Gemini 주기", value: formatGeminiAppsWebUsageSummary(usage.geminiApps?.fiveHour ?? null), kind: "quota" },
-    { label: "Antigravity 주기", value: formatGeminiWindowSummary(antigravityFiveHourWindow), kind: "quota" }
+    { label: "Gemini 주간", value: formatGeminiAppsWebUsageSummary(usage.geminiApps?.weekly ?? null), kind: "quota", remainingPercent: parseRemainingPercent(usage.geminiApps?.weekly?.remaining ?? null) },
+    ...(antigravityWeeklyWindow ? [{ label: "Antigravity 주간", value: formatGeminiWindowSummary(antigravityWeeklyWindow), kind: "quota" as const, remainingPercent: antigravityWeeklyWindow.remainingPercent }] : []),
+    { label: "Gemini 주기", value: formatGeminiAppsWebUsageSummary(usage.geminiApps?.fiveHour ?? null), kind: "quota", remainingPercent: parseRemainingPercent(usage.geminiApps?.fiveHour?.remaining ?? null) },
+    { label: "Antigravity 주기", value: formatGeminiWindowSummary(antigravityFiveHourWindow), kind: "quota", remainingPercent: antigravityFiveHourWindow?.remainingPercent ?? null }
   ];
 
   return {
@@ -1862,6 +2035,11 @@ function formatUsedFromRemaining(remaining: string | null) {
     return null;
   }
   return `${Math.max(0, Math.min(100, 100 - Number(match[1])))}%`;
+}
+
+function parseRemainingPercent(remaining: string | null | undefined) {
+  const match = remaining?.match(/^([0-9]+(?:\.[0-9]+)?)%$/);
+  return match ? Math.max(0, Math.min(100, Number(match[1]))) : null;
 }
 
 function pickAntigravityFiveHourWindow(models: GeminiQuotaModelView[]): GeminiUsageWindow | null {

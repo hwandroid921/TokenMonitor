@@ -18,6 +18,9 @@ contextBridge.exposeInMainWorld("tokenMonitor", {
   getOverlaySettings: () => ipcRenderer.invoke("overlay-settings:read"),
   updateOverlaySettings: (settings) => ipcRenderer.invoke("overlay-settings:update", settings),
   resizeOverlay: (size) => ipcRenderer.invoke("overlay:resize", size),
+  getNotificationSettings: () => ipcRenderer.invoke("notification-settings:read"),
+  updateNotificationSettings: (settings) => ipcRenderer.invoke("notification-settings:update", settings),
+  sendTestNotification: () => ipcRenderer.invoke("notification:test"),
   listAccountAliases: () => ipcRenderer.invoke("account-aliases:list"),
   renameAccountAlias: (recordId, alias) => ipcRenderer.invoke("account-aliases:rename", recordId, alias),
   deleteAccountAlias: (recordId) => ipcRenderer.invoke("account-aliases:delete", recordId),
@@ -32,6 +35,11 @@ contextBridge.exposeInMainWorld("tokenMonitor", {
     const listener = (_event, settings) => callback(settings);
     ipcRenderer.on("overlay-settings:changed", listener);
     return () => ipcRenderer.removeListener("overlay-settings:changed", listener);
+  },
+  onNotificationSettingsChanged: (callback) => {
+    const listener = (_event, settings) => callback(settings);
+    ipcRenderer.on("notification-settings:changed", listener);
+    return () => ipcRenderer.removeListener("notification-settings:changed", listener);
   },
   onExitConfirmRequested: (callback) => {
     const listener = () => callback();
