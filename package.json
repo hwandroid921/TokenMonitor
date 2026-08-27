@@ -7,7 +7,9 @@
   "scripts": {
     "dev": "concurrently -k \"vite --host 127.0.0.1\" \"wait-on http://127.0.0.1:5173 && electron .\"",
     "build": "tsc && vite build && tsc -p electron/tsconfig.json",
-    "dist:win": "npm run build && electron-builder --win nsis portable",
+    "dist:win": "npm run build && npm run package:unpacked && npm run package:portable",
+    "package:portable": "electron-builder --win portable --x64 --publish never --config.directories.output=dist-portable --config.win.signAndEditExecutable=false && powershell -NoProfile -ExecutionPolicy Bypass -File scripts\\place-portable-at-root.ps1",
+    "package:unpacked": "electron-builder --win dir --x64 --publish never --config.directories.output=dist-app --config.win.signAndEditExecutable=false",
     "preview": "vite preview --host 127.0.0.1",
     "typecheck": "tsc --noEmit"
   },
