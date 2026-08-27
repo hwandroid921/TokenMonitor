@@ -1,6 +1,6 @@
 import React, { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { createRoot } from "react-dom/client";
-import { ExternalLink, LayoutDashboard, Link, RefreshCw, Settings } from "lucide-react";
+import { Bug, ExternalLink, LayoutDashboard, Link, RefreshCw, Settings } from "lucide-react";
 import "./styles.css";
 import type {
   AccountAliasView,
@@ -9,8 +9,12 @@ import type {
   ClaudeUsageResult,
   ClaudeUsageWindow,
   CliSessionResult,
+  CodexPathStatus,
+  CodexPathUpdateResult,
   CodexUsageResult,
   CodexUsageWindow,
+  DeveloperDiagnostics,
+  DeveloperModeInfo,
   GeminiAppsUsage,
   GeminiAppsUsageWindow,
   GeminiUsageResult,
@@ -129,7 +133,10 @@ function App() {
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [overlaySettings, setOverlaySettings] = useState<OverlaySettings>(defaultOverlaySettings);
   const [notificationSettings, setNotificationSettings] = useState<NotificationSettings>(defaultNotificationSettings);
-  const [activeTab, setActiveTab] = useState<"dashboard" | "settings">("dashboard");
+  const [activeTab, setActiveTab] = useState<"dashboard" | "settings" | "developer">("dashboard");
+  const [developerMode, setDeveloperMode] = useState<DeveloperModeInfo>({ enabled: false });
+  const [developerDiagnostics, setDeveloperDiagnostics] = useState<DeveloperDiagnostics | null>(null);
+  const [isDeveloperRefreshing, setIsDeveloperRefreshing] = useState(false);
   const [showExitConfirm, setShowExitConfirm] = useState(false);
   const [isClaudeLoginPending, setIsClaudeLoginPending] = useState(false);
   const [isGeminiLoginPending, setIsGeminiLoginPending] = useState(false);
@@ -272,7 +279,12 @@ function App() {
       return;
     }
     event.preventDefault();
-    const nextTab = activeTab === "dashboard" ? "settings" : "dashboard";
+    const tabs: Array<"dashboard" | "settings" | "developer"> = developerMode.enabled
+      ? ["dashboard", "settings", "developer"]
+      : ["dashboard", "settings"];
+    const currentIndex = tabs.indexOf(activeTab);
+    const delta = event.key === "ArrowRight" ? 1 : -1;
+    const nextTab = tabs[(currentIndex + delta + tabs.length) % tabs.length];
     setActiveTab(nextTab);
     window.requestAnimationFrame(() => document.getElementById(`${nextTab}-tab`)?.focus());
   }
@@ -436,11 +448,35 @@ function App() {
     }
   }
 
+  async function refreshDeveloperDiagnostics() {
+    if (!window.tokenMonitor?.getDeveloperDiagnostics) {
+      return;
+    }
+    setIsDeveloperRefreshing(true);
+    try {
+      setDeveloperDiagnostics(await window.tokenMonitor.getDeveloperDiagnostics());
+    } finally {
+      setIsDeveloperRefreshing(false);
+    }
+  }
+
   useEffect(() => {
     void refreshUsage();
     void window.tokenMonitor?.getOverlaySettings().then(setOverlaySettings);
     void window.tokenMonitor?.getNotificationSettings().then(setNotificationSettings);
+    void window.tokenMonitor?.getDeveloperMode().then((mode) => {
+      setDeveloperMode(mode);
+      if (mode.enabled) {
+        void refreshDeveloperDiagnostics();
+      }
+    });
   }, []);
+
+  useEffect(() => {
+    if (!developerMode.enabled && activeTab === "developer") {
+      setActiveTab("dashboard");
+    }
+  }, [activeTab, developerMode.enabled]);
 
   useEffect(() => {
     if (activeTab === "settings") {
@@ -554,6 +590,12 @@ function App() {
             <Settings size={16} aria-hidden="true" />
             설정
           </button>
+          {developerMode.enabled ? (
+            <button id="developer-tab" role="tab" aria-selected={activeTab === "developer"} aria-controls="developer-panel" tabIndex={activeTab === "developer" ? 0 : -1} className={activeTab === "developer" ? "active" : ""} type="button" onKeyDown={handleTabKeyDown} onClick={() => setActiveTab("developer")}>
+              <Bug size={16} aria-hidden="true" />
+              개발자
+            </button>
+          ) : null}
         </nav>
 
         {activeTab === "dashboard" ? (
@@ -574,7 +616,7 @@ function App() {
               />
             ))}
           </section>
-        ) : (
+        ) : activeTab === "settings" ? (
           <div id="settings-panel" role="tabpanel" aria-labelledby="settings-tab">
             <SettingsPanel
               settings={overlaySettings}
@@ -590,6 +632,15 @@ function App() {
               onDeleteAccount={handleDeleteAccountAlias}
               onDeleteProviderAccounts={handleDeleteProviderAliases}
               onDeleteAllAccounts={handleDeleteAllAccountAliases}
+            />
+            <CodexPathSettings />
+          </div>
+        ) : (
+          <div id="developer-panel" role="tabpanel" aria-labelledby="developer-tab">
+            <DeveloperPanel
+              diagnostics={developerDiagnostics}
+              isRefreshing={isDeveloperRefreshing}
+              onRefresh={() => void refreshDeveloperDiagnostics()}
             />
           </div>
         )}
@@ -2093,6 +2144,299 @@ function formatGeminiResets(primary: GeminiUsageWindow | null, secondary: Gemini
   ].filter(Boolean);
 
   return values.length > 0 ? values.join(" / ") : "데이터 없음";
+}
+
+function CodexPathSettings() {
+  const [status, setStatus] = useState<CodexPathStatus | null>(null);
+  const [input, setInput] = useState("");
+  const [pending, setPending] = useState(false);
+  const [notice, setNotice] = useState<string | null>(null);
+
+  useEffect(() => {
+    void window.tokenMonitor?.getCodexPathStatus().then((next) => {
+      setStatus(next);
+      setInput(next.configuredPath ?? "");
+    });
+  }, []);
+
+  function applyResult(
+    result: CodexPathUpdateResult | undefined,
+    successNotice: string,
+    missingNotice: string
+  ) {
+    if (!result) {
+      setNotice(missingNotice);
+      return;
+    }
+    if (result.canceled) {
+      return;
+    }
+    setStatus(result.status);
+    setInput(result.status.configuredPath ?? "");
+    setNotice(result.ok ? successNotice : result.detail ?? result.status.detail);
+  }
+
+  async function withPending(run: () => Promise<void>) {
+    setPending(true);
+    setNotice(null);
+    try {
+      await run();
+    } catch (error) {
+      setNotice(error instanceof Error ? error.message : "Codex 경로 작업을 완료하지 못했습니다.");
+    } finally {
+      setPending(false);
+    }
+  }
+
+  const saveNotice = "Codex 경로를 저장하고 연결을 확인했습니다.";
+
+  return (
+    <section className="setting-group codex-path-settings" aria-labelledby="codex-path-heading">
+      <h2 id="codex-path-heading">Codex 실행 파일 경로</h2>
+      <p className="codex-path-hint">
+        Codex Desktop을 자동으로 찾지 못할 때 codex.exe 전체 경로를 지정합니다. 지정하지 않으면 자동 탐색과 <code>CODEX_CLI_PATH</code> 환경 변수를 사용합니다.
+      </p>
+      <dl className="developer-dl">
+        <div>
+          <dt>연결 상태</dt>
+          <dd><span className={`codex-path-state ${status?.connection ?? "unchecked"}`}>{formatCodexPathConnection(status)}</span></dd>
+        </div>
+        <div>
+          <dt>사용 중 경로</dt>
+          <dd>{status?.activePath ?? "확인되지 않음"}</dd>
+        </div>
+        <div>
+          <dt>탐색 방식</dt>
+          <dd>{formatCodexPathSource(status?.source)}</dd>
+        </div>
+        <div>
+          <dt>상세</dt>
+          <dd>{status?.detail ?? "Codex 경로를 확인하지 못했습니다."}</dd>
+        </div>
+      </dl>
+      <div className="codex-path-input-row">
+        <input
+          type="text"
+          aria-label="codex.exe 전체 경로"
+          placeholder="C:\\Users\\...\\codex.exe"
+          value={input}
+          onChange={(event) => setInput(event.target.value)}
+          disabled={pending}
+        />
+        <button
+          className="secondary-button"
+          type="button"
+          disabled={pending}
+          onClick={() =>
+            void withPending(async () =>
+              applyResult(
+                await window.tokenMonitor?.selectCodexExecutablePath(),
+                saveNotice,
+                "Codex 경로 선택 기능을 사용할 수 없습니다."
+              )
+            )
+          }
+        >
+          파일 선택
+        </button>
+      </div>
+      <div className="codex-path-actions">
+        <button
+          className="secondary-button"
+          type="button"
+          disabled={pending || !input.trim()}
+          onClick={() =>
+            void withPending(async () =>
+              applyResult(
+                await window.tokenMonitor?.updateCodexExecutablePath(input.trim()),
+                saveNotice,
+                "Codex 경로 설정 기능을 사용할 수 없습니다."
+              )
+            )
+          }
+        >
+          {pending ? "확인 중" : "연결 테스트 및 저장"}
+        </button>
+        <button
+          className="secondary-button"
+          type="button"
+          disabled={pending}
+          onClick={() =>
+            void withPending(async () =>
+              applyResult(
+                await window.tokenMonitor?.resetCodexExecutablePath(),
+                "Codex 경로를 자동 탐색으로 복원했습니다.",
+                "Codex 자동 경로 설정을 사용할 수 없습니다."
+              )
+            )
+          }
+        >
+          자동 탐색으로 복원
+        </button>
+      </div>
+      {notice ? <p className="codex-path-notice" role="status">{notice}</p> : null}
+    </section>
+  );
+}
+
+function formatCodexPathConnection(status: CodexPathStatus | null) {
+  switch (status?.connection) {
+    case "connected":
+      return "연결됨";
+    case "failed":
+      return "실패";
+    default:
+      return "미확인";
+  }
+}
+
+function formatCodexPathSource(source: CodexPathStatus["source"] | undefined) {
+  switch (source) {
+    case "manual":
+      return "사용자 지정 경로";
+    case "environment":
+      return "CODEX_CLI_PATH 환경 변수";
+    case "local-direct":
+      return "로컬 설치 (기본 경로)";
+    case "local-versioned":
+      return "로컬 설치 (버전 폴더)";
+    case "windows-apps":
+      return "Windows Apps";
+    case "path":
+      return "PATH 검색";
+    default:
+      return "확인되지 않음";
+  }
+}
+
+function DeveloperPanel({
+  diagnostics,
+  isRefreshing,
+  onRefresh
+}: {
+  diagnostics: DeveloperDiagnostics | null;
+  isRefreshing: boolean;
+  onRefresh: () => void;
+}) {
+  const environment = diagnostics?.environment;
+  const cache = diagnostics?.cacheSummary;
+
+  return (
+    <section className="developer-panel" aria-label="개발자 모드">
+      <div className="settings-heading">
+        <div>
+          <span className="eyebrow">Developer Mode</span>
+          <h1>실제 수집 상태 검증</h1>
+        </div>
+        <button className="secondary-button" type="button" onClick={onRefresh} disabled={isRefreshing}>
+          {isRefreshing ? "확인 중" : "현재 상태 다시 확인"}
+        </button>
+      </div>
+
+      <section className="developer-section">
+        <h2>실행 환경</h2>
+        <dl className="developer-dl">
+          <div><dt>개발자 모드</dt><dd>{environment?.enabled ? "켜짐" : "꺼짐"}</dd></div>
+          <div><dt>설정 출처</dt><dd>{formatDeveloperEnvSource(environment?.source)}</dd></div>
+          <div><dt>환경 파일</dt><dd>{environment?.loadedFileName ?? "사용 안 함"}</dd></div>
+          <div><dt>확인한 .env 후보</dt><dd>{environment?.checkedPathCount ?? 0}개</dd></div>
+          <div><dt>진단 소요</dt><dd>{diagnostics?.totalDurationMs != null ? `${diagnostics.totalDurationMs}ms` : "미측정"}</dd></div>
+          <div><dt>갱신 시각</dt><dd>{diagnostics?.generatedAt ? formatTime(diagnostics.generatedAt) : "없음"}</dd></div>
+        </dl>
+      </section>
+
+      <section className="developer-section">
+        <h2>수집 캐시</h2>
+        <dl className="developer-dl">
+          <div><dt>ChatGPT</dt><dd>{cache?.codex ?? "미확인"}</dd></div>
+          <div><dt>Claude</dt><dd>{cache?.claude ?? "미확인"}</dd></div>
+          <div><dt>Gemini</dt><dd>{cache?.gemini ?? "미확인"}</dd></div>
+          <div><dt>CLI 로그인</dt><dd>{cache?.cliSession ?? "미확인"}</dd></div>
+        </dl>
+      </section>
+
+      <section className="developer-section">
+        <h2>Provider 진단</h2>
+        {diagnostics && diagnostics.providers.length > 0 ? (
+          <div className="developer-grid">
+            {diagnostics.providers.map((provider) => (
+              <article className="developer-card" key={provider.id}>
+                <h3>{provider.name}</h3>
+                <p className="developer-inline-note">계정: {formatDeveloperAccount(provider.account)}</p>
+                <div className="developer-prereq">
+                  <strong>필요 조건</strong>
+                  <ul>
+                    {provider.userPrerequisites.map((item) => (
+                      <li key={item}>{item}</li>
+                    ))}
+                  </ul>
+                </div>
+                <div className="developer-check-list">
+                  {provider.checks.map((check) => (
+                    <div className="developer-check" key={`${provider.id}-${check.method}`}>
+                      <span className={`developer-status ${check.status}`}>{formatDeveloperStatus(check.status)}</span>
+                      <strong>{check.method}</strong>
+                      <p>{check.detail}</p>
+                    </div>
+                  ))}
+                </div>
+              </article>
+            ))}
+          </div>
+        ) : (
+          <p className="developer-inline-note">
+            개발자 모드가 켜져 있으면 provider별 수집·로그인·파서 상태가 여기에 표시됩니다. 상단 버튼으로 다시 확인하세요.
+          </p>
+        )}
+      </section>
+
+      {diagnostics?.geminiParser ? (
+        <section className="developer-section">
+          <h2>Gemini Apps 파서</h2>
+          <dl className="developer-dl">
+            <div><dt>세션 로그인</dt><dd>{diagnostics.geminiParser.sessionLoggedIn ? "예" : "아니오"}</dd></div>
+            <div><dt>캐시 보유</dt><dd>{diagnostics.geminiParser.cacheAvailable ? "예" : "아니오"}</dd></div>
+            <div><dt>플랜 파싱</dt><dd>{diagnostics.geminiParser.planParsed ? "성공" : "실패"}</dd></div>
+            <div><dt>5시간 파싱</dt><dd>{diagnostics.geminiParser.fiveHourParsed ? "성공" : "실패"}</dd></div>
+            <div><dt>주간 파싱</dt><dd>{diagnostics.geminiParser.weeklyParsed ? "성공" : "실패"}</dd></div>
+            <div><dt>파서 메모</dt><dd>{diagnostics.geminiParser.detail ?? "없음"}</dd></div>
+            <div><dt>갱신 시각</dt><dd>{diagnostics.geminiParser.updatedAt ? formatTime(diagnostics.geminiParser.updatedAt) : "없음"}</dd></div>
+          </dl>
+        </section>
+      ) : null}
+    </section>
+  );
+}
+
+function formatDeveloperStatus(status: "success" | "failed" | "skipped") {
+  if (status === "success") {
+    return "성공";
+  }
+  if (status === "failed") {
+    return "실패";
+  }
+  return "건너뜀";
+}
+
+function formatDeveloperEnvSource(source: DeveloperDiagnostics["environment"]["source"] | undefined) {
+  if (source === "process") {
+    return "프로세스 환경변수";
+  }
+  if (source === "env-file") {
+    return "로컬 .env 파일";
+  }
+  return "기본값";
+}
+
+function formatDeveloperAccount(account: DeveloperDiagnostics["providers"][number]["account"]) {
+  if (!account || !account.detected) {
+    return "감지되지 않음";
+  }
+  const parts = [account.alias ? `별칭 ${account.alias}` : "별칭 미지정"];
+  if (account.confidence) {
+    parts.push(account.confidence === "verified" ? "확인됨" : "추정");
+  }
+  return parts.join(" · ");
 }
 
 function formatTime(value: string) {
