@@ -4,8 +4,9 @@ import fs from "node:fs";
 import path from "node:path";
 import { maskEmail } from "./masked-email.js";
 
-export type AccountProvider = "codex" | "claude" | "gemini-apps" | "antigravity";
+export type AccountProvider = "codex" | "claude" | "google";
 export type AccountIdentityConfidence = "verified" | "inferred";
+type LegacyAccountProvider = AccountProvider | "gemini-apps" | "antigravity";
 
 export type AccountAliasState = {
   detected: boolean;
@@ -26,14 +27,6 @@ export type AccountAliasView = {
   lastSeenAt: string;
 };
 
-export type GoogleAccountComparison =
-  | "same"
-  | "different"
-  | "needs-confirmation"
-  | "antigravity-unknown"
-  | "gemini-apps-unknown"
-  | "both-unknown";
-
 type StoredAccountAlias = {
   recordId: string;
   provider: AccountProvider;
@@ -47,8 +40,8 @@ type StoredAccountAlias = {
 
 type StoredAliasFile = {
   version: 1;
-  accounts: StoredAccountAlias[];
-  lastCurrent?: Partial<Record<AccountProvider, string>>;
+  accounts: unknown[];
+  lastCurrent?: Partial<Record<LegacyAccountProvider, string>>;
 };
 
 type CurrentAccount = {
@@ -199,28 +192,6 @@ export function deleteAllAccountAliases() {
   return { ok: true as const };
 }
 
-export function compareGoogleAccounts(): GoogleAccountComparison {
-  ensureInitialized();
-  const antigravity = currentAccounts.get("antigravity");
-  const geminiApps = currentAccounts.get("gemini-apps");
-  if (!antigravity && !geminiApps) {
-    return "both-unknown";
-  }
-  if (!antigravity) {
-    return "antigravity-unknown";
-  }
-  if (!geminiApps) {
-    return "gemini-apps-unknown";
-  }
-  if (antigravity.identityKey === geminiApps.identityKey) {
-    return "same";
-  }
-  if (antigravity.confidence === "verified" && geminiApps.confidence === "verified") {
-    return "different";
-  }
-  return "needs-confirmation";
-}
-
 function makePublicState(record: StoredAccountAlias, accountChanged: boolean): AccountAliasState {
   return {
     detected: true,
@@ -264,7 +235,7 @@ function normalizeAlias(value: unknown) {
 }
 
 function makeIdentityKey(provider: AccountProvider, normalizedEmail: string) {
-  const namespace = provider === "gemini-apps" || provider === "antigravity" ? "google-account" : provider;
+  const namespace = provider === "google" ? "google-account" : provider;
   return createHmac("sha256", identitySecret!).update(`${namespace}\0${normalizedEmail}`, "utf8").digest("base64url");
 }
 
@@ -294,13 +265,18 @@ function loadAccounts(): StoredAccountAlias[] {
     if (parsed.version !== 1 || !Array.isArray(parsed.accounts)) {
       return [];
     }
-    for (const provider of ["codex", "claude", "gemini-apps", "antigravity"] as AccountProvider[]) {
-      const identityKey = parsed.lastCurrent?.[provider];
+    for (const provider of ["codex", "claude", "google"] as AccountProvider[]) {
+      const identityKey = provider === "google"
+        ? parsed.lastCurrent?.google ?? parsed.lastCurrent?.["gemini-apps"] ?? parsed.lastCurrent?.antigravity
+        : parsed.lastCurrent?.[provider];
       if (typeof identityKey === "string" && identityKey) {
         persistedCurrentAccounts.set(provider, identityKey);
       }
     }
-    return parsed.accounts.filter(isStoredAccountAlias);
+    return mergeStoredAccounts(parsed.accounts.filter(isStoredAccountAlias).map((record) => ({
+      ...record,
+      provider: normalizeStoredProvider(record.provider)
+    })));
   } catch {
     return [];
   }
@@ -324,19 +300,45 @@ function writeFileAtomically(targetPath: string, value: Buffer) {
   fs.renameSync(temporaryPath, targetPath);
 }
 
-function isStoredAccountAlias(value: unknown): value is StoredAccountAlias {
+function isStoredAccountAlias(value: unknown): value is Omit<StoredAccountAlias, "provider"> & { provider: LegacyAccountProvider } {
   if (!value || typeof value !== "object") {
     return false;
   }
-  const record = value as Partial<StoredAccountAlias>;
+  const record = value as Partial<Omit<StoredAccountAlias, "provider"> & { provider: LegacyAccountProvider }>;
   return typeof record.recordId === "string"
-    && ["codex", "claude", "gemini-apps", "antigravity"].includes(record.provider ?? "")
+    && ["codex", "claude", "google", "gemini-apps", "antigravity"].includes(record.provider ?? "")
     && typeof record.identityKey === "string"
     && typeof record.maskedEmail === "string"
     && (record.alias == null || typeof record.alias === "string")
     && (record.confidence === "verified" || record.confidence === "inferred")
     && typeof record.createdAt === "string"
     && typeof record.lastSeenAt === "string";
+}
+
+function normalizeStoredProvider(provider: LegacyAccountProvider): AccountProvider {
+  return provider === "gemini-apps" || provider === "antigravity" ? "google" : provider;
+}
+
+function mergeStoredAccounts(values: StoredAccountAlias[]) {
+  const merged = new Map<string, StoredAccountAlias>();
+  for (const value of values) {
+    const key = `${value.provider}:${value.identityKey}`;
+    const existing = merged.get(key);
+    if (!existing) {
+      merged.set(key, value);
+      continue;
+    }
+    const newer = value.lastSeenAt > existing.lastSeenAt ? value : existing;
+    const older = newer === value ? existing : value;
+    merged.set(key, {
+      ...newer,
+      alias: newer.alias ?? older.alias,
+      confidence: existing.confidence === "verified" || value.confidence === "verified" ? "verified" : "inferred",
+      createdAt: existing.createdAt < value.createdAt ? existing.createdAt : value.createdAt,
+      lastSeenAt: existing.lastSeenAt > value.lastSeenAt ? existing.lastSeenAt : value.lastSeenAt
+    });
+  }
+  return [...merged.values()];
 }
 
 function ensureInitialized() {

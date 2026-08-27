@@ -742,7 +742,7 @@ async function inspectEmbeddedGeminiView() {
 
   const state = await readEmbeddedGeminiState(geminiBrowserView);
   if (state.email) {
-    const account = observeAccount("gemini-apps", state.email);
+    const account = observeAccount("google", state.email);
     if (account.accountChanged) {
       clearGeminiAppsUsageCache();
     }

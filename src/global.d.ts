@@ -6,7 +6,7 @@ export type CodexUsageWindow = {
   resetsAt: string | null;
 };
 
-export type AccountProvider = "codex" | "claude" | "gemini-apps" | "antigravity";
+export type AccountProvider = "codex" | "claude" | "google";
 export type AccountIdentityConfidence = "verified" | "inferred";
 
 export type AccountAliasState = {
@@ -27,8 +27,6 @@ export type AccountAliasView = {
   createdAt: string;
   lastSeenAt: string;
 };
-
-export type GoogleAccountComparison = "same" | "different" | "needs-confirmation" | "antigravity-unknown" | "gemini-apps-unknown" | "both-unknown";
 
 export type CodexUsageResult =
   | {
@@ -137,8 +135,6 @@ export type GeminiUsageResult =
       source: "antigravity-cli-google" | "antigravity-cli-local" | "antigravity-local" | "gemini-cli-oauth";
       planType: string | null;
       account: AccountAliasState;
-      geminiAppsAccount: AccountAliasState;
-      googleAccountComparison: GoogleAccountComparison;
       promptCredits: {
         available: number | null;
         monthly: number | null;
@@ -165,8 +161,6 @@ export type GeminiUsageResult =
       source: "antigravity-cli-google" | "antigravity-cli-local" | "antigravity-local" | "gemini-cli-oauth";
       error: string;
       account: AccountAliasState;
-      geminiAppsAccount: AccountAliasState;
-      googleAccountComparison: GoogleAccountComparison;
       geminiApps: GeminiAppsUsage | null;
       geminiAppsSession: GeminiAppsSessionStatus;
       updatedAt: string;

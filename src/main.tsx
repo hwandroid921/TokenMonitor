@@ -1,6 +1,6 @@
 import React, { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { createRoot } from "react-dom/client";
-import { ExternalLink, LayoutDashboard, Link, RefreshCw, Settings, Zap } from "lucide-react";
+import { ExternalLink, LayoutDashboard, Link, RefreshCw, Settings } from "lucide-react";
 import "./styles.css";
 import type {
   AccountAliasView,
@@ -58,9 +58,10 @@ const providerLabels: Record<ProviderId, string> = {
 const accountProviderLabels: Record<AccountProvider, string> = {
   codex: "ChatGPT",
   claude: "Claude",
-  "gemini-apps": "Gemini Apps",
-  antigravity: "Antigravity"
+  google: "Google (Gemini Apps + Antigravity)"
 };
+
+const appIconUrl = new URL("../assets/icon.svg", import.meta.url).href;
 
 const providerStatusLabels: Record<ProviderUsage["status"], string> = {
   live: "정상",
@@ -477,11 +478,10 @@ function App() {
         <header className="app-header">
           <div className="brand">
             <span className="brand-mark">
-              <Zap size={19} aria-hidden="true" />
+              <img src={appIconUrl} alt="" aria-hidden="true" />
             </span>
             <div>
               <strong>Token Monitor</strong>
-              <span>플랜, 잔여 사용량, 초기화 시간</span>
             </div>
           </div>
 
@@ -545,7 +545,6 @@ function App() {
               onDeleteAccount={handleDeleteAccountAlias}
               onDeleteProviderAccounts={handleDeleteProviderAliases}
               onDeleteAllAccounts={handleDeleteAllAccountAliases}
-              googleAccountComparison={geminiUsage?.googleAccountComparison ?? "both-unknown"}
             />
           </div>
         )}
@@ -948,8 +947,7 @@ function SettingsPanel({
   onRenameAccount,
   onDeleteAccount,
   onDeleteProviderAccounts,
-  onDeleteAllAccounts,
-  googleAccountComparison
+  onDeleteAllAccounts
 }: {
   settings: OverlaySettings;
   onChange: (settings: OverlaySettings) => void;
@@ -961,7 +959,6 @@ function SettingsPanel({
   onDeleteAccount: (recordId: string) => Promise<void>;
   onDeleteProviderAccounts: (provider: AccountProvider) => Promise<void>;
   onDeleteAllAccounts: () => Promise<void>;
-  googleAccountComparison: GeminiUsageResult["googleAccountComparison"];
 }) {
   function update(patch: Partial<OverlaySettings>) {
     onChange({ ...settings, ...patch });
@@ -1008,7 +1005,6 @@ function SettingsPanel({
       <AccountAliasManager
         accounts={accounts}
         notice={accountNotice}
-        googleAccountComparison={googleAccountComparison}
         onRename={onRenameAccount}
         onDelete={onDeleteAccount}
         onDeleteProvider={onDeleteProviderAccounts}
@@ -1065,7 +1061,6 @@ function SettingsPanel({
         </div>
       </section>
 
-      <p className="overlay-opacity-note">오버레이는 배경을 가리지 않도록 50% 투명도로 표시됩니다.</p>
     </section>
   );
 }
@@ -1073,7 +1068,6 @@ function SettingsPanel({
 function AccountAliasManager({
   accounts,
   notice,
-  googleAccountComparison,
   onRename,
   onDelete,
   onDeleteProvider,
@@ -1081,21 +1075,16 @@ function AccountAliasManager({
 }: {
   accounts: AccountAliasView[];
   notice: string | null;
-  googleAccountComparison: GeminiUsageResult["googleAccountComparison"];
   onRename: (recordId: string, alias: string) => Promise<boolean>;
   onDelete: (recordId: string) => Promise<void>;
   onDeleteProvider: (provider: AccountProvider) => Promise<void>;
   onDeleteAll: () => Promise<void>;
 }) {
-  const currentGemini = accounts.find((account) => account.provider === "gemini-apps" && account.isCurrent);
-  const currentAntigravity = accounts.find((account) => account.provider === "antigravity" && account.isCurrent);
-
   return (
     <section className="setting-group account-alias-manager" aria-labelledby="account-alias-heading">
       <div className="account-alias-heading">
         <div>
           <h2 id="account-alias-heading">계정 및 별칭 관리</h2>
-          <p>이메일은 이 설정에서만 마스킹해 표시합니다. 대시보드와 오버레이에는 별칭만 표시됩니다.</p>
         </div>
         {accounts.length > 0 ? (
           <button
@@ -1111,17 +1100,6 @@ function AccountAliasManager({
           </button>
         ) : null}
       </div>
-
-      {googleAccountComparison === "different" ? (
-        <div className="account-mismatch-warning" role="alert">
-          <strong>Google 계정 불일치</strong>
-          <p>Antigravity는 “{currentAntigravity?.alias ?? "별칭 미지정"}”, Gemini Apps는 “{currentGemini?.alias ?? "별칭 미지정"}” 계정으로 연결되어 있습니다.</p>
-        </div>
-      ) : googleAccountComparison === "needs-confirmation" ? (
-        <div className="account-confirmation-note" role="status">
-          Antigravity 계정이 추정 정보이므로 Gemini Apps 계정과의 일치 여부를 확정할 수 없습니다.
-        </div>
-      ) : null}
 
       {notice ? <p className="account-alias-notice" role="status" aria-live="polite">{notice}</p> : null}
 
@@ -1163,7 +1141,6 @@ function AccountAliasManager({
           );
         })}
       </div>
-      <p className="account-alias-privacy">이메일·실명 대신 계정을 구분할 수 있는 짧은 별칭을 사용하세요.</p>
     </section>
   );
 }
@@ -1198,16 +1175,20 @@ function AccountAliasRow({
     <form className={`account-record${account.isCurrent ? " current" : ""}`} onSubmit={submit}>
       <div className="account-record-identity">
         <span className="account-current-badge">{account.isCurrent ? "현재 로그인" : "이전 계정"}</span>
-        <strong>{account.maskedEmail}</strong>
-        {account.confidence === "inferred" ? <small>계정 정보 추정</small> : null}
+        <dl className="account-identity-fields">
+          <div><dt>감지 상태</dt><dd>{account.isCurrent ? "현재 계정 감지됨" : "이전 감지 기록"}</dd></div>
+          <div><dt>이메일</dt><dd>{account.maskedEmail}</dd></div>
+          <div><dt>표시 이름</dt><dd>{account.alias ?? "미지정"}</dd></div>
+          <div><dt>감지 방식</dt><dd>{account.confidence === "verified" ? "계정 확인됨" : "계정 정보 추정"}</dd></div>
+        </dl>
       </div>
       <label>
-        <span>별칭</span>
+        <span>이름/별칭</span>
         <input
           type="text"
           value={alias}
           maxLength={24}
-          placeholder="예: 업무용"
+          placeholder="예: 업무용 Google"
           autoComplete="off"
           disabled={isSaving}
           onChange={(event) => setAlias(event.target.value)}
@@ -1633,8 +1614,7 @@ function buildGeminiProvider(usage: GeminiUsageResult | null): ProviderUsage {
       remaining: "확인 불가",
       reset: "확인 불가",
       fields: [
-        ...(usage.geminiAppsAccount.detected ? [{ label: "Gemini 계정", value: formatAccountAlias(usage.geminiAppsAccount), kind: "identity" as const }] : []),
-        ...(usage.account.detected ? [{ label: "Antigravity 계정", value: formatAccountAlias(usage.account), kind: "identity" as const }] : []),
+        ...(usage.account.detected ? [{ label: "계정", value: formatAccountAlias(usage.account), kind: "identity" as const }] : []),
         { label: "플랜", value: planLabel, kind: "plan" },
         { label: "Gemini 주간", value: formatGeminiAppsWebUsageSummary(usage.geminiApps?.weekly ?? null), kind: "quota" },
         { label: "Antigravity 주간", value: "명시적 주간 데이터 없음", kind: "quota" },
@@ -1644,8 +1624,8 @@ function buildGeminiProvider(usage: GeminiUsageResult | null): ProviderUsage {
       detail: usage.error,
       canLogin: true,
       actionLabel: "Antigravity CLI 설치 및 로그인",
-      needsAlias: usage.account.aliasRequired || usage.geminiAppsAccount.aliasRequired,
-      issues: buildGeminiIssues(usage.geminiApps, null, usage)
+      needsAlias: usage.account.aliasRequired,
+      issues: buildGeminiIssues(usage.geminiApps, null)
     };
   }
 
@@ -1672,14 +1652,13 @@ function buildGeminiProvider(usage: GeminiUsageResult | null): ProviderUsage {
     remaining: formatGeminiWindows(antigravityWeeklyWindow, antigravityFiveHourWindow, null, "remaining"),
     reset: formatGeminiResets(antigravityWeeklyWindow, antigravityFiveHourWindow, null),
     fields: [
-      ...(usage.geminiAppsAccount.detected ? [{ label: "Gemini 계정", value: formatAccountAlias(usage.geminiAppsAccount), kind: "identity" as const }] : []),
-      ...(usage.account.detected ? [{ label: "Antigravity 계정", value: formatAccountAlias(usage.account), kind: "identity" as const }] : []),
+      ...(usage.account.detected ? [{ label: "계정", value: formatAccountAlias(usage.account), kind: "identity" as const }] : []),
       { label: "플랜", value: planLabel, kind: "plan" },
       ...quotaFields
     ],
     detail: promptCredits ?? formatGeminiDetail(usage.geminiApps?.updatedAt ?? null, usage.geminiApps?.detail ?? null, sourceLabel, usage.updatedAt),
-    needsAlias: usage.account.aliasRequired || usage.geminiAppsAccount.aliasRequired,
-    issues: buildGeminiIssues(usage.geminiApps, antigravityFiveHourWindow, usage)
+    needsAlias: usage.account.aliasRequired,
+    issues: buildGeminiIssues(usage.geminiApps, antigravityFiveHourWindow)
   };
 }
 
@@ -1689,23 +1668,8 @@ function formatGeminiDetail(geminiAppsUpdatedAt: string | null, parsedGeminiApps
   return `${updateDetail}${parsedDetail} / Antigravity ${antigravitySource} 기준 최근 갱신 ${formatTime(antigravityUpdatedAt)}`;
 }
 
-function buildGeminiIssues(geminiApps: GeminiAppsUsage | null, antigravityFiveHourWindow: GeminiUsageWindow | null, usage: GeminiUsageResult): ProviderIssue[] {
+function buildGeminiIssues(geminiApps: GeminiAppsUsage | null, antigravityFiveHourWindow: GeminiUsageWindow | null): ProviderIssue[] {
   const issues: ProviderIssue[] = [];
-  if (usage.googleAccountComparison === "different") {
-    issues.push({
-      reason: "Google 계정 불일치",
-      steps: [
-        `Gemini Apps: ${formatAccountAlias(usage.geminiAppsAccount)}`,
-        `Antigravity: ${formatAccountAlias(usage.account)}`,
-        "설정에서 마스킹 이메일을 확인하거나 Gemini 계정을 다시 로그인"
-      ]
-    });
-  } else if (usage.googleAccountComparison === "needs-confirmation") {
-    issues.push({
-      reason: "Google 계정 일치 여부 확인 필요",
-      steps: ["Antigravity 계정 정보가 추정 상태입니다.", "설정에서 각 계정의 마스킹 이메일과 별칭을 확인"]
-    });
-  }
   if (!geminiApps?.plan || !geminiApps.fiveHour || !geminiApps.weekly) {
     issues.push({
       reason: "Gemini 앱 사용량 확인 필요",
@@ -1788,8 +1752,6 @@ function makeGeminiError(error: string): GeminiUsageResult {
     source: "gemini-cli-oauth",
     error,
     account,
-    geminiAppsAccount: account,
-    googleAccountComparison: "both-unknown",
     geminiApps: null,
     geminiAppsSession: { loggedIn: false, checkedAt: null },
     updatedAt: new Date().toISOString()

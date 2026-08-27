@@ -76,7 +76,7 @@ Current package version:
 1.1.0
 ```
 
-`v1.1.0` is the account alias management milestone built on the first complete `v1.0.0` release. It adds encrypted account-to-alias mapping, settings-only masked email review, and Google account mismatch guidance.
+`v1.1.0` is the account alias management milestone built on the first complete `v1.0.0` release. It adds encrypted account-to-alias mapping, settings-only masked email review, and one unified Google identity for Gemini Apps and Antigravity.
 
 - ChatGPT quota display through the Codex Desktop local usage flow
 - Claude quota display
@@ -196,20 +196,21 @@ For each release-worthy version bump, summarize:
 
 ## Release History
 
-### 1.1.0 — 2026-08-26 — MINOR
+### 1.1.0 — 2026-08-27 — MINOR
 
 **Change category:** MINOR (account alias management and account-aware identity display)
 
 **User-visible changes:**
 - Dashboard and overlay account rows now show user-defined aliases and never show email addresses.
-- Settings now lists current and previously detected ChatGPT, Claude, Gemini Apps, and Antigravity accounts with masked email addresses for alias assignment, rename, and deletion.
+- Settings now lists current and previously detected ChatGPT, Claude, and unified Google accounts with masked email addresses for alias assignment, rename, and deletion.
 - Newly detected accounts request an alias, while returning accounts restore their saved alias automatically.
-- Gemini Apps and Antigravity show an account mismatch warning only when both Google identities are verified and different; inferred identities request confirmation instead.
+- Gemini Apps and Antigravity now share one Google account detection state and one user-defined display name/alias.
 
 **Provider/data-source changes:**
 - Provider email values are converted in the Electron main process into HMAC account identities and masked settings-only values before public usage results are created.
 - Gemini Apps inspects account-related accessible labels in memory to identify the signed-in Google account without persisting raw page text or raw email.
-- Antigravity local and OAuth fallback identities are treated as verified; the separate Gemini CLI credential used beside `antigravity-usage` remains explicitly inferred.
+- Gemini Apps, Antigravity local data, and OAuth fallback identities feed the same Google account identity; legacy separate Google alias records are merged by identity.
+- Antigravity local and OAuth fallback identities are treated as verified; the Gemini CLI credential fallback remains explicitly inferred.
 
 **Privacy and security review:**
 - Raw email addresses, HMAC account identities, tokens, account IDs, and raw provider payloads remain excluded from the renderer and logs.
@@ -218,7 +219,8 @@ For each release-worthy version bump, summarize:
 
 **Packaging notes:**
 - Package version updated to `1.1.0`.
-- Portable Windows x64 packaging and SHA256 verification are required for this milestone release.
+- Portable Windows x64 artifact `TokenMonitor-1.1.0-x64.exe` was regenerated and verified.
+- SHA256: `8E80E115B46DCBD87461B68E376EDA862DD81E140F3A58A73F620C3582A12D53`.
 
 **Known limitations:**
 - Gemini Apps identity detection depends on Google account-related accessible labels and can report an unknown account when Google changes or omits those labels.

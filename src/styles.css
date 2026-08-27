@@ -84,30 +84,22 @@ input {
 }
 
 .brand-mark {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
   width: 40px;
   height: 40px;
-  color: #17211d;
-  background: #c6f36d;
   border-radius: 8px;
+  overflow: hidden;
 }
 
-.brand strong,
-.brand span {
+.brand-mark img {
   display: block;
+  width: 100%;
+  height: 100%;
 }
 
 .brand strong {
+  display: block;
   color: #171a17;
   font-size: 18px;
-}
-
-.brand span {
-  margin-top: 2px;
-  color: #68716a;
-  font-size: 13px;
 }
 
 .header-actions {
@@ -765,45 +757,19 @@ h2 {
   gap: 12px;
 }
 
-.account-alias-heading p,
 .account-provider-heading span,
-.account-empty,
-.account-alias-privacy {
+.account-empty {
   margin-top: 4px;
   color: #68716a;
   font-size: 12px;
   line-height: 1.45;
 }
 
-.account-mismatch-warning,
-.account-confirmation-note,
 .account-alias-notice {
   padding: 10px 12px;
   border-radius: 8px;
   font-size: 12px;
   line-height: 1.45;
-}
-
-.account-mismatch-warning {
-  color: #6f2e16;
-  background: #fff2eb;
-  border: 1px solid #efc8b4;
-}
-
-.account-mismatch-warning strong,
-.account-mismatch-warning p {
-  display: block;
-  margin: 0;
-}
-
-.account-mismatch-warning p {
-  margin-top: 3px;
-}
-
-.account-confirmation-note {
-  color: #72520b;
-  background: #fff7da;
-  border: 1px solid #eadba3;
 }
 
 .account-alias-notice {
@@ -819,7 +785,7 @@ h2 {
 }
 
 .account-provider-list {
-  grid-template-columns: repeat(2, minmax(0, 1fr));
+  grid-template-columns: repeat(3, minmax(0, 1fr));
 }
 
 .account-provider-card {
@@ -861,19 +827,6 @@ h2 {
   min-width: 0;
 }
 
-.account-record-identity strong {
-  overflow: hidden;
-  color: #26322c;
-  font-size: 13px;
-  text-overflow: ellipsis;
-}
-
-.account-record-identity small {
-  color: #8a5b16;
-  font-size: 11px;
-  font-weight: 750;
-}
-
 .account-current-badge {
   padding: 3px 6px;
   color: #315844;
@@ -881,6 +834,35 @@ h2 {
   border-radius: 999px;
   font-size: 10px;
   font-weight: 850;
+}
+
+.account-identity-fields {
+  display: grid;
+  gap: 5px;
+  width: 100%;
+  margin: 0;
+}
+
+.account-identity-fields div {
+  display: grid;
+  grid-template-columns: 64px minmax(0, 1fr);
+  gap: 8px;
+}
+
+.account-identity-fields dt {
+  color: #68716a;
+  font-size: 11px;
+  font-weight: 750;
+}
+
+.account-identity-fields dd {
+  min-width: 0;
+  margin: 0;
+  overflow: hidden;
+  color: #26322c;
+  font-size: 12px;
+  font-weight: 750;
+  text-overflow: ellipsis;
 }
 
 .account-record label {
@@ -989,13 +971,6 @@ h2 {
   font-weight: 700;
 }
 
-.overlay-opacity-note {
-  margin: 0;
-  color: #68716a;
-  font-size: 13.5px;
-  font-weight: 750;
-}
-
 .spinning {
   animation: spin 1s linear infinite;
 }
@@ -1013,6 +988,10 @@ h2 {
 
   .check-list.compact {
     grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+
+  .account-provider-list {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 }
 

@@ -14,7 +14,7 @@ Token Monitor는 여러 AI 서비스의 로컬 로그인 상태와 제공자가 
 - 주간 사용량을 먼저, 주기 사용량을 다음에 표시
 - 설정에서 계정별 마스킹 이메일을 확인하고 별칭을 지정·변경·삭제
 - 대시보드와 오버레이에는 이메일 대신 계정 별칭만 표시
-- Gemini Apps와 Antigravity의 Google 계정이 다르면 별칭 기준으로 경고
+- Gemini Apps와 Antigravity의 Google 계정 감지 및 별칭을 하나로 통합
 - 화면 우측 하단의 클릭 통과형 오버레이와 시스템 트레이 최소화
 - Claude Code 및 Antigravity CLI의 로그인 흐름을 앱에서 시작
 - Gemini Apps 사용량을 앱 내 브라우저에서 로그인·확인
@@ -55,7 +55,7 @@ Gemini Apps와 Antigravity의 한도는 서로 다른 서비스의 값입니다.
 3. Claude는 **Claude CLI 설치 및 로그인**을 눌러 인증한 뒤 Claude Code에서 대화를 시작하고 첫 응답을 받습니다.
 4. Gemini Apps는 **Gemini 로그인**을 완료한 뒤 **사용량 확인**을 눌러 Usage Limits 화면을 엽니다.
 5. Antigravity는 **Antigravity CLI 설치 및 로그인**을 눌러 Google 인증을 완료합니다. Antigravity가 이미 실행 중이면 로컬 fallback도 시도합니다.
-6. 설정 탭에서 감지된 계정의 마스킹 이메일을 확인하고 계정별 별칭을 지정합니다.
+6. 설정 탭에서 감지된 계정의 마스킹 이메일을 확인하고 계정별 별칭을 지정합니다. Gemini Apps와 Antigravity는 하나의 Google 계정과 별칭으로 관리됩니다.
 7. 오버레이와 제공자별 표시 항목을 조정합니다.
 
 Claude CLI를 터미널에서 직접 연결하려면 다음 명령을 사용할 수 있습니다.
@@ -77,7 +77,7 @@ npx -y @anthropic-ai/claude-code auth login --claudeai
 - 잔여량
 - 초기화 시간
 
-설정의 **계정 및 별칭 관리**에서는 ChatGPT, Claude, Gemini Apps, Antigravity 계정을 구분해 관리합니다. 현재 계정과 이전에 감지된 계정의 마스킹 이메일을 확인하고 별칭을 지정·변경·삭제할 수 있습니다. 현재 로그인 계정의 등록을 삭제해도 공급자 로그인이나 credential은 삭제되지 않습니다.
+설정의 **계정 및 별칭 관리**에서는 ChatGPT, Claude, Google 계정을 관리합니다. Gemini Apps와 Antigravity에서 감지한 계정은 하나의 Google 계정으로 합쳐지며, 현재 계정 감지 여부와 마스킹 이메일, 사용자가 지정한 표시 이름/별칭, 감지 방식을 확인할 수 있습니다. 현재 로그인 계정의 등록을 삭제해도 공급자 로그인이나 credential은 삭제되지 않습니다.
 
 앱은 사용자 데이터 폴더에 오버레이 설정, Windows 사용자 계정으로 암호화한 계정 별칭 매핑, Gemini 로그인 상태와 파싱된 사용량 요약, Claude Status Line의 최소 스냅샷만 저장합니다. Gemini 웹 페이지 원문이나 디버그 스니펫은 저장하지 않습니다.
 

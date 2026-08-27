@@ -7,11 +7,9 @@ import path from "node:path";
 import type { RequestOptions } from "node:https";
 import { readGeminiAppsSessionStatus, readGeminiAppsUsageCache, type GeminiAppsSessionStatus, type GeminiAppsUsage } from "./gemini-apps-usage.js";
 import {
-  compareGoogleAccounts,
   getCurrentAccountState,
   observeAccount,
-  type AccountAliasState,
-  type GoogleAccountComparison
+  type AccountAliasState
 } from "./account-aliases.js";
 
 // Cached once per process — Gemini CLI install location doesn't change at runtime.
@@ -80,8 +78,6 @@ export type GeminiUsageResult =
       source: AntigravityUsageSource;
       planType: string | null;
       account: AccountAliasState;
-      geminiAppsAccount: AccountAliasState;
-      googleAccountComparison: GoogleAccountComparison;
       promptCredits: PromptCredits | null;
       geminiApps: GeminiAppsUsage | null;
       geminiAppsSession: GeminiAppsSessionStatus;
@@ -96,8 +92,6 @@ export type GeminiUsageResult =
       source: AntigravityUsageSource;
       error: string;
       account: AccountAliasState;
-      geminiAppsAccount: AccountAliasState;
-      googleAccountComparison: GoogleAccountComparison;
       geminiApps: GeminiAppsUsage | null;
       geminiAppsSession: GeminiAppsSessionStatus;
       updatedAt: string;
@@ -153,7 +147,7 @@ export async function getGeminiUsage(): Promise<GeminiUsageResult> {
       ok: true,
       source: "gemini-cli-oauth",
       planType: planFromCodeAssist(assist, claims.hostedDomain),
-      ...makeAccountContext(observeAccount("antigravity", claims.email)),
+      account: observeAccount("google", claims.email),
       promptCredits: null,
       geminiApps: readGeminiAppsUsageCache(),
       geminiAppsSession: readGeminiAppsSessionStatus(),
@@ -173,7 +167,7 @@ function makeError(error: string, source: AntigravityUsageSource = "gemini-cli-o
     ok: false,
     source,
     error,
-    ...makeAccountContext(getCurrentAccountState("antigravity")),
+    account: getCurrentAccountState("google"),
     geminiApps: readGeminiAppsUsageCache(),
     geminiAppsSession: readGeminiAppsSessionStatus(),
     updatedAt: new Date().toISOString()
@@ -209,7 +203,7 @@ async function getAntigravityLocalUsage(): Promise<GeminiUsageResult> {
       ok: true,
       source: "antigravity-local",
       planType: normalizeGeminiPlan(readAntigravityPlan(payload)) ?? "확인 필요",
-      ...makeAccountContext(observeAccount("antigravity", readAntigravityEmail(userStatus ?? payload))),
+      account: observeAccount("google", readAntigravityEmail(userStatus ?? payload)),
       promptCredits: parseLocalPromptCredits(payload),
       geminiApps: readGeminiAppsUsageCache(),
       geminiAppsSession: readGeminiAppsSessionStatus(),
@@ -831,7 +825,7 @@ async function getAntigravityCliUsage(method: "google" | "auto"): Promise<Gemini
       ok: true,
       source: resolvedSource,
       planType,
-      ...makeAccountContext(observeAccount("antigravity", readGeminiAccountEmail(), "inferred")),
+      account: observeAccount("google", readGeminiAccountEmail(), "inferred"),
       promptCredits: parsePromptCredits(snapshot.promptCredits),
       geminiApps: readGeminiAppsUsageCache(),
       geminiAppsSession: readGeminiAppsSessionStatus(),
@@ -875,14 +869,6 @@ function readGeminiAccountEmail() {
   } catch {
     return null;
   }
-}
-
-function makeAccountContext(account: AccountAliasState) {
-  return {
-    account,
-    geminiAppsAccount: getCurrentAccountState("gemini-apps"),
-    googleAccountComparison: compareGoogleAccounts()
-  };
 }
 
 async function retrieveUserQuota(accessToken: string, projectId: string | null) {
