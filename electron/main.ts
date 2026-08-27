@@ -1,4 +1,4 @@
-import { app, BrowserView, BrowserWindow, Menu, Notification, Tray, ipcMain, powerMonitor, screen, shell } from "electron";
+import { app, BrowserView, BrowserWindow, Menu, Notification, Tray, dialog, ipcMain, powerMonitor, screen, shell } from "electron";
 import { spawn } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
@@ -7,8 +7,17 @@ import { getClaudeUsage } from "./claude-usage.js";
 import { getCliSessionStatus } from "./cli-session.js";
 import { createClaudeOAuthEnvironment, getClaudeOAuthEnvironmentResetCommands } from "./claude-oauth-env.js";
 import { ensureClaudeStatusLine, getClaudeStatusLineSnapshotPath } from "./claude-statusline.js";
-import { getCodexUsage, killAllActiveChildProcesses, setAppVersion } from "./codex-usage.js";
+import {
+  getCodexPathStatus,
+  getCodexUsage,
+  killAllActiveChildProcesses,
+  setAppVersion,
+  setCodexExecutablePath,
+  validateCodexExecutablePath,
+  type CodexPathStatus
+} from "./codex-usage.js";
 import { isDeveloperMode, loadDeveloperEnv } from "./dev-mode.js";
+import { defaultProviderSettings, loadProviderSettings, saveProviderSettings, type ProviderSettings } from "./provider-settings.js";
 import {
   deleteAccountAlias,
   deleteAllAccountAliases,
@@ -52,6 +61,9 @@ let overlayWindow: BrowserWindow | null = null;
 let tray: Tray | null = null;
 let overlaySettings: OverlaySettings = defaultOverlaySettings;
 let notificationSettings: NotificationSettings = defaultNotificationSettings;
+let providerSettings: ProviderSettings = defaultProviderSettings;
+let codexPathConnection: CodexPathStatus["connection"] = "unchecked";
+let codexPathDetail: string | undefined;
 let isQuitting = false;
 let usagePromise: ReturnType<typeof getCodexUsage> | null = null;
 let usageCache: Awaited<ReturnType<typeof getCodexUsage>> | null = null;
@@ -428,6 +440,74 @@ function readCodexUsageShared() {
   }
 
   return usagePromise;
+}
+
+function invalidateCodexCache() {
+  usageCache = null;
+  usageCacheTime = 0;
+  usagePromise = null;
+}
+
+function readCodexPathSettings() {
+  return getCodexPathStatus(codexPathConnection, codexPathDetail);
+}
+
+async function applyCodexExecutablePath(candidate: string) {
+  const validation = await validateCodexExecutablePath(candidate);
+  if (!validation.ok) {
+    return { ok: false, canceled: false, status: readCodexPathSettings(), detail: validation.detail };
+  }
+
+  try {
+    providerSettings = saveProviderSettings({ ...providerSettings, codexExecutablePath: candidate.trim() });
+    setCodexExecutablePath(providerSettings.codexExecutablePath);
+    codexPathConnection = validation.connection;
+    codexPathDetail = validation.detail;
+    invalidateCodexCache();
+    const usage = await readCodexUsageShared();
+    return { ok: true, canceled: false, status: readCodexPathSettings(), usage };
+  } catch {
+    return {
+      ok: false,
+      canceled: false,
+      status: readCodexPathSettings(),
+      detail: "Codex 경로 설정을 저장하지 못했습니다."
+    };
+  }
+}
+
+async function selectCodexExecutablePath() {
+  const options: Electron.OpenDialogOptions = {
+    title: "Codex 실행 파일 선택",
+    properties: ["openFile"],
+    filters: [{ name: "Codex 실행 파일", extensions: ["exe"] }]
+  };
+  const result = mainWindow
+    ? await dialog.showOpenDialog(mainWindow, options)
+    : await dialog.showOpenDialog(options);
+  if (result.canceled || result.filePaths.length === 0) {
+    return { ok: false, canceled: true, status: readCodexPathSettings() };
+  }
+  return applyCodexExecutablePath(result.filePaths[0]);
+}
+
+async function resetCodexExecutablePath() {
+  try {
+    providerSettings = saveProviderSettings({ ...providerSettings, codexExecutablePath: null });
+    setCodexExecutablePath(null);
+    codexPathConnection = "unchecked";
+    codexPathDetail = "Codex 실행 경로를 자동으로 탐색합니다.";
+    invalidateCodexCache();
+    const usage = await readCodexUsageShared();
+    return { ok: usage.ok, canceled: false, status: readCodexPathSettings(), usage };
+  } catch {
+    return {
+      ok: false,
+      canceled: false,
+      status: readCodexPathSettings(),
+      detail: "자동 경로 설정을 저장하지 못했습니다."
+    };
+  }
 }
 
 function readClaudeUsageShared(force = false) {
@@ -1209,6 +1289,8 @@ if (!gotSingleInstanceLock) {
     initializeAccountAliases(app.getPath("userData"));
     notificationSettings = initializeNotificationSettings(app.getPath("userData"));
     initializeQuotaAlertState(app.getPath("userData"));
+    providerSettings = loadProviderSettings();
+    setCodexExecutablePath(providerSettings.codexExecutablePath);
     loadOverlaySettings();
     installKoreanMenu();
     createTray();
@@ -1218,6 +1300,10 @@ if (!gotSingleInstanceLock) {
     ipcMain.handle("gemini-usage:read", (_event, force?: boolean) => readGeminiUsageShared(Boolean(force)));
     ipcMain.handle("cli-session:read", (_event, force?: boolean) => readCliSessionShared(Boolean(force)));
     ipcMain.handle("developer-mode:read", () => ({ enabled: isDeveloperMode() }));
+    ipcMain.handle("codex-path:read", () => readCodexPathSettings());
+    ipcMain.handle("codex-path:select", (event) => isMainWindowSender(event) ? selectCodexExecutablePath() : { ok: false, canceled: true, status: readCodexPathSettings() });
+    ipcMain.handle("codex-path:update", (event, candidate: string) => isMainWindowSender(event) ? applyCodexExecutablePath(candidate) : { ok: false, canceled: false, status: readCodexPathSettings() });
+    ipcMain.handle("codex-path:reset", (event) => isMainWindowSender(event) ? resetCodexExecutablePath() : { ok: false, canceled: false, status: readCodexPathSettings() });
     ipcMain.handle("claude-login:start", () => startClaudeLogin());
     ipcMain.handle("gemini-login:start", () => startGeminiLogin());
     ipcMain.handle("gemini-apps-login:start", (_event, bounds?: Partial<GeminiViewBounds>) => startGeminiAppsLogin(bounds));

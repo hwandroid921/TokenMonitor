@@ -51,6 +51,39 @@ export type CodexUsageResult =
       updatedAt: string;
     };
 
+export type CodexExecutableSource =
+  | "manual"
+  | "environment"
+  | "local-direct"
+  | "local-versioned"
+  | "windows-apps"
+  | "path"
+  | "none";
+
+export type CodexPathStatus = {
+  configuredPath: string | null;
+  activePath: string | null;
+  source: CodexExecutableSource;
+  desktopInstalled: boolean;
+  executableFound: boolean;
+  configuredPathValid: boolean | null;
+  connection: "unchecked" | "connected" | "failed";
+  detail: string;
+  checkedAt: string;
+};
+
+export type CodexPathUpdateResult = {
+  ok: boolean;
+  canceled: boolean;
+  status: CodexPathStatus;
+  detail?: string;
+  usage?: CodexUsageResult;
+};
+
+export type DeveloperModeInfo = {
+  enabled: boolean;
+};
+
 export type ProviderId = "codex" | "claude" | "gemini";
 
 export type CliSessionStatus = {
@@ -209,6 +242,11 @@ declare global {
       getClaudeUsage: (force?: boolean) => Promise<ClaudeUsageResult>;
       getGeminiUsage: (force?: boolean) => Promise<GeminiUsageResult>;
       getCliSessionStatus: (force?: boolean) => Promise<CliSessionResult>;
+      getDeveloperMode: () => Promise<DeveloperModeInfo>;
+      getCodexPathStatus: () => Promise<CodexPathStatus>;
+      selectCodexExecutablePath: () => Promise<CodexPathUpdateResult>;
+      updateCodexExecutablePath: (candidate: string) => Promise<CodexPathUpdateResult>;
+      resetCodexExecutablePath: () => Promise<CodexPathUpdateResult>;
       startClaudeLogin: () => Promise<{ ok: boolean; command: string; skipped?: boolean; detail?: string }>;
       startGeminiLogin: () => Promise<{ ok: boolean; command: string; skipped?: boolean; detail?: string }>;
       startGeminiAppsLogin: (bounds?: Partial<GeminiViewBounds>) => Promise<{ ok: boolean; detail?: string }>;
