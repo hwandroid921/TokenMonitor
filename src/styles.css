@@ -1125,15 +1125,21 @@ body.overlay-body #root {
 
 .overlay-root {
   --overlay-text: rgba(255, 255, 255, 0.5);
+  display: flex;
+  align-items: flex-end;
   width: 100vw;
   min-height: 100vh;
   background: transparent !important;
 }
 
+.overlay-root.position-editing {
+  -webkit-app-region: drag;
+}
+
 .overlay-card {
   display: block;
   width: 100%;
-  min-height: 100%;
+  min-height: 0;
   padding: 10px 14px;
   color: var(--overlay-text);
   background: transparent !important;
@@ -1141,6 +1147,23 @@ body.overlay-body #root {
   border-radius: 0;
   box-shadow: none;
   backdrop-filter: none;
+}
+
+.overlay-position-finish {
+  position: absolute;
+  top: 8px;
+  left: 8px;
+  z-index: 1;
+  -webkit-app-region: no-drag;
+  padding: 6px 9px;
+  color: #fff;
+  background: rgba(0, 0, 0, 0.72);
+  border: 1px solid rgba(255, 255, 255, 0.8);
+  border-radius: 4px;
+  font: inherit;
+  font-size: 13px;
+  font-weight: 700;
+  cursor: pointer;
 }
 
 .overlay-provider-list {

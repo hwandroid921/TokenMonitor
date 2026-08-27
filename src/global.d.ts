@@ -254,6 +254,14 @@ export type OverlaySettings = {
   showRemaining: boolean;
   showReset: boolean;
   opacity: number;
+  position: OverlayPosition;
+};
+
+export type OverlayPosition = {
+  mode: "default" | "custom";
+  displayId?: number;
+  right?: number;
+  bottom?: number;
 };
 
 export type ProviderDisplaySettings = {
@@ -304,6 +312,10 @@ declare global {
       getOverlaySettings: () => Promise<OverlaySettings>;
       updateOverlaySettings: (settings: OverlaySettings) => Promise<OverlaySettings>;
       resizeOverlay: (size: { width?: number; height?: number }) => Promise<{ ok: boolean }>;
+      getOverlayPositioning: () => Promise<boolean>;
+      beginOverlayPositioning: () => Promise<{ ok: boolean }>;
+      finishOverlayPositioning: () => Promise<{ ok: boolean }>;
+      resetOverlayPosition: () => Promise<OverlaySettings>;
       getNotificationSettings: () => Promise<NotificationSettings>;
       updateNotificationSettings: (settings: NotificationSettings) => Promise<NotificationSettings>;
       sendTestNotification: () => Promise<{ ok: boolean }>;
@@ -314,6 +326,7 @@ declare global {
       deleteAllAccountAliases: () => Promise<{ ok: boolean }>;
       onAccountAliasesChanged: (callback: (aliases: AccountAliasView[]) => void) => () => void;
       onOverlaySettingsChanged: (callback: (settings: OverlaySettings) => void) => () => void;
+      onOverlayPositioningChanged: (callback: (isPositioning: boolean) => void) => () => void;
       onNotificationSettingsChanged: (callback: (settings: NotificationSettings) => void) => () => void;
       onExitConfirmRequested: (callback: () => void) => () => void;
       onUsageRefreshRequested: (callback: () => void) => () => void;

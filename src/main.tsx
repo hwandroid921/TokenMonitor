@@ -95,7 +95,8 @@ const defaultOverlaySettings: OverlaySettings = {
   showUsed: true,
   showRemaining: true,
   showReset: true,
-  opacity: 50
+  opacity: 50,
+  position: { mode: "default" }
 };
 
 const availableNotificationThresholds = [5, 10, 15, 20, 25, 30, 35, 40, 45, 50];
@@ -216,6 +217,25 @@ function App() {
     } finally {
       setIsSettingsSaving(false);
     }
+  }
+
+  async function beginOverlayPositioning() {
+    if (!window.tokenMonitor?.beginOverlayPositioning) {
+      setSettingsNotice("오버레이 위치 조정 기능을 사용할 수 없습니다.");
+      return;
+    }
+    const result = await window.tokenMonitor.beginOverlayPositioning();
+    setSettingsNotice(result.ok ? "오버레이를 드래그한 뒤 오버레이의 완료 버튼을 누르세요." : "오버레이 위치 조정을 시작하지 못했습니다.");
+  }
+
+  async function resetOverlayPosition() {
+    if (!window.tokenMonitor?.resetOverlayPosition) {
+      setSettingsNotice("오버레이 위치를 초기화할 수 없습니다.");
+      return;
+    }
+    const saved = await window.tokenMonitor.resetOverlayPosition();
+    setOverlaySettings(saved);
+    setSettingsNotice("오버레이 위치를 기본 화면 우측 하단으로 되돌렸습니다.");
   }
 
   async function saveNotificationSettings(patch: Partial<NotificationSettings>) {
@@ -644,6 +664,8 @@ function App() {
             <SettingsPanel
               settings={overlaySettings}
               onChange={updateOverlaySettings}
+              onBeginOverlayPositioning={beginOverlayPositioning}
+              onResetOverlayPosition={resetOverlayPosition}
               notice={settingsNotice}
               isSaving={isSettingsSaving}
               notificationSettings={notificationSettings}
@@ -1059,6 +1081,8 @@ function defaultProviderFields(provider: ProviderUsage): ProviderField[] {
 function SettingsPanel({
   settings,
   onChange,
+  onBeginOverlayPositioning,
+  onResetOverlayPosition,
   notice,
   isSaving,
   notificationSettings,
@@ -1073,6 +1097,8 @@ function SettingsPanel({
 }: {
   settings: OverlaySettings;
   onChange: (settings: OverlaySettings) => void;
+  onBeginOverlayPositioning: () => Promise<void>;
+  onResetOverlayPosition: () => Promise<void>;
   notice: string | null;
   isSaving: boolean;
   notificationSettings: NotificationSettings;
@@ -1117,6 +1143,17 @@ function SettingsPanel({
         <input type="checkbox" checked={settings.enabled} disabled={isSaving} onChange={(event) => update({ enabled: event.target.checked })} />
         <span>오버레이 켜기</span>
       </label>
+
+      <section className="setting-group overlay-position-settings" aria-labelledby="overlay-position-heading">
+        <div>
+          <h2 id="overlay-position-heading">오버레이 위치</h2>
+          <p>위치 조정 중에는 오버레이를 드래그할 수 있습니다. 완료하면 클릭 통과 상태로 돌아갑니다.</p>
+        </div>
+        <div className="button-row">
+          <button className="secondary-button" type="button" disabled={isSaving || !settings.enabled} onClick={() => void onBeginOverlayPositioning()}>위치 조정</button>
+          <button className="text-button" type="button" disabled={isSaving} onClick={() => void onResetOverlayPosition()}>우측 하단으로 되돌리기</button>
+        </div>
+      </section>
 
       <label className="switch-row">
         <input type="checkbox" checked={settings.closeToTray} disabled={isSaving} onChange={(event) => update({ closeToTray: event.target.checked })} />
@@ -1437,6 +1474,7 @@ function OverlayApp() {
   const [cliSessions, setCliSessions] = useState<CliSessionResult | null>(null);
   const [settings, setSettings] = useState<OverlaySettings>(defaultOverlaySettings);
   const [notificationSettings, setNotificationSettings] = useState<NotificationSettings>(defaultNotificationSettings);
+  const [isPositioning, setIsPositioning] = useState(false);
   const [fontScale, setFontScale] = useState(1);
   const contentRef = useRef<HTMLElement | null>(null);
   const refreshRequestRef = useRef(0);
@@ -1464,6 +1502,12 @@ function OverlayApp() {
   useEffect(() => {
     void window.tokenMonitor?.getNotificationSettings().then(setNotificationSettings);
     const unsubscribe = window.tokenMonitor?.onNotificationSettingsChanged(setNotificationSettings);
+    return () => unsubscribe?.();
+  }, []);
+
+  useEffect(() => {
+    void window.tokenMonitor?.getOverlayPositioning().then(setIsPositioning);
+    const unsubscribe = window.tokenMonitor?.onOverlayPositioningChanged(setIsPositioning);
     return () => unsubscribe?.();
   }, []);
 
@@ -1517,7 +1561,7 @@ function OverlayApp() {
           setFontScale(nextScale);
           return;
         }
-        void window.tokenMonitor?.resizeOverlay({ width: 620, height: content.scrollHeight + 20 });
+        void window.tokenMonitor?.resizeOverlay({ width: 620, height: content.scrollHeight });
       });
     };
 
@@ -1528,18 +1572,18 @@ function OverlayApp() {
       observer.disconnect();
       window.cancelAnimationFrame(frameId);
     };
-  }, [providers, fontScale]);
+  }, [providers, settings, fontScale, isPositioning]);
 
   return (
     <main
-      className="overlay-root"
-      ref={contentRef}
+      className={`overlay-root${isPositioning ? " position-editing" : ""}`}
       style={{
         "--overlay-heading-size": `${Math.round(56 * fontScale)}px`,
         "--overlay-detail-size": `${Math.round(48 * fontScale)}px`
       } as React.CSSProperties}
     >
-      <section className="overlay-card">
+      <section className="overlay-card" ref={contentRef}>
+        {isPositioning ? <button className="overlay-position-finish" type="button" onClick={() => void window.tokenMonitor?.finishOverlayPositioning()}>위치 조정 완료</button> : null}
         <div className="overlay-provider-list">
           {providers.length === 0 ? (
             <p className="overlay-muted">표시할 서비스 없음</p>
@@ -2327,6 +2371,7 @@ function formatCodexPathForDisplay(value: string | null | undefined) {
   if (!value) {
     return "확인되지 않음";
   }
+
   return value.replace(/^(.*?[\\/]Users[\\/])[^\\/]+/i, "$1***");
 }
 

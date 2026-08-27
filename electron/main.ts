@@ -63,6 +63,7 @@ const isDev = process.env.VITE_DEV_SERVER_URL || !app.isPackaged;
 const preloadPath = path.join(__dirname, "../electron/preload.cjs");
 let mainWindow: BrowserWindow | null = null;
 let overlayWindow: BrowserWindow | null = null;
+let isOverlayPositioning = false;
 let tray: Tray | null = null;
 let overlaySettings: OverlaySettings = defaultOverlaySettings;
 let notificationSettings: NotificationSettings = defaultNotificationSettings;
@@ -356,10 +357,12 @@ function createOverlayWindow() {
 
   overlayWindow.on("closed", () => {
     overlayWindow = null;
+    isOverlayPositioning = false;
   });
 
   overlayWindow.webContents.once("did-finish-load", () => {
     overlayWindow?.webContents.send("overlay-settings:changed", overlaySettings);
+    overlayWindow?.webContents.send("overlay-positioning:changed", isOverlayPositioning);
   });
 
   return overlayWindow;
@@ -370,17 +373,83 @@ function positionOverlayWindow() {
     return;
   }
 
-  const display = screen.getPrimaryDisplay();
+  const display = getOverlayDisplay();
   const area = display.workArea;
-  const margin = 4;
   const [width, height] = overlayWindow.getSize();
+  const { right, bottom } = getOverlayOffsets(area, width, height);
 
   overlayWindow.setBounds({
-    x: area.x + area.width - width - margin,
-    y: area.y + area.height - height - margin,
+    x: area.x + area.width - width - right,
+    y: area.y + area.height - height - bottom,
     width,
     height
   });
+}
+
+function getOverlayDisplay() {
+  if (overlaySettings.position.mode === "custom" && overlaySettings.position.displayId !== undefined) {
+    const savedDisplay = screen.getAllDisplays().find((display) => display.id === overlaySettings.position.displayId);
+    if (savedDisplay) {
+      return savedDisplay;
+    }
+  }
+  return screen.getPrimaryDisplay();
+}
+
+function getOverlayOffsets(area: Electron.Rectangle, width: number, height: number) {
+  const defaultMargin = 4;
+  const maximumRight = Math.max(defaultMargin, area.width - width - defaultMargin);
+  const maximumBottom = Math.max(defaultMargin, area.height - height - defaultMargin);
+  const right = overlaySettings.position.mode === "custom" ? overlaySettings.position.right ?? defaultMargin : defaultMargin;
+  const bottom = overlaySettings.position.mode === "custom" ? overlaySettings.position.bottom ?? defaultMargin : defaultMargin;
+  return {
+    right: Math.min(Math.max(defaultMargin, right), maximumRight),
+    bottom: Math.min(Math.max(defaultMargin, bottom), maximumBottom)
+  };
+}
+
+function beginOverlayPositioning() {
+  const window = createOverlayWindow();
+  isOverlayPositioning = true;
+  window.setIgnoreMouseEvents(false);
+  window.setFocusable(true);
+  window.showInactive();
+  window.webContents.send("overlay-positioning:changed", true);
+  return { ok: true };
+}
+
+function finishOverlayPositioning() {
+  if (!overlayWindow || overlayWindow.isDestroyed()) {
+    return { ok: false };
+  }
+
+  const bounds = overlayWindow.getBounds();
+  const display = screen.getDisplayMatching(bounds);
+  const area = display.workArea;
+  overlaySettings = normalizeOverlaySettings({
+    ...overlaySettings,
+    position: {
+      mode: "custom",
+      displayId: display.id,
+      right: Math.max(4, area.x + area.width - bounds.x - bounds.width),
+      bottom: Math.max(4, area.y + area.height - bounds.y - bounds.height)
+    }
+  });
+  saveOverlaySettings();
+  isOverlayPositioning = false;
+  overlayWindow.setIgnoreMouseEvents(true, { forward: true });
+  overlayWindow.setFocusable(false);
+  overlayWindow.webContents.send("overlay-positioning:changed", false);
+  overlayWindow.webContents.send("overlay-settings:changed", overlaySettings);
+  return { ok: true };
+}
+
+function resetOverlayPosition() {
+  overlaySettings = normalizeOverlaySettings({ ...overlaySettings, position: { mode: "default" } });
+  saveOverlaySettings();
+  positionOverlayWindow();
+  overlayWindow?.webContents.send("overlay-settings:changed", overlaySettings);
+  return overlaySettings;
 }
 
 function notifyAccountAliasesChanged() {
@@ -408,7 +477,7 @@ function resizeOverlayWindow(request: { width?: number; height?: number }) {
     return { ok: false };
   }
 
-  const workArea = screen.getPrimaryDisplay().workArea;
+  const workArea = getOverlayDisplay().workArea;
   const requestedWidth = Number.isFinite(request.width) ? Number(request.width) : 620;
   const requestedHeight = Number.isFinite(request.height) ? Number(request.height) : 180;
   const width = Math.max(360, Math.min(Math.round(requestedWidth), workArea.width - 8));
@@ -1502,6 +1571,10 @@ if (!gotSingleInstanceLock) {
       return overlaySettings;
     });
     ipcMain.handle("overlay:resize", (event, request: { width?: number; height?: number }) => isOverlayWindowSender(event) ? resizeOverlayWindow(request) : { ok: false });
+    ipcMain.handle("overlay-positioning:read", (event) => isOverlayWindowSender(event) ? isOverlayPositioning : false);
+    ipcMain.handle("overlay:begin-positioning", (event) => isMainWindowSender(event) ? beginOverlayPositioning() : { ok: false });
+    ipcMain.handle("overlay:finish-positioning", (event) => isOverlayWindowSender(event) ? finishOverlayPositioning() : { ok: false });
+    ipcMain.handle("overlay:reset-position", (event) => isMainWindowSender(event) ? resetOverlayPosition() : overlaySettings);
     ipcMain.handle("notification-settings:read", (event) => isAppWindowSender(event) ? notificationSettings : defaultNotificationSettings);
     ipcMain.handle("notification-settings:update", (event, nextSettings: Partial<NotificationSettings>) => {
       if (!isMainWindowSender(event)) {
