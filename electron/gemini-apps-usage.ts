@@ -222,6 +222,14 @@ export function writeGeminiAppsUsageCache(usage: GeminiAppsUsage) {
   fs.writeFileSync(getCachePath(), JSON.stringify(usage, null, 2), "utf8");
 }
 
+export function clearGeminiAppsUsageCache() {
+  try {
+    fs.rmSync(getCachePath(), { force: true });
+  } catch {
+    // A missing or locked cache will be replaced after the next successful capture.
+  }
+}
+
 export function writeGeminiAppsSessionStatus(status: GeminiAppsSessionStatus) {
   fs.mkdirSync(app.getPath("userData"), { recursive: true });
   fs.writeFileSync(getSessionPath(), JSON.stringify(status, null, 2), "utf8");

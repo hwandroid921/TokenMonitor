@@ -84,30 +84,22 @@ input {
 }
 
 .brand-mark {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
   width: 40px;
   height: 40px;
-  color: #17211d;
-  background: #c6f36d;
   border-radius: 8px;
+  overflow: hidden;
 }
 
-.brand strong,
-.brand span {
+.brand-mark img {
   display: block;
+  width: 100%;
+  height: 100%;
 }
 
 .brand strong {
+  display: block;
   color: #171a17;
   font-size: 18px;
-}
-
-.brand span {
-  margin-top: 2px;
-  color: #68716a;
-  font-size: 13px;
 }
 
 .header-actions {
@@ -750,6 +742,264 @@ h2 {
   border-color: #f1cccc;
 }
 
+.notification-settings {
+  gap: 14px;
+}
+
+.notification-settings-heading {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 14px;
+}
+
+.notification-settings-heading p,
+.notification-help {
+  margin-top: 4px;
+  color: #68716a;
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+.notification-settings fieldset {
+  display: grid;
+  gap: 10px;
+  min-width: 0;
+  margin: 0;
+  padding: 12px;
+  border: 1px solid #e1e5dc;
+  border-radius: 8px;
+}
+
+.notification-settings fieldset:disabled {
+  opacity: 0.5;
+}
+
+.notification-settings legend {
+  padding: 0 5px;
+  color: #26322c;
+  font-size: 13px;
+  font-weight: 850;
+}
+
+.notification-subheading {
+  margin-top: 5px;
+  color: #26322c;
+  font-size: 13px;
+}
+
+.threshold-grid {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(58px, 1fr));
+  gap: 7px;
+}
+
+.threshold-grid label {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  min-height: 36px;
+  padding: 0 8px;
+  color: #4e584f;
+  background: #f7f9f4;
+  border: 1px solid #dfe5da;
+  border-radius: 7px;
+  cursor: pointer;
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.threshold-grid label.selected {
+  color: #1f4b38;
+  background: #e9f5e5;
+  border-color: #99bd89;
+}
+
+.account-alias-manager {
+  padding: 16px;
+  background: #f5f8f3;
+  border: 1px solid #dfe7dc;
+  border-radius: 8px;
+}
+
+.account-alias-heading,
+.account-provider-heading {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.account-provider-heading span,
+.account-empty {
+  margin-top: 4px;
+  color: #68716a;
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+.account-alias-notice {
+  padding: 10px 12px;
+  border-radius: 8px;
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+.account-alias-notice {
+  color: #315844;
+  background: #edf6ed;
+  border: 1px solid #d7e8d7;
+}
+
+.account-provider-list,
+.account-record-list {
+  display: grid;
+  gap: 10px;
+}
+
+.account-provider-list {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.account-provider-card {
+  display: grid;
+  align-content: start;
+  gap: 10px;
+  min-width: 0;
+  padding: 12px;
+  background: #ffffff;
+  border: 1px solid #e1e6dd;
+  border-radius: 8px;
+}
+
+.account-provider-card h3 {
+  margin: 0;
+  color: #20231f;
+  font-size: 14px;
+}
+
+.account-record {
+  display: grid;
+  gap: 10px;
+  padding: 11px;
+  background: #fafbf8;
+  border: 1px solid #e5eadf;
+  border-radius: 8px;
+}
+
+.account-record.current {
+  border-color: #abc7b6;
+  box-shadow: inset 3px 0 0 #47745f;
+}
+
+.account-record-identity {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 7px;
+  min-width: 0;
+}
+
+.account-current-badge {
+  padding: 3px 6px;
+  color: #315844;
+  background: #e3f1e6;
+  border-radius: 999px;
+  font-size: 10px;
+  font-weight: 850;
+}
+
+.account-identity-fields {
+  display: grid;
+  gap: 5px;
+  width: 100%;
+  margin: 0;
+}
+
+.account-identity-fields div {
+  display: grid;
+  grid-template-columns: 64px minmax(0, 1fr);
+  gap: 8px;
+}
+
+.account-identity-fields dt {
+  color: #68716a;
+  font-size: 11px;
+  font-weight: 750;
+}
+
+.account-identity-fields dd {
+  min-width: 0;
+  margin: 0;
+  overflow: hidden;
+  color: #26322c;
+  font-size: 12px;
+  font-weight: 750;
+  text-overflow: ellipsis;
+}
+
+.account-record label {
+  display: grid;
+  gap: 5px;
+  color: #4e584f;
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.account-record input {
+  width: 100%;
+  min-height: 36px;
+  padding: 0 10px;
+  color: #20231f;
+  background: #ffffff;
+  border: 1px solid #cfd8cd;
+  border-radius: 7px;
+}
+
+.account-record input:focus-visible {
+  border-color: #315844;
+  outline: 3px solid rgba(49, 88, 68, 0.18);
+}
+
+.account-record-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 7px;
+}
+
+.danger-outline-button,
+.text-button {
+  cursor: pointer;
+  font: inherit;
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.danger-outline-button {
+  min-height: 34px;
+  padding: 0 10px;
+  color: #8a1f22;
+  background: #ffffff;
+  border: 1px solid #e1b8b9;
+  border-radius: 7px;
+}
+
+.text-button {
+  padding: 3px;
+  background: transparent;
+  border: 0;
+}
+
+.danger-text {
+  color: #8a1f22;
+}
+
+.danger-outline-button:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
+}
+
 .visually-hidden {
   position: absolute;
   width: 1px;
@@ -795,13 +1045,6 @@ h2 {
   font-weight: 700;
 }
 
-.overlay-opacity-note {
-  margin: 0;
-  color: #68716a;
-  font-size: 13.5px;
-  font-weight: 750;
-}
-
 .spinning {
   animation: spin 1s linear infinite;
 }
@@ -820,6 +1063,10 @@ h2 {
   .check-list.compact {
     grid-template-columns: repeat(3, minmax(0, 1fr));
   }
+
+  .account-provider-list {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
 }
 
 @media (max-width: 760px) {
@@ -837,6 +1084,19 @@ h2 {
 
   .check-list.compact {
     grid-template-columns: 1fr;
+  }
+
+  .threshold-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .account-provider-list {
+    grid-template-columns: 1fr;
+  }
+
+  .account-alias-heading {
+    align-items: stretch;
+    flex-direction: column;
   }
 
   .collection-guide summary {
@@ -920,6 +1180,25 @@ body.overlay-body #root {
   text-shadow: none;
   font-variant-numeric: tabular-nums;
   font-feature-settings: "tnum" on, "lnum" on;
+}
+
+.overlay-remaining {
+  color: inherit;
+  font-style: normal;
+}
+
+.overlay-remaining.normal {
+  color: rgba(190, 196, 192, 0.88);
+}
+
+.overlay-remaining.warning {
+  color: rgba(255, 74, 74, 0.94);
+  -webkit-text-stroke: 1px rgba(0, 0, 0, 0.9);
+}
+
+.overlay-remaining.exhausted {
+  color: rgba(72, 76, 74, 0.96);
+  -webkit-text-stroke: 1px rgba(235, 235, 235, 0.78);
 }
 
 .overlay-provider span,
