@@ -6,13 +6,35 @@ export type CodexUsageWindow = {
   resetsAt: string | null;
 };
 
+export type AccountProvider = "codex" | "claude" | "google";
+export type AccountIdentityConfidence = "verified" | "inferred";
+
+export type AccountAliasState = {
+  detected: boolean;
+  alias: string | null;
+  aliasRequired: boolean;
+  accountChanged: boolean;
+  confidence: AccountIdentityConfidence | null;
+};
+
+export type AccountAliasView = {
+  recordId: string;
+  provider: AccountProvider;
+  maskedEmail: string;
+  alias: string | null;
+  isCurrent: boolean;
+  confidence: AccountIdentityConfidence;
+  createdAt: string;
+  lastSeenAt: string;
+};
+
 export type CodexUsageResult =
   | {
       ok: true;
       source: "codex-app-server";
       accountType: string | null;
       planType: string | null;
-      maskedEmail: string | null;
+      account: AccountAliasState;
       weekly: CodexUsageWindow | null;
       periodic: CodexUsageWindow | null;
       credits: {
@@ -37,7 +59,7 @@ export type CliSessionStatus = {
   installed: boolean;
   loggedIn: boolean;
   authMethod: string | null;
-  maskedEmail: string | null;
+  account: AccountAliasState;
   detail: string;
   checkedAt: string;
 };
@@ -112,7 +134,7 @@ export type GeminiUsageResult =
       ok: true;
       source: "antigravity-cli-google" | "antigravity-cli-local" | "antigravity-local" | "gemini-cli-oauth";
       planType: string | null;
-      maskedEmail: string | null;
+      account: AccountAliasState;
       promptCredits: {
         available: number | null;
         monthly: number | null;
@@ -138,6 +160,7 @@ export type GeminiUsageResult =
       ok: false;
       source: "antigravity-cli-google" | "antigravity-cli-local" | "antigravity-local" | "gemini-cli-oauth";
       error: string;
+      account: AccountAliasState;
       geminiApps: GeminiAppsUsage | null;
       geminiAppsSession: GeminiAppsSessionStatus;
       updatedAt: string;
@@ -165,6 +188,19 @@ export type ProviderDisplaySettings = {
   showReset: boolean;
 };
 
+export type AlertProviderId = "codex" | "claude" | "antigravity";
+
+export type NotificationSettings = {
+  enabled: boolean;
+  windowsNotifications: boolean;
+  alwaysOnTopAlerts: boolean;
+  overlayWarnings: boolean;
+  notifyExhausted: boolean;
+  notifyReset: boolean;
+  thresholds: number[];
+  providers: Record<AlertProviderId, boolean>;
+};
+
 declare global {
   interface Window {
     tokenMonitor?: {
@@ -185,7 +221,17 @@ declare global {
       getOverlaySettings: () => Promise<OverlaySettings>;
       updateOverlaySettings: (settings: OverlaySettings) => Promise<OverlaySettings>;
       resizeOverlay: (size: { width?: number; height?: number }) => Promise<{ ok: boolean }>;
+      getNotificationSettings: () => Promise<NotificationSettings>;
+      updateNotificationSettings: (settings: NotificationSettings) => Promise<NotificationSettings>;
+      sendTestNotification: () => Promise<{ ok: boolean }>;
+      listAccountAliases: () => Promise<AccountAliasView[]>;
+      renameAccountAlias: (recordId: string, alias: string) => Promise<{ ok: boolean; detail?: string; account?: AccountAliasView | null }>;
+      deleteAccountAlias: (recordId: string) => Promise<{ ok: boolean; detail?: string }>;
+      deleteProviderAliases: (provider: AccountProvider) => Promise<{ ok: boolean }>;
+      deleteAllAccountAliases: () => Promise<{ ok: boolean }>;
+      onAccountAliasesChanged: (callback: (aliases: AccountAliasView[]) => void) => () => void;
       onOverlaySettingsChanged: (callback: (settings: OverlaySettings) => void) => () => void;
+      onNotificationSettingsChanged: (callback: (settings: NotificationSettings) => void) => () => void;
       onExitConfirmRequested: (callback: () => void) => () => void;
       onUsageRefreshRequested: (callback: () => void) => () => void;
       onGeminiViewClosed: (callback: (payload: { reason: "login-complete" | "usage-complete" | "manual" | "hidden" }) => void) => () => void;

@@ -80,6 +80,10 @@ npx electron-builder --win dir --x64 --publish never --config.win.signAndEditExe
 - For feature additions, feature fixes, documentation work, and instruction work, review the relevant version history before finishing.
 - If the work requires a version update, perform the version update immediately as part of the same task.
 - After `v1.0.0`, manage releases with matching Git tags and remote release entries.
+- For every `MINOR` or `MAJOR` app/exe release, automatically complete the release delivery workflow: update version files and release history, verify and package, commit, push the feature branch, and create the required PR. Do not wait for a separate upload or PR request.
+- A `MINOR` or `MAJOR` release must include portable packaging and cleanup of prior versioned portable executables. After the new executable and SHA256 hash are verified, remove only older `TokenMonitor-*-x64.exe` artifacts from `dist-app/` and any user-designated release delivery directory, while preserving the current release artifact.
+- After a `MINOR` or `MAJOR` release commit has been merged to the stable release branch, automatically create and push the matching `vMAJOR.MINOR.PATCH` tag and create the matching GitHub Release. Do not tag or publish an unmerged feature branch.
+- For a `PATCH` release, push/PR, tag, GitHub Release, and portable packaging remain opt-in unless the user explicitly requests them or a more specific release instruction applies.
 - Keep document versioning, project milestone versioning, and app/exe release versioning distinct.
 - The app/exe release version remains managed by `package.json` and `package-lock.json`.
 - The project milestone version and release history remain managed by `docs/RELEASE_VERSION_POLICY.md`.
@@ -165,7 +169,7 @@ Get-Process -Id <PID> -ErrorAction SilentlyContinue | Stop-Process -Force
 - For patch-level changes such as `0.3.1`, `0.3.2`, or `0.3.3`, skip portable packaging by default even when code changed.
 - For documentation-only or instruction-only work, skip packaging unless the user explicitly asks for a new executable.
 - When the app/exe version changes and the user requested unpacked exe refreshes, regenerate `dist-app/win-unpacked`.
-- When creating a portable executable for a higher version, remove older versioned executables first so `dist-app/` keeps only the latest portable exe.
+- When creating a portable executable for a higher `MINOR` or `MAJOR` version, verify the new executable and SHA256 hash first, then remove older versioned executables so `dist-app/` and any user-designated release delivery directory keep only the latest portable exe.
 
 PowerShell cleanup example:
 
@@ -247,6 +251,17 @@ Korean commit messages are allowed when they are clearer. Examples:
 ```
 
 When the user asks for remote upload work, proceed through commit, push, and pull request creation.
+
+For a `MINOR` or `MAJOR` release, treat the remote delivery sequence as part of the implementation work even when the user does not separately ask for upload:
+
+1. Run the required portable packaging and verify the new executable and SHA256 hash.
+2. Remove only older versioned portable artifacts from the explicit release output locations after verification succeeds.
+3. Commit and push the release branch.
+4. Create a PR to the required integration branch.
+5. After the release commit is merged to the stable release branch, create and push the matching annotated Git tag.
+6. Create the GitHub Release from that tag, including concise summary, verification, and artifact/hash details.
+
+Never create a release tag or GitHub Release for a feature branch or an unmerged PR. If the merge has not occurred, finish by reporting the PR and that the tag/release is pending the stable-branch merge.
 
 Remote upload commit message format:
 

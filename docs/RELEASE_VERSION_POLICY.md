@@ -60,6 +60,10 @@ Documentation-only or instruction-only changes do not require an app/exe version
 
 Portable executable packaging is performed only for milestone release versions such as `0.3.0`, `0.4.0`, and later `MINOR.0` or `MAJOR.0` release points. Patch releases such as `0.3.1`, `0.3.2`, and `0.3.3` do not produce a portable executable by default unless explicitly requested.
 
+For every `MINOR` or `MAJOR` release, release delivery is automatic: update the version files and Release History, run verification and required portable packaging, verify the executable and SHA256 hash, remove prior versioned portable executables from the explicit release output locations, commit, push the release branch, and create the PR without requiring a separate upload request. After the release commit is merged to the stable release branch, create and push the matching Git tag and create the matching GitHub Release. Tags and GitHub Releases must never be created from an unmerged feature branch.
+
+For `PATCH` releases, remote upload, PR creation, tagging, GitHub Release creation, and portable packaging remain opt-in unless the user explicitly requests them.
+
 Beta/prerelease versions may produce portable artifacts when the user explicitly requests tag/release work or when the beta is intended for external validation.
 
 Before `v1.0.0`, do not maintain a fixed version-by-version feature roadmap. When work is completed, decide whether it is patch, minor, or major according to the actual change and record the completed content in Release History.
@@ -69,10 +73,10 @@ Before `v1.0.0`, do not maintain a fixed version-by-version feature roadmap. Whe
 Current package version:
 
 ```text
-1.0.0
+1.2.0
 ```
 
-`v1.0.0` is the first complete release. It includes:
+`v1.2.0` is the quota alert milestone. It adds five-minute background collection, user-selected remaining-quota thresholds, verified reset notifications, Windows and always-on-top alert channels, and optional overlay warning colors.
 
 - ChatGPT quota display through the Codex Desktop local usage flow
 - Claude quota display
@@ -120,9 +124,6 @@ After `v1.0.0`, release versions should be managed through Git releases and tags
 
 These items are candidates for releases after the initial complete `v1.0.0` milestone. They are not required for `v1.0.0` and should be scoped, versioned, and recorded only when implementation work actually begins or ships.
 
-- Notification support:
-  - Notify the user when a provider quota/reset window is refreshed or initialized.
-  - Notify the user when remaining usage drops below a user-configured threshold.
 - Additional usage and credits:
   - Track whether providers expose display-safe additional usage, purchased credits, or flexible usage balances.
   - Show extra usage/credit status only when the source clearly distinguishes it from base plan quota.
@@ -158,6 +159,7 @@ Before finishing a task:
    ```
 
 8. Verify the generated executable and SHA256 hash when packaging is performed.
+9. For `MINOR` and `MAJOR` releases, remove older `TokenMonitor-*-x64.exe` artifacts from `dist-app/` and any user-designated release delivery directory only after the current version artifact and hash have been verified. Preserve the current version artifact.
 
 ## Git Releases And Tags From v1.0.0
 
@@ -175,6 +177,8 @@ Rules:
   - verification and packaging status
 - Ensure `package.json`, `package-lock.json`, Release History, packaged artifacts, Git tag, and remote release entry all refer to the same version.
 - `v1.0.0` and every later release must have a corresponding Git tag and remote release entry.
+- For `MINOR` and `MAJOR` releases, commit/push/PR are mandatory as part of the release workflow; after stable-branch merge, tag and remote release creation are mandatory without requiring a separate user request.
+- Use the merged stable-branch commit as the tag target. Never tag a feature branch, a release candidate, or an open PR head.
 
 ## Release Notes Checklist
 
@@ -189,6 +193,90 @@ For each release-worthy version bump, summarize:
 - Known limitations
 
 ## Release History
+
+### 1.2.0 — 2026-08-27 — MINOR
+
+**Change category:** MINOR (background quota monitoring and notifications)
+
+**User-visible changes:**
+- Added five-minute background usage collection while Token Monitor remains running, including tray-only and overlay-only operation.
+- Added selectable remaining-quota thresholds from 5% through 50%, separate exhausted-quota alerts, and verified reset notifications.
+- Added independent Windows notification, 12-second always-on-top warning, and overlay color-emphasis settings with test notification support.
+- Overlay remaining values use gray at 30% or above, red below 30%, and dark gray with an explicit exhausted label at 0% when warning colors are enabled.
+
+**Provider/data-source changes:**
+- ChatGPT weekly and periodic windows, fresh Claude weekly and five-hour Status Line windows, and explicit Antigravity periodic/weekly model windows feed a display-safe normalized quota monitor.
+- Reset-time collection bypasses short-lived caches and confirms both reset-window rollover and quota recovery before notifying.
+- Gemini Apps web usage remains display-only because its manually captured text cache is not a reliable automatic notification source.
+
+**Privacy and security review:**
+- Notification settings and deduplication state store only provider/window labels, display-safe percentages, reset times, and notification signatures.
+- Raw provider payloads, tokens, account IDs, credential paths, and emails remain excluded from notification state and notification text.
+
+**Packaging notes:**
+- Package version updated to `1.2.0`.
+- Portable Windows x64 artifact `TokenMonitor-1.2.0-x64.exe` was regenerated and verified.
+- SHA256: `47E6FFC3D55215D92C5C58E711E12DE6A3F2F9309A8A3A155C0326B1C4058CC9`.
+
+**Known limitations:**
+- Background collection and notifications stop when Token Monitor is fully exited.
+- Windows native notification placement and duration remain controlled by Windows notification and focus-assist settings.
+- Claude reset confirmation waits for a fresh Claude Code Status Line snapshot after provider quota data changes.
+
+### 1.1.0 — 2026-08-27 — MINOR
+
+**Change category:** MINOR (account alias management and account-aware identity display)
+
+**User-visible changes:**
+- Dashboard and overlay account rows now show user-defined aliases and never show email addresses.
+- Settings now lists current and previously detected ChatGPT, Claude, and unified Google accounts with masked email addresses for alias assignment, rename, and deletion.
+- Newly detected accounts request an alias, while returning accounts restore their saved alias automatically.
+- Gemini Apps and Antigravity now share one Google account detection state and one user-defined display name/alias.
+
+**Provider/data-source changes:**
+- Provider email values are converted in the Electron main process into HMAC account identities and masked settings-only values before public usage results are created.
+- Gemini Apps inspects account-related accessible labels in memory to identify the signed-in Google account without persisting raw page text or raw email.
+- Gemini Apps, Antigravity local data, and OAuth fallback identities feed the same Google account identity; legacy separate Google alias records are merged by identity.
+- Antigravity local and OAuth fallback identities are treated as verified; the Gemini CLI credential fallback remains explicitly inferred.
+
+**Privacy and security review:**
+- Raw email addresses, HMAC account identities, tokens, account IDs, and raw provider payloads remain excluded from the renderer and logs.
+- Alias mappings, masked emails, and the local HMAC secret are encrypted with Electron `safeStorage` under the Windows user account.
+- Masked emails are available only through the settings account-management IPC; dashboard and overlay usage IPC results contain alias state only.
+
+**Packaging notes:**
+- Package version updated to `1.1.0`.
+- Portable Windows x64 artifact `TokenMonitor-1.1.0-x64.exe` was regenerated and verified.
+- SHA256: `8E80E115B46DCBD87461B68E376EDA862DD81E140F3A58A73F620C3582A12D53`.
+
+**Known limitations:**
+- Gemini Apps identity detection depends on Google account-related accessible labels and can report an unknown account when Google changes or omits those labels.
+- `antigravity-usage` account identity is marked inferred when only a separate Gemini CLI credential is available.
+
+---
+
+### 1.0.1 — 2026-08-25 — PATCH
+
+**Change category:** PATCH (dashboard and settings UI/UX polish)
+
+**User-visible changes:**
+- Prevented Gemini quota rows from being clipped and separated Gemini Apps from Antigravity usage information.
+- Added provider status badges, refresh feedback, recent source/detail metadata, and clearer Claude onboarding guidance.
+- Simplified settings with collapsible collection guidance, automatic-save feedback, and disabled child options for hidden providers.
+- Added a two-column intermediate layout and improved tabs, dialogs, focus visibility, keyboard navigation, and live status announcements.
+- Localized the remaining system tray menu labels in Korean.
+
+**Provider/data-source changes:**
+- No provider collection source or quota interpretation changes.
+
+**Packaging notes:**
+- Package version updated to `1.0.1`.
+- No portable executable packaged because patch releases do not produce portable artifacts by default.
+
+**Known limitations:**
+- Provider web and CLI surface changes can still require parser or guidance updates.
+
+---
 
 ### 1.0.0 — 2026-08-18 — MAJOR
 

@@ -6,7 +6,11 @@ import os from "node:os";
 import path from "node:path";
 import type { RequestOptions } from "node:https";
 import { readGeminiAppsSessionStatus, readGeminiAppsUsageCache, type GeminiAppsSessionStatus, type GeminiAppsUsage } from "./gemini-apps-usage.js";
-import { maskEmail } from "./masked-email.js";
+import {
+  getCurrentAccountState,
+  observeAccount,
+  type AccountAliasState
+} from "./account-aliases.js";
 
 // Cached once per process — Gemini CLI install location doesn't change at runtime.
 let oauthClientCache: { clientId: string; clientSecret: string } | null | undefined;
@@ -73,7 +77,7 @@ export type GeminiUsageResult =
       ok: true;
       source: AntigravityUsageSource;
       planType: string | null;
-      maskedEmail: string | null;
+      account: AccountAliasState;
       promptCredits: PromptCredits | null;
       geminiApps: GeminiAppsUsage | null;
       geminiAppsSession: GeminiAppsSessionStatus;
@@ -87,6 +91,7 @@ export type GeminiUsageResult =
       ok: false;
       source: AntigravityUsageSource;
       error: string;
+      account: AccountAliasState;
       geminiApps: GeminiAppsUsage | null;
       geminiAppsSession: GeminiAppsSessionStatus;
       updatedAt: string;
@@ -142,7 +147,7 @@ export async function getGeminiUsage(): Promise<GeminiUsageResult> {
       ok: true,
       source: "gemini-cli-oauth",
       planType: planFromCodeAssist(assist, claims.hostedDomain),
-      maskedEmail: maskEmail(claims.email),
+      account: observeAccount("google", claims.email),
       promptCredits: null,
       geminiApps: readGeminiAppsUsageCache(),
       geminiAppsSession: readGeminiAppsSessionStatus(),
@@ -162,6 +167,7 @@ function makeError(error: string, source: AntigravityUsageSource = "gemini-cli-o
     ok: false,
     source,
     error,
+    account: getCurrentAccountState("google"),
     geminiApps: readGeminiAppsUsageCache(),
     geminiAppsSession: readGeminiAppsSessionStatus(),
     updatedAt: new Date().toISOString()
@@ -197,7 +203,7 @@ async function getAntigravityLocalUsage(): Promise<GeminiUsageResult> {
       ok: true,
       source: "antigravity-local",
       planType: normalizeGeminiPlan(readAntigravityPlan(payload)) ?? "확인 필요",
-      maskedEmail: maskEmail(readAntigravityEmail(userStatus ?? payload)),
+      account: observeAccount("google", readAntigravityEmail(userStatus ?? payload)),
       promptCredits: parseLocalPromptCredits(payload),
       geminiApps: readGeminiAppsUsageCache(),
       geminiAppsSession: readGeminiAppsSessionStatus(),
@@ -819,7 +825,7 @@ async function getAntigravityCliUsage(method: "google" | "auto"): Promise<Gemini
       ok: true,
       source: resolvedSource,
       planType,
-      maskedEmail: readGeminiMaskedEmail(),
+      account: observeAccount("google", readGeminiAccountEmail(), "inferred"),
       promptCredits: parsePromptCredits(snapshot.promptCredits),
       geminiApps: readGeminiAppsUsageCache(),
       geminiAppsSession: readGeminiAppsSessionStatus(),
@@ -855,11 +861,11 @@ async function readGeminiOauthPlanType(): Promise<string> {
   }
 }
 
-function readGeminiMaskedEmail() {
+function readGeminiAccountEmail() {
   try {
     const credentials = readGeminiCredentials();
     const claims = parseJwtClaims(readString(credentials?.idToken ?? credentials?.id_token));
-    return maskEmail(claims.email);
+    return claims.email;
   } catch {
     return null;
   }

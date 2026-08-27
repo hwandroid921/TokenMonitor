@@ -2,7 +2,7 @@ import { type ChildProcess, spawn } from "node:child_process";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { maskEmail } from "./masked-email.js";
+import { observeAccount, type AccountAliasState } from "./account-aliases.js";
 
 export const activeChildProcesses = new Set<ChildProcess>();
 
@@ -83,7 +83,7 @@ export type CodexUsageSnapshot = {
   source: "codex-app-server";
   accountType: string | null;
   planType: string | null;
-  maskedEmail: string | null;
+  account: AccountAliasState;
   weekly: CodexUsageWindow | null;
   periodic: CodexUsageWindow | null;
   credits: {
@@ -213,7 +213,7 @@ export async function getCodexUsage(): Promise<CodexUsageResult> {
       source: "codex-app-server",
       accountType: accountResult?.account?.type ?? null,
       planType: accountResult?.account?.planType ?? rateLimits?.planType ?? null,
-      maskedEmail: maskEmail(accountResult?.account?.email),
+      account: observeAccount("codex", accountResult?.account?.email),
       ...classifyRateWindows([rateLimits?.primary ?? null, rateLimits?.secondary ?? null]),
       credits: makeCredits(rateLimits?.credits ?? null),
       updatedAt: new Date().toISOString()
