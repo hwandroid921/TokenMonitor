@@ -84,6 +84,50 @@ export type DeveloperModeInfo = {
   enabled: boolean;
 };
 
+export type DeveloperCheckStatus = "success" | "failed" | "skipped";
+
+export type DeveloperEnvStatus = {
+  enabled: boolean;
+  source: "process" | "env-file" | "default";
+  checkedPathCount: number;
+  loadedFileName: string | null;
+};
+
+export type DeveloperProviderDiagnostic = {
+  id: ProviderId;
+  name: string;
+  account: AccountAliasState | null;
+  userPrerequisites: string[];
+  checks: Array<{
+    method: string;
+    status: DeveloperCheckStatus;
+    detail: string;
+  }>;
+};
+
+export type DeveloperDiagnostics = {
+  enabled: boolean;
+  generatedAt: string;
+  environment: DeveloperEnvStatus;
+  totalDurationMs?: number;
+  cacheSummary?: {
+    codex: string;
+    claude: string;
+    gemini: string;
+    cliSession: string;
+  };
+  providers: DeveloperProviderDiagnostic[];
+  geminiParser: {
+    sessionLoggedIn: boolean;
+    cacheAvailable: boolean;
+    planParsed: boolean;
+    fiveHourParsed: boolean;
+    weeklyParsed: boolean;
+    detail: string | null;
+    updatedAt: string | null;
+  } | null;
+};
+
 export type ProviderId = "codex" | "claude" | "gemini";
 
 export type CliSessionStatus = {
@@ -243,6 +287,7 @@ declare global {
       getGeminiUsage: (force?: boolean) => Promise<GeminiUsageResult>;
       getCliSessionStatus: (force?: boolean) => Promise<CliSessionResult>;
       getDeveloperMode: () => Promise<DeveloperModeInfo>;
+      getDeveloperDiagnostics: () => Promise<DeveloperDiagnostics>;
       getCodexPathStatus: () => Promise<CodexPathStatus>;
       selectCodexExecutablePath: () => Promise<CodexPathUpdateResult>;
       updateCodexExecutablePath: (candidate: string) => Promise<CodexPathUpdateResult>;

@@ -16,7 +16,12 @@ import {
   validateCodexExecutablePath,
   type CodexPathStatus
 } from "./codex-usage.js";
-import { isDeveloperMode, loadDeveloperEnv } from "./dev-mode.js";
+import {
+  getDeveloperEnvStatus,
+  isDeveloperMode,
+  loadDeveloperEnv,
+  type DeveloperProviderDiagnostic
+} from "./dev-mode.js";
 import { defaultProviderSettings, loadProviderSettings, saveProviderSettings, type ProviderSettings } from "./provider-settings.js";
 import {
   deleteAccountAlias,
@@ -587,6 +592,146 @@ function readCliSessionShared(force = false) {
   }
 
   return cliSessionPromise;
+}
+
+function describeCacheAge(cacheTime: number) {
+  if (!cacheTime) {
+    return "empty";
+  }
+  const seconds = Math.round((Date.now() - cacheTime) / 1000);
+  return seconds < 60 ? `${seconds}s ago` : `${Math.round(seconds / 60)}m ago`;
+}
+
+async function readDeveloperDiagnostics() {
+  const startedAt = Date.now();
+
+  if (!isDeveloperMode()) {
+    return {
+      enabled: false,
+      generatedAt: new Date().toISOString(),
+      environment: getDeveloperEnvStatus(),
+      providers: [] as DeveloperProviderDiagnostic[],
+      geminiParser: null
+    };
+  }
+
+  const [codex, claude, gemini, sessions] = await Promise.all([
+    readCodexUsageShared(),
+    readClaudeUsageShared(true),
+    readGeminiUsageShared(true),
+    readCliSessionShared(true)
+  ]);
+
+  const codexPath = readCodexPathSettings();
+
+  const providers: DeveloperProviderDiagnostic[] = [
+    {
+      id: "codex",
+      name: "ChatGPT",
+      account: codex.ok ? codex.account : null,
+      userPrerequisites: [
+        "Codex Desktop 설치",
+        "OpenAI/ChatGPT 계정 로그인",
+        "Codex app-server 사용량 응답 가능 상태"
+      ],
+      checks: [
+        {
+          method: "Codex Desktop app-server",
+          status: codex.ok ? "success" : "failed",
+          detail: codex.ok
+            ? `plan=${codex.planType ?? "unknown"}, weekly=${codex.weekly ? `${codex.weekly.remainingPercent}%` : "none"}, periodic=${codex.periodic ? `${codex.periodic.remainingPercent}%` : "none"}`
+            : codex.error
+        },
+        {
+          method: "Codex 실행 경로",
+          status: codexPath.executableFound ? "success" : "failed",
+          detail: `source=${codexPath.source}, ${codexPath.detail}`
+        },
+        {
+          method: "Codex CLI 세션",
+          status: sessions.codex.loggedIn ? "success" : sessions.codex.installed ? "failed" : "skipped",
+          detail: sessions.codex.detail
+        }
+      ]
+    },
+    {
+      id: "claude",
+      name: "Claude",
+      account: sessions.claude.account,
+      userPrerequisites: [
+        "Node.js/npm 설치",
+        "Claude Pro/Max 이상 계정",
+        "Claude Code OAuth 로그인",
+        "Claude Code 응답 1회 이상"
+      ],
+      checks: [
+        {
+          method: "Claude CLI 세션",
+          status: sessions.claude.loggedIn ? "success" : sessions.claude.installed ? "failed" : "skipped",
+          detail: sessions.claude.detail
+        },
+        {
+          method: "Claude Code Status Line 스냅샷",
+          status: claude.ok ? "success" : "failed",
+          detail: claude.ok
+            ? `model=${claude.model?.displayName ?? claude.model?.id ?? "unknown"}, fiveHour=${claude.fiveHour ? `${claude.fiveHour.remainingPercent}%` : "none"}, weekly=${claude.sevenDay ? `${claude.sevenDay.remainingPercent}%` : "none"}, stale=${claude.stale}`
+            : claude.error
+        }
+      ]
+    },
+    {
+      id: "gemini",
+      name: "Gemini / Antigravity",
+      account: gemini.account,
+      userPrerequisites: [
+        "Gemini Apps 웹 로그인",
+        "Usage Limits 화면에서 Gemini 5시간/주간 한도 표시",
+        "Node.js/npm 설치",
+        "Antigravity CLI 로그인 또는 Antigravity 실행 상태"
+      ],
+      checks: [
+        {
+          method: "Gemini Apps Usage Limits",
+          status: gemini.geminiApps ? "success" : gemini.geminiAppsSession.loggedIn ? "failed" : "skipped",
+          detail: gemini.geminiApps
+            ? `plan=${gemini.geminiApps.plan ?? "unknown"}, fiveHour=${gemini.geminiApps.fiveHour?.remaining ?? "none"}, weekly=${gemini.geminiApps.weekly?.remaining ?? "none"}`
+            : gemini.geminiAppsSession.loggedIn
+              ? "로그인됨. 사용량 확인 버튼으로 Usage Limits 수집 필요"
+              : "Gemini 웹 로그인 필요"
+        },
+        {
+          method: gemini.ok ? `Antigravity 한도 (${gemini.source})` : "Antigravity 한도",
+          status: gemini.ok ? "success" : "failed",
+          detail: gemini.ok
+            ? `models=${gemini.models.length}, primary=${gemini.primary ? `${gemini.primary.remainingPercent}%` : "none"}, secondary=${gemini.secondary ? `${gemini.secondary.remainingPercent}%` : "none"}`
+            : gemini.error
+        }
+      ]
+    }
+  ];
+
+  return {
+    enabled: true,
+    generatedAt: new Date().toISOString(),
+    environment: getDeveloperEnvStatus(),
+    totalDurationMs: Date.now() - startedAt,
+    cacheSummary: {
+      codex: describeCacheAge(usageCacheTime),
+      claude: describeCacheAge(claudeUsageCacheTime),
+      gemini: describeCacheAge(geminiUsageCacheTime),
+      cliSession: describeCacheAge(cliSessionCacheTime)
+    },
+    providers,
+    geminiParser: {
+      sessionLoggedIn: gemini.geminiAppsSession.loggedIn,
+      cacheAvailable: Boolean(gemini.geminiApps),
+      planParsed: Boolean(gemini.geminiApps?.plan),
+      fiveHourParsed: Boolean(gemini.geminiApps?.fiveHour),
+      weeklyParsed: Boolean(gemini.geminiApps?.weekly),
+      detail: gemini.geminiApps?.detail ?? null,
+      updatedAt: gemini.geminiApps?.updatedAt ?? null
+    }
+  };
 }
 
 function startUsageMonitor() {
@@ -1300,6 +1445,7 @@ if (!gotSingleInstanceLock) {
     ipcMain.handle("gemini-usage:read", (_event, force?: boolean) => readGeminiUsageShared(Boolean(force)));
     ipcMain.handle("cli-session:read", (_event, force?: boolean) => readCliSessionShared(Boolean(force)));
     ipcMain.handle("developer-mode:read", () => ({ enabled: isDeveloperMode() }));
+    ipcMain.handle("developer-diagnostics:read", (event) => isMainWindowSender(event) ? readDeveloperDiagnostics() : { enabled: false, generatedAt: new Date().toISOString(), environment: getDeveloperEnvStatus(), providers: [], geminiParser: null });
     ipcMain.handle("codex-path:read", () => readCodexPathSettings());
     ipcMain.handle("codex-path:select", (event) => isMainWindowSender(event) ? selectCodexExecutablePath() : { ok: false, canceled: true, status: readCodexPathSettings() });
     ipcMain.handle("codex-path:update", (event, candidate: string) => isMainWindowSender(event) ? applyCodexExecutablePath(candidate) : { ok: false, canceled: false, status: readCodexPathSettings() });

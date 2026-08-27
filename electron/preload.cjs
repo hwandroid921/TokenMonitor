@@ -7,6 +7,7 @@ contextBridge.exposeInMainWorld("tokenMonitor", {
   getGeminiUsage: (force) => ipcRenderer.invoke("gemini-usage:read", force),
   getCliSessionStatus: (force) => ipcRenderer.invoke("cli-session:read", force),
   getDeveloperMode: () => ipcRenderer.invoke("developer-mode:read"),
+  getDeveloperDiagnostics: () => ipcRenderer.invoke("developer-diagnostics:read"),
   getCodexPathStatus: () => ipcRenderer.invoke("codex-path:read"),
   selectCodexExecutablePath: () => ipcRenderer.invoke("codex-path:select"),
   updateCodexExecutablePath: (candidate) => ipcRenderer.invoke("codex-path:update", candidate),

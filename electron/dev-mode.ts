@@ -1,6 +1,23 @@
 import fs from "node:fs";
 import { execFileSync } from "node:child_process";
 import path from "node:path";
+import type { AccountAliasState } from "./account-aliases.js";
+
+export type DeveloperCheckStatus = "success" | "failed" | "skipped";
+
+export type DeveloperProviderCheck = {
+  method: string;
+  status: DeveloperCheckStatus;
+  detail: string;
+};
+
+export type DeveloperProviderDiagnostic = {
+  id: "codex" | "claude" | "gemini";
+  name: string;
+  account: AccountAliasState | null;
+  userPrerequisites: string[];
+  checks: DeveloperProviderCheck[];
+};
 
 const developerEnvKey = "TOKEN_MONITOR_DEV_MODE";
 let envLoaded = false;
