@@ -73,16 +73,18 @@ Before `v1.0.0`, do not maintain a fixed version-by-version feature roadmap. Whe
 Current package version:
 
 ```text
-1.2.0
+1.3.0
 ```
 
-`v1.2.0` is the quota alert milestone. It adds five-minute background collection, user-selected remaining-quota thresholds, verified reset notifications, Windows and always-on-top alert channels, and optional overlay warning colors.
+`v1.3.0` is the developer-mode reintegration milestone. It brings the previously diverged developer diagnostics view and Codex executable path override onto the v1.2.0 architecture (account alias identity, Claude Status Line snapshot, weekly/periodic Codex windows).
 
-- ChatGPT quota display through the Codex Desktop local usage flow
+- ChatGPT quota display through the Codex Desktop local usage flow, with an optional user-set `codex.exe` path
 - Claude quota display
 - Antigravity quota display through the Gemini CLI OAuth quota path
 - Transparent overlay
 - System tray behavior
+- Five-minute background quota monitoring and notifications
+- Developer mode (`TOKEN_MONITOR_DEV_MODE=1`) verification tab
 - Portable Windows executable packaging
 
 ## Increment Guidance
@@ -193,6 +195,33 @@ For each release-worthy version bump, summarize:
 - Known limitations
 
 ## Release History
+
+### 1.3.0 — 2026-08-27 — MINOR
+
+**Change category:** MINOR (developer-mode reintegration and Codex executable path override)
+
+**User-visible changes:**
+- Added an optional user-set Codex executable path in Settings (select a `codex.exe`, test the connection, or restore automatic discovery); shown on Windows only.
+- Added a developer verification tab, visible only when `TOKEN_MONITOR_DEV_MODE=1`, showing the resolved developer environment, per-provider collection/login/parser checks, and collection cache ages.
+- Codex discovery now resolves in the order: user-set path, `CODEX_CLI_PATH`, local install, Windows Apps, PATH.
+
+**Provider/data-source changes:**
+- The developer diagnostics view is built from the same display-safe results the dashboard uses (Claude Status Line snapshot, weekly/periodic Codex windows, account alias state); it does not restore the removed raw OAuth usage, local JSONL logs, or raw Gemini page text.
+- A user-set Codex path is persisted in `provider-settings.json` (path string only) and is saved once the file is a valid `codex.exe`, even if Codex Desktop is not currently reachable.
+
+**Privacy and security review:**
+- The developer diagnostics payload carries only alias state (`detected`/`alias`/`confidence`), display-safe percentages, reset times, and length-capped provider labels. No emails, tokens, account IDs, credential paths, or raw provider payloads.
+- `developer-mode:read`, `developer-diagnostics:read`, and all `codex-path:*` IPC channels are restricted to the main settings window.
+- Developer `.env` discovery reads only the `TOKEN_MONITOR_DEV_MODE` key from a fixed set of local candidate directories; the earlier parent-process directory walk was removed.
+
+**Packaging notes:**
+- Package version updated to `1.3.0`.
+- Portable Windows x64 artifact `TokenMonitor-1.3.0-x64.exe` was regenerated and verified.
+- SHA256: `82470AB5A4E41117D235C16ACDF0FD170A15F935B0A5F7B2C6974AF3263FBEEE`.
+
+**Known limitations:**
+- The Codex executable path override is Windows-only and does not verify the executable's publisher.
+- The developer tab does not auto-refresh on entry; use its refresh button.
 
 ### 1.2.0 — 2026-08-27 — MINOR
 

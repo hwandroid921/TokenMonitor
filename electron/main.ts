@@ -1,4 +1,4 @@
-import { app, BrowserView, BrowserWindow, Menu, Notification, Tray, ipcMain, powerMonitor, screen, shell } from "electron";
+import { app, BrowserView, BrowserWindow, Menu, Notification, Tray, dialog, ipcMain, powerMonitor, screen, shell } from "electron";
 import { spawn } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
@@ -7,7 +7,22 @@ import { getClaudeUsage } from "./claude-usage.js";
 import { getCliSessionStatus } from "./cli-session.js";
 import { createClaudeOAuthEnvironment, getClaudeOAuthEnvironmentResetCommands } from "./claude-oauth-env.js";
 import { ensureClaudeStatusLine, getClaudeStatusLineSnapshotPath } from "./claude-statusline.js";
-import { getCodexUsage, killAllActiveChildProcesses, setAppVersion } from "./codex-usage.js";
+import {
+  getCodexPathStatus,
+  getCodexUsage,
+  killAllActiveChildProcesses,
+  setAppVersion,
+  setCodexExecutablePath,
+  validateCodexExecutablePath,
+  type CodexPathStatus
+} from "./codex-usage.js";
+import {
+  getDeveloperEnvStatus,
+  isDeveloperMode,
+  loadDeveloperEnv,
+  type DeveloperProviderDiagnostic
+} from "./dev-mode.js";
+import { defaultProviderSettings, loadProviderSettings, saveProviderSettings, type ProviderSettings } from "./provider-settings.js";
 import {
   deleteAccountAlias,
   deleteAllAccountAliases,
@@ -51,6 +66,9 @@ let overlayWindow: BrowserWindow | null = null;
 let tray: Tray | null = null;
 let overlaySettings: OverlaySettings = defaultOverlaySettings;
 let notificationSettings: NotificationSettings = defaultNotificationSettings;
+let providerSettings: ProviderSettings = defaultProviderSettings;
+let codexPathConnection: CodexPathStatus["connection"] = "unchecked";
+let codexPathDetail: string | undefined;
 let isQuitting = false;
 let usagePromise: ReturnType<typeof getCodexUsage> | null = null;
 let usageCache: Awaited<ReturnType<typeof getCodexUsage>> | null = null;
@@ -408,9 +426,9 @@ function applyOverlaySettings(settings: OverlaySettings) {
   updateTrayMenu();
 }
 
-function readCodexUsageShared() {
+function readCodexUsageShared(force = false) {
   const now = Date.now();
-  if (usageCache && now - usageCacheTime < 15_000) {
+  if (!force && usageCache && now - usageCacheTime < 15_000) {
     return Promise.resolve(usageCache);
   }
 
@@ -427,6 +445,92 @@ function readCodexUsageShared() {
   }
 
   return usagePromise;
+}
+
+// Matches clearUsageCaches(): drop the cached value but leave any in-flight
+// read alone so its .finally can still clear usagePromise.
+function invalidateCodexCache() {
+  usageCache = null;
+  usageCacheTime = 0;
+}
+
+function readCodexPathSettings() {
+  return getCodexPathStatus(codexPathConnection, codexPathDetail);
+}
+
+// Non-main-window senders (overlay) never need the configured path.
+function blankCodexPathStatus(): CodexPathStatus {
+  return {
+    configuredPath: null,
+    activePath: null,
+    source: "none",
+    desktopInstalled: false,
+    executableFound: false,
+    configuredPathValid: null,
+    connection: "unchecked",
+    detail: "",
+    checkedAt: new Date().toISOString()
+  };
+}
+
+async function applyCodexExecutablePath(candidate: string) {
+  const validation = await validateCodexExecutablePath(candidate);
+  if (!validation.ok) {
+    return { ok: false, canceled: false, status: readCodexPathSettings(), detail: validation.detail };
+  }
+
+  try {
+    providerSettings = saveProviderSettings({ ...providerSettings, codexExecutablePath: candidate.trim() });
+    setCodexExecutablePath(providerSettings.codexExecutablePath);
+    codexPathConnection = validation.connection;
+    codexPathDetail = validation.detail;
+    // validation already fetched usage for this exact path; reuse it and let the
+    // shared cache re-fetch lazily on the next read.
+    invalidateCodexCache();
+    const usage = validation.usage ?? (await readCodexUsageShared(true));
+    return { ok: true, canceled: false, status: readCodexPathSettings(), detail: validation.detail, usage };
+  } catch {
+    return {
+      ok: false,
+      canceled: false,
+      status: readCodexPathSettings(),
+      detail: "Codex 경로 설정을 저장하지 못했습니다."
+    };
+  }
+}
+
+async function selectCodexExecutablePath() {
+  const options: Electron.OpenDialogOptions = {
+    title: "Codex 실행 파일 선택",
+    properties: ["openFile"],
+    filters: [{ name: "Codex 실행 파일", extensions: ["exe"] }]
+  };
+  const result = mainWindow
+    ? await dialog.showOpenDialog(mainWindow, options)
+    : await dialog.showOpenDialog(options);
+  if (result.canceled || result.filePaths.length === 0) {
+    return { ok: false, canceled: true, status: readCodexPathSettings() };
+  }
+  return applyCodexExecutablePath(result.filePaths[0]);
+}
+
+async function resetCodexExecutablePath() {
+  try {
+    providerSettings = saveProviderSettings({ ...providerSettings, codexExecutablePath: null });
+    setCodexExecutablePath(null);
+    codexPathConnection = "unchecked";
+    codexPathDetail = "Codex 실행 경로를 자동으로 탐색합니다.";
+    invalidateCodexCache();
+    const usage = await readCodexUsageShared(true);
+    return { ok: true, canceled: false, status: readCodexPathSettings(), usage };
+  } catch {
+    return {
+      ok: false,
+      canceled: false,
+      status: readCodexPathSettings(),
+      detail: "자동 경로 설정을 저장하지 못했습니다."
+    };
+  }
 }
 
 function readClaudeUsageShared(force = false) {
@@ -506,6 +610,149 @@ function readCliSessionShared(force = false) {
   }
 
   return cliSessionPromise;
+}
+
+function describeCacheAge(cacheTime: number) {
+  if (!cacheTime) {
+    return "empty";
+  }
+  const seconds = Math.round((Date.now() - cacheTime) / 1000);
+  return seconds < 60 ? `${seconds}s ago` : `${Math.round(seconds / 60)}m ago`;
+}
+
+async function readDeveloperDiagnostics() {
+  const startedAt = Date.now();
+
+  if (!isDeveloperMode()) {
+    return {
+      enabled: false,
+      generatedAt: new Date().toISOString(),
+      environment: getDeveloperEnvStatus(),
+      providers: [] as DeveloperProviderDiagnostic[],
+      geminiParser: null
+    };
+  }
+
+  const [codex, claude, gemini, sessions] = await Promise.all([
+    readCodexUsageShared(true),
+    readClaudeUsageShared(true),
+    readGeminiUsageShared(true),
+    readCliSessionShared(true)
+  ]);
+
+  const codexPath = readCodexPathSettings();
+  // Provider-supplied labels are display-safe (tier/model names), but cap length
+  // so a malformed local response cannot flood the developer view.
+  const label = (value: string | null | undefined) => (value ? value.slice(0, 60) : "unknown");
+
+  const providers: DeveloperProviderDiagnostic[] = [
+    {
+      id: "codex",
+      name: "ChatGPT",
+      account: codex.ok ? codex.account : null,
+      userPrerequisites: [
+        "Codex Desktop 설치",
+        "OpenAI/ChatGPT 계정 로그인",
+        "Codex app-server 사용량 응답 가능 상태"
+      ],
+      checks: [
+        {
+          method: "Codex Desktop app-server",
+          status: codex.ok ? "success" : "failed",
+          detail: codex.ok
+            ? `plan=${label(codex.planType)}, weekly=${codex.weekly ? `${codex.weekly.remainingPercent}%` : "none"}, periodic=${codex.periodic ? `${codex.periodic.remainingPercent}%` : "none"}`
+            : codex.error
+        },
+        {
+          method: "Codex 실행 경로",
+          status: codexPath.executableFound ? "success" : "failed",
+          detail: `source=${codexPath.source}, ${codexPath.detail}`
+        },
+        {
+          method: "Codex CLI 세션",
+          status: sessions.codex.loggedIn ? "success" : sessions.codex.installed ? "failed" : "skipped",
+          detail: sessions.codex.detail
+        }
+      ]
+    },
+    {
+      id: "claude",
+      name: "Claude",
+      account: sessions.claude.account,
+      userPrerequisites: [
+        "Node.js/npm 설치",
+        "Claude Pro/Max 이상 계정",
+        "Claude Code OAuth 로그인",
+        "Claude Code 응답 1회 이상"
+      ],
+      checks: [
+        {
+          method: "Claude CLI 세션",
+          status: sessions.claude.loggedIn ? "success" : sessions.claude.installed ? "failed" : "skipped",
+          detail: sessions.claude.detail
+        },
+        {
+          method: "Claude Code Status Line 스냅샷",
+          status: claude.ok ? "success" : "failed",
+          detail: claude.ok
+            ? `model=${label(claude.model?.displayName ?? claude.model?.id)}, fiveHour=${claude.fiveHour ? `${claude.fiveHour.remainingPercent}%` : "none"}, weekly=${claude.sevenDay ? `${claude.sevenDay.remainingPercent}%` : "none"}, stale=${claude.stale}`
+            : claude.error
+        }
+      ]
+    },
+    {
+      id: "gemini",
+      name: "Gemini / Antigravity",
+      account: gemini.account,
+      userPrerequisites: [
+        "Gemini Apps 웹 로그인",
+        "Usage Limits 화면에서 Gemini 5시간/주간 한도 표시",
+        "Node.js/npm 설치",
+        "Antigravity CLI 로그인 또는 Antigravity 실행 상태"
+      ],
+      checks: [
+        {
+          method: "Gemini Apps Usage Limits",
+          status: gemini.geminiApps ? "success" : gemini.geminiAppsSession.loggedIn ? "failed" : "skipped",
+          detail: gemini.geminiApps
+            ? `plan=${label(gemini.geminiApps.plan)}, fiveHour=${gemini.geminiApps.fiveHour?.remaining ?? "none"}, weekly=${gemini.geminiApps.weekly?.remaining ?? "none"}`
+            : gemini.geminiAppsSession.loggedIn
+              ? "로그인됨. 사용량 확인 버튼으로 Usage Limits 수집 필요"
+              : "Gemini 웹 로그인 필요"
+        },
+        {
+          method: gemini.ok ? `Antigravity 한도 (${gemini.source})` : "Antigravity 한도",
+          status: gemini.ok ? "success" : "failed",
+          detail: gemini.ok
+            ? `models=${gemini.models.length}, primary=${gemini.primary ? `${gemini.primary.remainingPercent}%` : "none"}, secondary=${gemini.secondary ? `${gemini.secondary.remainingPercent}%` : "none"}`
+            : gemini.error
+        }
+      ]
+    }
+  ];
+
+  return {
+    enabled: true,
+    generatedAt: new Date().toISOString(),
+    environment: getDeveloperEnvStatus(),
+    totalDurationMs: Date.now() - startedAt,
+    cacheSummary: {
+      codex: describeCacheAge(usageCacheTime),
+      claude: describeCacheAge(claudeUsageCacheTime),
+      gemini: describeCacheAge(geminiUsageCacheTime),
+      cliSession: describeCacheAge(cliSessionCacheTime)
+    },
+    providers,
+    geminiParser: {
+      sessionLoggedIn: gemini.geminiAppsSession.loggedIn,
+      cacheAvailable: Boolean(gemini.geminiApps),
+      planParsed: Boolean(gemini.geminiApps?.plan),
+      fiveHourParsed: Boolean(gemini.geminiApps?.fiveHour),
+      weeklyParsed: Boolean(gemini.geminiApps?.weekly),
+      detail: gemini.geminiApps?.detail ?? null,
+      updatedAt: gemini.geminiApps?.updatedAt ?? null
+    }
+  };
 }
 
 function startUsageMonitor() {
@@ -1201,12 +1448,15 @@ if (!gotSingleInstanceLock) {
 
   app.whenReady().then(() => {
     setAppVersion(app.getVersion());
+    loadDeveloperEnv();
     if (process.platform === "win32") {
       app.setAppUserModelId("com.tokenmonitor.app");
     }
     initializeAccountAliases(app.getPath("userData"));
     notificationSettings = initializeNotificationSettings(app.getPath("userData"));
     initializeQuotaAlertState(app.getPath("userData"));
+    providerSettings = loadProviderSettings();
+    setCodexExecutablePath(providerSettings.codexExecutablePath);
     loadOverlaySettings();
     installKoreanMenu();
     createTray();
@@ -1215,6 +1465,12 @@ if (!gotSingleInstanceLock) {
     ipcMain.handle("claude-usage:read", (_event, force?: boolean) => readClaudeUsageShared(Boolean(force)));
     ipcMain.handle("gemini-usage:read", (_event, force?: boolean) => readGeminiUsageShared(Boolean(force)));
     ipcMain.handle("cli-session:read", (_event, force?: boolean) => readCliSessionShared(Boolean(force)));
+    ipcMain.handle("developer-mode:read", (event) => ({ enabled: isMainWindowSender(event) && isDeveloperMode() }));
+    ipcMain.handle("developer-diagnostics:read", (event) => isMainWindowSender(event) ? readDeveloperDiagnostics() : { enabled: false, generatedAt: new Date().toISOString(), environment: getDeveloperEnvStatus(), providers: [], geminiParser: null });
+    ipcMain.handle("codex-path:read", (event) => isMainWindowSender(event) ? readCodexPathSettings() : blankCodexPathStatus());
+    ipcMain.handle("codex-path:select", (event) => isMainWindowSender(event) ? selectCodexExecutablePath() : { ok: false, canceled: true, status: readCodexPathSettings() });
+    ipcMain.handle("codex-path:update", (event, candidate: string) => isMainWindowSender(event) ? applyCodexExecutablePath(candidate) : { ok: false, canceled: false, status: readCodexPathSettings() });
+    ipcMain.handle("codex-path:reset", (event) => isMainWindowSender(event) ? resetCodexExecutablePath() : { ok: false, canceled: false, status: readCodexPathSettings() });
     ipcMain.handle("claude-login:start", () => startClaudeLogin());
     ipcMain.handle("gemini-login:start", () => startGeminiLogin());
     ipcMain.handle("gemini-apps-login:start", (_event, bounds?: Partial<GeminiViewBounds>) => startGeminiAppsLogin(bounds));

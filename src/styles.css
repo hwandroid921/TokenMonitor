@@ -1222,3 +1222,218 @@ body.overlay-body #root {
 .overlay-muted {
   margin-top: 4px;
 }
+
+/* Developer mode panel + Codex executable path settings */
+.developer-panel {
+  align-self: start;
+  display: grid;
+  gap: 18px;
+  margin-top: 20px;
+  padding: 20px;
+}
+
+.developer-section {
+  display: grid;
+  gap: 10px;
+}
+
+.developer-section h2 {
+  color: #3d463f;
+  font-size: 14px;
+}
+
+.developer-dl {
+  display: grid;
+  gap: 6px;
+  margin: 0;
+}
+
+.developer-dl > div {
+  display: grid;
+  grid-template-columns: 128px 1fr;
+  gap: 10px;
+  padding: 8px 10px;
+  background: #f9faf6;
+  border: 1px solid #e5eadf;
+  border-radius: 8px;
+  font-size: 12px;
+}
+
+.developer-dl dt {
+  color: #6b756b;
+  font-weight: 800;
+}
+
+.developer-dl dd {
+  margin: 0;
+  color: #3d463f;
+  font-weight: 700;
+  word-break: break-all;
+}
+
+.developer-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 12px;
+}
+
+.developer-card {
+  display: grid;
+  gap: 8px;
+  padding: 12px;
+  background: #f9faf6;
+  border: 1px solid #e5eadf;
+  border-radius: 8px;
+}
+
+.developer-card h3 {
+  color: #24483b;
+  font-size: 13px;
+}
+
+.developer-inline-note {
+  margin: 0;
+  color: #6b756b;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.developer-prereq {
+  display: grid;
+  gap: 4px;
+  font-size: 12px;
+}
+
+.developer-prereq strong {
+  color: #6b756b;
+  font-weight: 800;
+}
+
+.developer-prereq ul {
+  margin: 0;
+  padding-left: 16px;
+  color: #4e584f;
+  font-weight: 650;
+}
+
+.developer-check-list {
+  display: grid;
+  gap: 6px;
+}
+
+.developer-check {
+  display: grid;
+  grid-template-columns: 52px 1fr;
+  gap: 4px 8px;
+  padding: 8px 10px;
+  background: #fff;
+  border: 1px solid #e5eadf;
+  border-radius: 8px;
+  font-size: 12px;
+}
+
+.developer-check strong {
+  color: #3d463f;
+}
+
+.developer-check p {
+  grid-column: 1 / -1;
+  margin: 0;
+  color: #4e584f;
+  font-weight: 650;
+  word-break: break-word;
+}
+
+.developer-status {
+  align-self: start;
+  padding: 1px 6px;
+  border-radius: 6px;
+  font-size: 11px;
+  font-weight: 850;
+  text-align: center;
+}
+
+.developer-status.success {
+  color: #1f6f43;
+  background: #e4f4e8;
+}
+
+.developer-status.failed {
+  color: #8a1f22;
+  background: #f8e5e5;
+}
+
+.developer-status.skipped {
+  color: #6b756b;
+  background: #eef0ea;
+}
+
+.codex-path-hint {
+  margin: 0;
+  color: #6b756b;
+  font-size: 12px;
+  font-weight: 650;
+}
+
+.codex-path-hint code {
+  padding: 1px 4px;
+  background: #eef0ea;
+  border-radius: 4px;
+  font-size: 11px;
+}
+
+.codex-path-input-row {
+  display: flex;
+  gap: 8px;
+}
+
+.codex-path-input-row input {
+  flex: 1;
+  min-width: 0;
+  padding: 7px 9px;
+  border: 1px solid #d7ddce;
+  border-radius: 7px;
+  font-size: 12px;
+}
+
+.codex-path-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.codex-path-state {
+  padding: 1px 6px;
+  border-radius: 6px;
+  font-size: 11px;
+  font-weight: 850;
+}
+
+.codex-path-state.connected {
+  color: #1f6f43;
+  background: #e4f4e8;
+}
+
+.codex-path-state.failed {
+  color: #8a1f22;
+  background: #f8e5e5;
+}
+
+.codex-path-state.unchecked {
+  color: #6b756b;
+  background: #eef0ea;
+}
+
+.codex-path-notice {
+  margin: 0;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.codex-path-notice.visible {
+  padding: 8px 10px;
+  color: #315844;
+  background: #edf6ed;
+  border: 1px solid #d7e8d7;
+  border-radius: 7px;
+}
