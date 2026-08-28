@@ -24,7 +24,8 @@ Primary users are Windows users who want to quickly inspect local LLM plan, quot
 - `build/`: Windows app and tray icon assets
 - `dist/`: Vite renderer build output
 - `dist-electron/`: Electron TypeScript build output
-- `dist-app/`: Windows packaging output
+- Project root: Windows portable package delivery output (`TokenMonitor-*-x64.exe`)
+- `dist-app/`: legacy packaging output directory; keep it empty after packaging cleanup
 - `README.md`: user-facing final-state documentation
 - `docs/RELEASE_VERSION_POLICY.md`: milestone/app version policy and release history
 - `package.json`: app/exe release version and npm scripts
@@ -81,7 +82,7 @@ npx electron-builder --win dir --x64 --publish never --config.win.signAndEditExe
 - If the work requires a version update, perform the version update immediately as part of the same task.
 - After `v1.0.0`, manage releases with matching Git tags and remote release entries.
 - For every `MINOR` or `MAJOR` app/exe release, automatically complete the release delivery workflow: update version files and release history, verify and package, commit, push the feature branch, and create the required PR. Do not wait for a separate upload or PR request.
-- A `MINOR` or `MAJOR` release must include portable packaging and cleanup of prior versioned portable executables. After the new executable and SHA256 hash are verified, remove only older `TokenMonitor-*-x64.exe` artifacts from `dist-app/` and any user-designated release delivery directory, while preserving the current release artifact.
+- A `MINOR` or `MAJOR` release must include portable packaging and cleanup of prior versioned portable executables. After the new executable and SHA256 hash are verified, remove only older `TokenMonitor-*-x64.exe` artifacts from the project root and any user-designated release delivery directory, while preserving the current release artifact.
 - After a `MINOR` or `MAJOR` release commit has been merged to the stable release branch, automatically create and push the matching `vMAJOR.MINOR.PATCH` tag and create the matching GitHub Release. Do not tag or publish an unmerged feature branch.
 - Write GitHub Release notes in Korean by default. Keep Git tags and portable artifact names in English; use another note language only when the user explicitly requests it.
 - For a `PATCH` release, push/PR, tag, GitHub Release, and portable packaging remain opt-in unless the user explicitly requests them or a more specific release instruction applies.
@@ -169,14 +170,16 @@ Get-Process -Id <PID> -ErrorAction SilentlyContinue | Stop-Process -Force
 - Package the portable Windows executable only for milestone release versions such as `0.3.0`, `0.4.0`, and later `MINOR.0` or `MAJOR.0` release points, unless the user explicitly requests a portable exe for another version.
 - For patch-level changes such as `0.3.1`, `0.3.2`, or `0.3.3`, skip portable packaging by default even when code changed.
 - For documentation-only or instruction-only work, skip packaging unless the user explicitly asks for a new executable.
-- When the app/exe version changes and the user requested unpacked exe refreshes, regenerate `dist-app/win-unpacked`.
-- When creating a portable executable for a higher `MINOR` or `MAJOR` version, verify the new executable and SHA256 hash first, then remove older versioned executables so `dist-app/` and any user-designated release delivery directory keep only the latest portable exe.
+- Generate portable Windows executables directly in the project root. Do not use `dist-app/` as a release delivery directory.
+- When the app/exe version changes and the user requested unpacked exe refreshes, regenerate `win-unpacked/` in the project root.
+- When creating a portable executable for a higher `MINOR` or `MAJOR` version, verify the new executable and SHA256 hash first, then remove older versioned executables so the project root and any user-designated release delivery directory keep only the latest portable exe. After every packaging run, clean `dist-app/` of generated files and directories.
 
 PowerShell cleanup example:
 
 ```powershell
 $currentVersion = (Get-Content -Raw package.json | ConvertFrom-Json).version
-Get-ChildItem -Path dist-app -Filter "TokenMonitor-*-x64.exe" -File |
+$releaseRoot = (Resolve-Path .).Path
+Get-ChildItem -LiteralPath $releaseRoot -Filter "TokenMonitor-*-x64.exe" -File |
   Where-Object { $_.Name -ne "TokenMonitor-$currentVersion-x64.exe" } |
   Remove-Item -Force
 ```
@@ -184,11 +187,11 @@ Get-ChildItem -Path dist-app -Filter "TokenMonitor-*-x64.exe" -File |
 After packaging, verify the executable and hash:
 
 ```powershell
-Get-ChildItem -Force dist-app\TokenMonitor-*-x64.exe
-Get-FileHash dist-app\TokenMonitor-*-x64.exe -Algorithm SHA256
+Get-ChildItem -Force .\TokenMonitor-*-x64.exe
+Get-FileHash .\TokenMonitor-*-x64.exe -Algorithm SHA256
 ```
 
-For unpacked packaging, verify `dist-app\win-unpacked\TokenMonitor.exe` and its SHA256 hash.
+For unpacked packaging, verify `win-unpacked\TokenMonitor.exe` and its SHA256 hash.
 
 ## Verification Rules
 
@@ -314,7 +317,7 @@ Tell the user the branch name, commit hash, push result, and PR description draf
 ## Do Not Touch
 
 - Do not revert unrelated user changes.
-- Do not edit generated build output such as `dist/`, `dist-electron/`, or `dist-app/` unless build/packaging output is explicitly part of the task.
+- Do not edit generated build output such as `dist/`, `dist-electron/`, `win-unpacked/`, or `dist-app/` unless build/packaging output is explicitly part of the task.
 - Do not remove older packaged executables unless packaging policy says to keep only the latest versioned artifact or the user asks.
 - Do not change `package.json` or `package-lock.json` for documentation-only or instruction-only tasks.
 - Do not expose or copy local credential files from `.claude`, `.gemini`, Codex, Claude, Antigravity, or OAuth storage paths.

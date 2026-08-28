@@ -478,11 +478,14 @@ function resizeOverlayWindow(request: { width?: number; height?: number }) {
   }
 
   const workArea = getOverlayDisplay().workArea;
-  const requestedWidth = Number.isFinite(request.width) ? Number(request.width) : 620;
-  const requestedHeight = Number.isFinite(request.height) ? Number(request.height) : 180;
-  const width = Math.max(360, Math.min(Math.round(requestedWidth), workArea.width - 8));
-  const maximumHeight = Math.max(120, Math.floor(workArea.height / 3));
-  const height = Math.max(120, Math.min(Math.round(requestedHeight), maximumHeight));
+  const maximumWidth = Math.max(360, workArea.width - 8);
+  const maximumHeight = Math.max(120, workArea.height - 8);
+  const baseWidth = Math.min(maximumWidth, Math.max(360, Math.floor(workArea.width / 3)));
+  const baseHeight = Math.min(maximumHeight, Math.max(120, Math.floor(workArea.height / 3)));
+  const requestedWidth = Number.isFinite(request.width) ? Number(request.width) : baseWidth;
+  const requestedHeight = Number.isFinite(request.height) ? Number(request.height) : baseHeight;
+  const width = Math.max(baseWidth, Math.min(Math.round(requestedWidth), maximumWidth));
+  const height = Math.max(baseHeight, Math.min(Math.round(requestedHeight), maximumHeight));
   overlayWindow.setSize(width, height);
   positionOverlayWindow();
   return { ok: true };

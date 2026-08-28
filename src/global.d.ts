@@ -254,6 +254,7 @@ export type OverlaySettings = {
   showRemaining: boolean;
   showReset: boolean;
   opacity: number;
+  fontSizePercent: number;
   position: OverlayPosition;
 };
 
