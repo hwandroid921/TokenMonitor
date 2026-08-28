@@ -2,7 +2,8 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 
-const statusLineFileName = "claude-statusline.ps1";
+const statusLineFileName = "claude-statusline.cjs";
+const legacyStatusLineFileName = "claude-statusline.ps1";
 const snapshotFileName = "claude-statusline.json";
 
 export type ClaudeStatusLineSetupResult =
@@ -49,7 +50,7 @@ export function ensureClaudeStatusLine(userDataPath: string): ClaudeStatusLineSe
 
   settings.statusLine = {
     type: "command",
-    command: `powershell -NoProfile -ExecutionPolicy Bypass -File ${quotePowerShellArgument(scriptPath)}`,
+    command: makeStatusLineCommand(scriptPath),
     refreshInterval: 60
   };
 
@@ -68,7 +69,30 @@ function isTokenMonitorStatusLine(value: unknown, scriptPath: string) {
     return false;
   }
   const command = (value as { command?: unknown }).command;
-  return typeof command === "string" && command.toLocaleLowerCase() === `powershell -noprofile -executionpolicy bypass -file ${quotePowerShellArgument(scriptPath)}`.toLocaleLowerCase();
+  if (typeof command !== "string") {
+    return false;
+  }
+  const legacyScriptPath = path.join(path.dirname(scriptPath), legacyStatusLineFileName);
+  return command === makeStatusLineCommand(scriptPath)
+    || command.toLocaleLowerCase() === `powershell -noprofile -executionpolicy bypass -file ${quotePowerShellArgument(legacyScriptPath)}`.toLocaleLowerCase()
+    || isPreviousTokenMonitorStatusLine(command);
+}
+
+function isPreviousTokenMonitorStatusLine(command: string) {
+  const match = command.match(/"([^"]*claude-statusline\.cjs)"/i);
+  const scriptPath = match?.[1];
+  if (!scriptPath || !fs.existsSync(scriptPath)) {
+    return false;
+  }
+
+  try {
+    const script = fs.readFileSync(scriptPath, "utf8");
+    return script.includes("const snapshotPath =")
+      && script.includes("rate_limits?.five_hour")
+      && script.includes("claude-statusline.json");
+  } catch {
+    return false;
+  }
 }
 
 function writeJsonAtomically(targetPath: string, value: Record<string, unknown>) {
@@ -81,61 +105,41 @@ function quotePowerShellArgument(value: string) {
   return `'${value.replace(/'/g, "''")}'`;
 }
 
+function makeStatusLineCommand(scriptPath: string) {
+  const executable = quoteShellArgument(process.execPath);
+  const script = quoteShellArgument(scriptPath);
+  return process.platform === "win32"
+    ? `set ELECTRON_RUN_AS_NODE=1&& ${executable} ${script}`
+    : `ELECTRON_RUN_AS_NODE=1 ${executable} ${script}`;
+}
+
+function quoteShellArgument(value: string) {
+  return `"${value.replace(/"/g, "\\\"")}"`;
+}
+
 function makeStatusLineScript(snapshotPath: string) {
-  const escapedSnapshotPath = snapshotPath.replace(/'/g, "''");
-  return `$ErrorActionPreference = 'Stop'
-$snapshotPath = '${escapedSnapshotPath}'
-
-function Get-TextValue($value) {
-  if ($null -eq $value) { return $null }
-  $text = [string]$value
-  if ([string]::IsNullOrWhiteSpace($text)) { return $null }
-  return $text
-}
-
-function Get-Window($window) {
-  if ($null -eq $window -or $null -eq $window.used_percentage) { return $null }
-  $used = [Math]::Min(100, [Math]::Max(0, [Math]::Round([double]$window.used_percentage, 1)))
-  return [ordered]@{
-    usedPercent = $used
-    remainingPercent = [Math]::Round(100 - $used, 1)
-    resetsAt = Get-TextValue $window.resets_at
+  return `const fs = require("node:fs");
+const snapshotPath = ${JSON.stringify(snapshotPath)};
+const text = (value) => typeof value === "string" && value.trim() ? value.trim() : null;
+const percent = (value) => typeof value === "number" && Number.isFinite(value) ? Math.round(Math.min(100, Math.max(0, value)) * 10) / 10 : null;
+const resetAt = (value) => {
+  const timestamp = typeof value === "number" ? value : typeof value === "string" && value.trim() ? Number(value) : Number.NaN;
+  if (Number.isFinite(timestamp)) {
+    const date = new Date(timestamp * 1000);
+    return Number.isNaN(date.valueOf()) ? null : date.toISOString();
   }
-}
-
-try {
-  $payload = [Console]::In.ReadToEnd() | ConvertFrom-Json -ErrorAction Stop
-} catch {
-  Write-Output 'Claude'
-  exit 0
-}
-
-$fiveHour = Get-Window $payload.rate_limits.five_hour
-$sevenDay = Get-Window $payload.rate_limits.seven_day
-$modelName = Get-TextValue $payload.model.display_name
-$snapshot = [ordered]@{
-  version = 1
-  capturedAt = [DateTime]::UtcNow.ToString('o')
-  model = [ordered]@{
-    id = Get-TextValue $payload.model.id
-    displayName = $modelName
-  }
-  fiveHour = $fiveHour
-  sevenDay = $sevenDay
-}
-
-try {
-  $temporaryPath = "$snapshotPath.tmp"
-  $json = $snapshot | ConvertTo-Json -Depth 5 -Compress
-  [System.IO.File]::WriteAllText($temporaryPath, $json, [System.Text.UTF8Encoding]::new($false))
-  Move-Item -LiteralPath $temporaryPath -Destination $snapshotPath -Force
-} catch { }
-
-$parts = @()
-if ($modelName) { $parts += $modelName }
-if ($fiveHour) { $parts += "5h $($fiveHour.remainingPercent)% 남음" }
-if ($sevenDay) { $parts += "주간 $($sevenDay.remainingPercent)% 남음" }
-if ($parts.Count -eq 0) { $parts += '사용량 대기 중' }
-Write-Output ($parts -join ' · ')
+  const raw = text(value);
+  return raw && Number.isFinite(Date.parse(raw)) ? new Date(raw).toISOString() : null;
+};
+const windowValue = (value) => { const usedPercent = percent(value?.used_percentage); return usedPercent == null ? null : { usedPercent, remainingPercent: Math.round((100 - usedPercent) * 10) / 10, resetsAt: resetAt(value?.resets_at) }; };
+let payload;
+try { payload = JSON.parse(fs.readFileSync(0, "utf8")); } catch { console.log("Claude"); process.exit(0); }
+const fiveHour = windowValue(payload?.rate_limits?.five_hour);
+const sevenDay = windowValue(payload?.rate_limits?.seven_day);
+const modelName = text(payload?.model?.display_name);
+const snapshot = { version: 1, capturedAt: new Date().toISOString(), model: { id: text(payload?.model?.id), displayName: modelName }, fiveHour, sevenDay };
+try { fs.writeFileSync(snapshotPath + ".tmp", JSON.stringify(snapshot), "utf8"); fs.renameSync(snapshotPath + ".tmp", snapshotPath); } catch { }
+const parts = [modelName, fiveHour && "5h " + fiveHour.remainingPercent + "%", sevenDay && "weekly " + sevenDay.remainingPercent + "%"].filter(Boolean);
+console.log(parts.join(" | ") || "Waiting for usage");
 `;
 }

@@ -124,7 +124,7 @@ export async function getGeminiUsage(): Promise<GeminiUsageResult> {
 
   try {
     const authType = readGeminiAuthType();
-    if (authType === "api-key" || authType === "vertex-ai") {
+    if (isGeminiApiKeyAuth(authType) || authType === "vertex-ai") {
       return makeError(`Gemini ${authType} 인증은 잔여 quota 조회를 지원하지 않습니다. Google OAuth 로그인을 사용하세요.`);
     }
 
@@ -232,9 +232,9 @@ type AntigravityEndpoint = {
 };
 
 async function findAntigravityProcess(): Promise<AntigravityProcessInfo | null> {
-  const processes = await readWindowsProcesses();
+  const processes = await readAntigravityProcesses();
   for (const processInfo of processes) {
-    const command = processInfo.CommandLine ?? "";
+    const command = processInfo.commandLine;
     if (!isAntigravityLanguageServerCommand(command)) {
       continue;
     }
@@ -245,7 +245,7 @@ async function findAntigravityProcess(): Promise<AntigravityProcessInfo | null> 
     }
 
     return {
-      pid: Number(processInfo.ProcessId),
+      pid: processInfo.pid,
       commandLine: command,
       csrfToken,
       extensionPort: readPort(extractFlag(command, "--extension_server_port"))
@@ -255,16 +255,33 @@ async function findAntigravityProcess(): Promise<AntigravityProcessInfo | null> 
   return null;
 }
 
-async function readWindowsProcesses() {
+type LocalProcess = { pid: number; commandLine: string };
+
+async function readAntigravityProcesses(): Promise<LocalProcess[]> {
+  return process.platform === "win32" ? readWindowsProcesses() : readMacProcesses();
+}
+
+async function readWindowsProcesses(): Promise<LocalProcess[]> {
   const command = "Get-CimInstance Win32_Process | Where-Object { $_.CommandLine -match 'language_server' -and $_.CommandLine -match 'antigravity' } | Select-Object ProcessId,Name,CommandLine | ConvertTo-Json -Compress";
   const raw = await runPowerShell(command, antigravityProbeTimeoutMs);
   if (!raw.trim()) {
-    return [] as Array<{ ProcessId: number; Name: string; CommandLine: string }>;
+    return [];
   }
 
   const parsed = JSON.parse(raw) as unknown;
   const list = Array.isArray(parsed) ? parsed : [parsed];
-  return list.filter((item): item is { ProcessId: number; Name: string; CommandLine: string } => Boolean(item && typeof item === "object"));
+  return list
+    .filter((item): item is { ProcessId: number; CommandLine: string } => Boolean(item && typeof item === "object"))
+    .map((item) => ({ pid: Number(item.ProcessId), commandLine: item.CommandLine ?? "" }))
+    .filter((item) => Number.isInteger(item.pid) && item.pid > 0);
+}
+
+async function readMacProcesses(): Promise<LocalProcess[]> {
+  const raw = await runCommand("ps", ["-ax", "-o", "pid=,command="], antigravityProbeTimeoutMs).catch(() => "");
+  return raw.split(/\r?\n/).flatMap((line) => {
+    const match = line.trim().match(/^(\d+)\s+(.+)$/);
+    return match ? [{ pid: Number(match[1]), commandLine: match[2] }] : [];
+  });
 }
 
 function isAntigravityLanguageServerCommand(command: string) {
@@ -279,6 +296,13 @@ function extractFlag(command: string, flag: string) {
 }
 
 async function findListeningPorts(pid: number) {
+  if (process.platform !== "win32") {
+    const raw = await runCommand("lsof", ["-nP", "-a", "-p", `${pid}`, "-iTCP", "-sTCP:LISTEN"], antigravityProbeTimeoutMs).catch(() => "");
+    return raw.split(/\r?\n/)
+      .map((line) => line.match(/:(\d+)\s+\(LISTEN\)/)?.[1])
+      .map((value) => Number(value))
+      .filter((value) => Number.isInteger(value) && value > 0);
+  }
   const command = `Get-NetTCPConnection -State Listen -OwningProcess ${pid} -ErrorAction SilentlyContinue | Select-Object -ExpandProperty LocalPort | ConvertTo-Json -Compress`;
   const raw = await runPowerShell(command, antigravityProbeTimeoutMs).catch(() => "");
   if (!raw.trim()) {
@@ -383,6 +407,25 @@ function runPowerShell(command: string, timeoutMs: number) {
       } else {
         reject(new Error(stderr.trim() || `PowerShell exited with ${code}`));
       }
+    });
+  });
+}
+
+function runCommand(command: string, args: string[], timeoutMs: number) {
+  return new Promise<string>((resolve, reject) => {
+    const child = spawn(command, args, { windowsHide: true, stdio: ["ignore", "pipe", "pipe"] });
+    let stdout = "";
+    let stderr = "";
+    const timer = setTimeout(() => {
+      child.kill();
+      reject(new Error(`${command} timed out.`));
+    }, timeoutMs);
+    child.stdout?.on("data", (chunk: Buffer) => { stdout += chunk.toString("utf8"); });
+    child.stderr?.on("data", (chunk: Buffer) => { stderr += chunk.toString("utf8"); });
+    child.on("error", (error) => { clearTimeout(timer); reject(error); });
+    child.on("close", (code) => {
+      clearTimeout(timer);
+      code === 0 ? resolve(stdout) : reject(new Error(stderr.trim() || `${command} exited with ${code}`));
     });
   });
 }
@@ -592,6 +635,10 @@ function readGeminiAuthType() {
   }
 }
 
+function isGeminiApiKeyAuth(authType: string) {
+  return ["api-key", "gemini-api-key"].includes(authType.trim().toLowerCase());
+}
+
 function readGeminiCredentials(): GeminiOAuthCredentials | null {
   const candidates = [
     path.join(os.homedir(), ".gemini", "oauth_creds.json"),
@@ -688,12 +735,17 @@ async function findGeminiOAuthFiles(): Promise<string[]> {
   const roots = [
     path.join(process.env.APPDATA ?? "", "npm", "node_modules", "@google", "gemini-cli"),
     path.join(process.env.LOCALAPPDATA ?? "", "fnm_multishells"),
-    path.join(process.env.ProgramFiles ?? "", "nodejs", "node_modules", "@google", "gemini-cli")
+    path.join(process.env.ProgramFiles ?? "", "nodejs", "node_modules", "@google", "gemini-cli"),
+    "/opt/homebrew/lib/node_modules/@google/gemini-cli",
+    "/usr/local/lib/node_modules/@google/gemini-cli",
+    path.join(os.homedir(), ".npm-global", "lib", "node_modules", "@google", "gemini-cli"),
+    path.join(os.homedir(), ".nvm", "versions", "node")
   ].filter(Boolean);
 
   const geminiPaths = await resolveGeminiCliPaths();
   for (const geminiPath of geminiPaths) {
     roots.push(path.dirname(geminiPath));
+    roots.push(path.dirname(path.dirname(geminiPath)));
   }
 
   const files = new Set<string>();
@@ -710,9 +762,17 @@ function resolveGeminiCliPaths(): Promise<string[]> {
     const child = spawn(cmd, ["gemini"], { windowsHide: true });
     let stdout = "";
     child.stdout?.on("data", (chunk: Buffer) => { stdout += chunk.toString("utf8"); });
-    child.on("close", () => resolve(stdout.split(/\r?\n/).map((s) => s.trim()).filter(Boolean)));
+    child.on("close", () => resolve(stdout.split(/\r?\n/).map((s) => s.trim()).filter(Boolean).map(resolveRealPath)));
     child.on("error", () => resolve([]));
   });
+}
+
+function resolveRealPath(candidate: string) {
+  try {
+    return fs.realpathSync(candidate);
+  } catch {
+    return candidate;
+  }
 }
 
 function addOAuthFilesFromRoot(root: string, files: Set<string>, depth: number) {

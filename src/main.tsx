@@ -679,7 +679,7 @@ function App() {
               onDeleteProviderAccounts={handleDeleteProviderAliases}
               onDeleteAllAccounts={handleDeleteAllAccountAliases}
             />
-            {window.tokenMonitor?.platform === "win32" ? <CodexPathSettings /> : null}
+            <CodexPathSettings />
           </div>
         ) : (
           <div id="developer-panel" role="tabpanel" aria-labelledby="developer-tab">
@@ -934,7 +934,7 @@ function getProviderCollectionGuide(providerId: ProviderId) {
       steps: [
         "Codex Desktop 설치 필수",
         "Codex Desktop 로그인 상태 확인",
-        "Codex Desktop 설치 경로 또는 CODEX_CLI_PATH의 codex.exe 실행",
+        "Codex CLI 또는 ChatGPT 앱 내 Codex 실행 파일을 탐색해 실행",
         "표시용 plan, remaining, reset 값만 대시보드에 반영"
       ]
     };
@@ -2408,6 +2408,12 @@ function formatCodexPathSource(source: CodexPathStatus["source"] | undefined) {
       return "로컬 설치 (버전 폴더)";
     case "windows-apps":
       return "Windows Apps";
+    case "mac-app":
+      return "macOS ChatGPT 앱";
+    case "homebrew":
+      return "Homebrew";
+    case "npm-global":
+      return "npm 전역 설치";
     case "path":
       return "PATH 검색";
     default:

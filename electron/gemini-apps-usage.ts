@@ -10,6 +10,7 @@ export type GeminiAppsUsageWindow = {
 
 export type GeminiAppsUsage = {
   source: "gemini-web-usage-limits";
+  parserVersion: 2;
   fiveHour: GeminiAppsUsageWindow | null;
   weekly: GeminiAppsUsageWindow | null;
   plan: string | null;
@@ -55,12 +56,13 @@ export function readGeminiAppsSessionStatus(): GeminiAppsSessionStatus {
 export function readGeminiAppsUsageCache(): GeminiAppsUsage | null {
   try {
     const parsed = JSON.parse(fs.readFileSync(getCachePath(), "utf8")) as GeminiAppsUsage;
-    if (parsed?.source !== "gemini-web-usage-limits") {
+    if (parsed?.source !== "gemini-web-usage-limits" || parsed.parserVersion !== 2) {
       return null;
     }
 
     return {
       source: "gemini-web-usage-limits",
+      parserVersion: 2,
       fiveHour: normalizeWindow(parsed.fiveHour, "5시간"),
       weekly: normalizeWindow(parsed.weekly, "주간"),
       plan: normalizeGeminiAppsPlan(parsed.plan),
@@ -293,21 +295,19 @@ export function parseGeminiAppsUsageText(rawText: string): GeminiAppsUsage | nul
     return null;
   }
 
-  let fiveHour = parseUsageWindow(text, "5시간", [
+  const fiveHourAnchors = [
+    "현재 사용량",
     "5시간",
     "5 시간",
-    "현재 사용량",
-    "gxu-currently",
     "5-hour",
     "5 hour",
     "five-hour",
     "five hour"
-  ]);
-  let weekly = parseUsageWindow(text, "주간", [
+  ];
+  const weeklyAnchors = [
     "주간",
     "주간 한도",
     "일주일",
-    "gxu-weekly",
     "7일",
     "weekly",
     "week",
@@ -315,14 +315,9 @@ export function parseGeminiAppsUsageText(rawText: string): GeminiAppsUsage | nul
     "7 day",
     "seven-day",
     "seven day"
-  ]);
-
-  if (!fiveHour && debug.percentCandidates[0]) {
-    fiveHour = { label: "5시간", remaining: debug.percentCandidates[0], reset: null };
-  }
-  if (!weekly && debug.percentCandidates[1]) {
-    weekly = { label: "주간", remaining: debug.percentCandidates[1], reset: null };
-  }
+  ];
+  const fiveHour = parseUsageWindow(text, "5시간", fiveHourAnchors, weeklyAnchors);
+  const weekly = parseUsageWindow(text, "주간", weeklyAnchors, fiveHourAnchors);
 
   if (!fiveHour && !weekly) {
     return null;
@@ -330,6 +325,7 @@ export function parseGeminiAppsUsageText(rawText: string): GeminiAppsUsage | nul
 
   return {
     source: "gemini-web-usage-limits",
+    parserVersion: 2,
     fiveHour,
     weekly,
     plan,
@@ -338,7 +334,12 @@ export function parseGeminiAppsUsageText(rawText: string): GeminiAppsUsage | nul
   };
 }
 
-function parseUsageWindow(text: string, label: GeminiAppsUsageWindow["label"], anchors: string[]): GeminiAppsUsageWindow | null {
+function parseUsageWindow(
+  text: string,
+  label: GeminiAppsUsageWindow["label"],
+  anchors: string[],
+  boundaryAnchors: string[]
+): GeminiAppsUsageWindow | null {
   const lower = text.toLowerCase();
   const index = anchors
     .map((anchor) => lower.indexOf(anchor.toLowerCase()))
@@ -349,13 +350,18 @@ function parseUsageWindow(text: string, label: GeminiAppsUsageWindow["label"], a
     return null;
   }
 
-  const segment = text.slice(Math.max(0, index - 160), index + 520);
+  const nextBoundary = boundaryAnchors
+    .map((anchor) => lower.indexOf(anchor.toLowerCase(), index + 1))
+    .filter((value) => value > index)
+    .sort((a, b) => a - b)[0];
+  const segment = text.slice(index, nextBoundary ?? index + 520);
   const remaining = firstMatch(segment, [
-    /(?:현재 사용량|사용량|남은 사용량|남음|remaining|left)\s*[:：]?\s*([0-9]+(?:\.[0-9]+)?\s*%)/i,
-    /([0-9]+(?:\.[0-9]+)?\s*%)\s*(?:현재 사용량|사용량|남음|remaining|left)/i,
     /(?:남은 사용량|남음|remaining|left)\s*[:：]?\s*([0-9]+(?:\.[0-9]+)?\s*%)/i,
     /([0-9]+(?:\.[0-9]+)?\s*%)\s*(?:남음|remaining|left)/i,
     /(?:남은 사용량|remaining|left)\s*[:：]?\s*([^/|]{1,42}?)(?:초기화|reset|$)/i
+  ]);
+  const used = firstMatch(segment, [
+    /([0-9]+(?:\.[0-9]+)?\s*%)\s*(?:사용됨|used)/i
   ]);
   const reset = firstMatch(segment, [
     /((?:\d{1,2}월\s*\d{1,2}일\s*)?(?:오전|오후)\s*\d{1,2}:\d{2}\s*에\s*초기화)/i,
@@ -364,7 +370,7 @@ function parseUsageWindow(text: string, label: GeminiAppsUsageWindow["label"], a
     /(?:resets?)\s*(?:at|in)\s*([^/|]{1,70})/i
   ]);
 
-  const remainingPercent = cleanPercentage(remaining);
+  const remainingPercent = cleanPercentage(remaining) ?? remainingFromUsedPercentage(used);
 
   if (!remainingPercent) {
     return null;
@@ -393,6 +399,10 @@ function isGeminiUsageText(text: string) {
 
 function parseGeminiAppsPlan(text: string) {
   const normalized = text.replace(/\s+/g, " ").trim();
+  const currentPlan = normalized.match(/\b(?:google\s+ai\s+)?(pro|ultra|advanced|free)\s*(?:요금제|plan)/i)?.[1];
+  if (currentPlan) {
+    return currentPlan.charAt(0).toUpperCase() + currentPlan.slice(1).toLowerCase();
+  }
   if (/\b(?:google\s+ai\s+)?ultra\b|AI\s*Ultra/i.test(normalized)) {
     return "Ultra";
   }
@@ -450,6 +460,18 @@ function cleanPercentage(value: string | null) {
 
   const match = cleaned.match(/([0-9]+(?:\.[0-9]+)?)\s*%/);
   return match ? `${match[1]}%` : null;
+}
+
+function remainingFromUsedPercentage(value: string | null) {
+  const cleaned = cleanPercentage(value);
+  if (!cleaned) {
+    return null;
+  }
+  const usedPercent = Number(cleaned.slice(0, -1));
+  if (!Number.isFinite(usedPercent)) {
+    return null;
+  }
+  return `${Math.round((100 - Math.min(100, Math.max(0, usedPercent))) * 10) / 10}%`;
 }
 
 function normalizeWindow(value: GeminiAppsUsageWindow | null, label: GeminiAppsUsageWindow["label"]) {
