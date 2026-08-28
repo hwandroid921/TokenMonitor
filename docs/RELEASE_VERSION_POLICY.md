@@ -73,10 +73,10 @@ Before `v1.0.0`, do not maintain a fixed version-by-version feature roadmap. Whe
 Current package version:
 
 ```text
-1.3.5
+1.3.12
 ```
 
-`v1.3.5` is the adaptive overlay sizing maintenance release following the developer-mode reintegration milestone.
+`v1.3.12` correctly parses the current Gemini Apps Usage Limits page on macOS.
 
 - ChatGPT quota display through the Codex Desktop local usage flow, with an optional user-set `codex.exe` path
 - Claude quota display
@@ -197,6 +197,102 @@ For each release-worthy version bump, summarize:
 - Known limitations
 
 ## Release History
+
+### 1.3.12 — 2026-08-28 — PATCH
+
+**Change category:** PATCH (Gemini Apps current page parser)
+
+**User-visible changes:**
+- Gemini Apps now identifies the current Pro plan, converts displayed usage percentages to remaining percentages, and reads the current and weekly reset text independently.
+
+**Packaging notes:**
+- Package version updated to `1.3.12`.
+
+**Known limitations:**
+- Gemini Apps data refreshes when its authenticated Usage Limits page is opened in the app.
+
+### 1.3.11 — 2026-08-28 — PATCH
+
+**Change category:** PATCH (Gemini Apps parser verification)
+
+**User-visible changes:**
+- Gemini Apps 5-hour and weekly values are shown only when each has an independent Usage Limits label; ambiguous cached values are ignored.
+
+**Packaging notes:**
+- Package version updated to `1.3.11`.
+
+**Known limitations:**
+- Gemini Apps still requires an authenticated embedded browser session and a readable Usage Limits page.
+
+### 1.3.10 — 2026-08-28 — PATCH
+
+**Change category:** PATCH (Claude Status Line startup check)
+
+**User-visible changes:**
+- The app verifies and updates its own Claude Status Line collector at startup, including migration from earlier macOS app-data paths.
+
+**Packaging notes:**
+- Package version updated to `1.3.10`.
+
+**Known limitations:**
+- Custom Status Line commands not created by Token Monitor remain untouched.
+
+### 1.3.9 — 2026-08-28 — PATCH
+
+**Change category:** PATCH (Claude Status Line migration)
+
+**User-visible changes:**
+- Existing Token Monitor Claude Status Line commands are migrated from an earlier macOS app-data directory, restoring dashboard and overlay collection after an app update.
+
+**Packaging notes:**
+- Package version updated to `1.3.9`.
+
+**Known limitations:**
+- A custom Status Line command that was not created by Token Monitor remains untouched.
+
+### 1.3.8 — 2026-08-28 — PATCH
+
+**Change category:** PATCH (Claude reset timestamp collection)
+
+**User-visible changes:**
+- Claude Code Status Line's numeric `resets_at` values are normalized to ISO timestamps, so the 5-hour and weekly reset times display correctly.
+
+**Packaging notes:**
+- Package version updated to `1.3.8`.
+
+**Known limitations:**
+- Reset times refresh when Claude Code provides a new Status Line payload after session activity.
+
+### 1.3.7 — 2026-08-28 — PATCH
+
+**Change category:** PATCH (Codex app-server compatibility)
+
+**User-visible changes:**
+- Updated Codex app-server startup so the current macOS ChatGPT-bundled CLI accepts the collector and returns the 5-hour and weekly quota windows.
+
+**Packaging notes:**
+- Package version updated to `1.3.7`.
+
+**Known limitations:**
+- Codex collection requires an authenticated Codex CLI or ChatGPT app bundle that supports `account/rateLimits/read`.
+
+### 1.3.6 — 2026-08-28 — PATCH
+
+**Change category:** PATCH (macOS provider collection compatibility)
+
+**User-visible changes:**
+- Codex now discovers a macOS ChatGPT app bundle, PATH, Homebrew, and common npm global-install locations; its manual executable-path setting is available on macOS.
+- Claude Status Line collection now uses an app-owned Node script instead of PowerShell, and Claude CLI status fallback uses macOS `npx`.
+- Antigravity local fallback now uses macOS process and listening-port discovery, while Gemini API-key authentication reports that OAuth is required for quota lookup.
+
+**Packaging notes:**
+- Package version updated to `1.3.6`.
+- Added an unsigned ARM64 macOS DMG/ZIP packaging script and `.icns` app icon. Artifacts are written to `release/macos`.
+- Developer ID signing and notarization are not included in this PATCH release.
+
+**Known limitations:**
+- Provider quota collection still requires each provider's own CLI or web login. Gemini API-key authentication cannot provide subscription quota.
+- The Codex CLI must be functional and signed in; a broken global installation must be repaired before collection succeeds.
 
 ### 1.3.5 — 2026-08-27 — PATCH
 

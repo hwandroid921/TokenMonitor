@@ -23,6 +23,8 @@ Token Monitor는 외부 CLI를 실행하고 사용자 홈 디렉터리의 로컬
 
 ## 2. 현재 상태와 선행 구현 항목
 
+> 업데이트: Token Monitor `v1.3.6`부터 provider 수집기의 macOS 경로 탐색과 Claude Node Status Line, Antigravity `ps`/`lsof` local probe, ARM64 unsigned DMG/ZIP 패키징 설정이 구현되었다. Developer ID 서명과 공증은 별도 구현과 검증이 필요하다.
+
 현재 UI와 공통 TypeScript 로직은 대부분 재사용할 수 있지만, 다음 Windows 전용 구현을 먼저 플랫폼 분기 또는 공통 구현으로 교체해야 한다.
 
 ### 2.1 Claude

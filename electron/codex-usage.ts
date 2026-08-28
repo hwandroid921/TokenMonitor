@@ -88,6 +88,9 @@ export type CodexExecutableSource =
   | "local-direct"
   | "local-versioned"
   | "windows-apps"
+  | "mac-app"
+  | "homebrew"
+  | "npm-global"
   | "path"
   | "none";
 
@@ -136,7 +139,7 @@ class JsonRpcClient {
 
   constructor(executablePath?: string) {
     const resolvedPath = executablePath ?? resolveCodexExecutable().path;
-    this.child = spawn(resolvedPath, ["-s", "read-only", "-a", "untrusted", "app-server"], {
+    this.child = spawn(resolvedPath, ["-s", "read-only", "app-server"], {
       stdio: ["pipe", "pipe", "pipe"],
       windowsHide: true
     });
@@ -228,7 +231,10 @@ export async function getCodexUsage(executablePath?: string): Promise<CodexUsage
 
   try {
     rpc = new JsonRpcClient(executablePath);
-    await rpc.request("initialize", { clientInfo: { name: "token-monitor", version: _appVersion } }, 12000);
+    await rpc.request("initialize", {
+      clientInfo: { name: "token-monitor", version: _appVersion },
+      capabilities: null
+    }, 12000);
     rpc.notify("initialized");
 
     const limitsResult = await rpc.request<RpcRateLimitsResponse>("account/rateLimits/read", {}, 6000);
@@ -315,11 +321,8 @@ export async function validateCodexExecutablePath(candidate: string): Promise<{
   usage?: CodexUsageResult;
 }> {
   const normalized = candidate.trim();
-  if (!path.isAbsolute(normalized)) {
-    return { ok: false, connection: "failed", detail: "codex.exe 전체 경로를 입력해 주세요." };
-  }
-  if (path.basename(normalized).toLowerCase() !== "codex.exe" || !isExecutableFile(normalized)) {
-    return { ok: false, connection: "failed", detail: "선택한 위치에서 codex.exe를 찾을 수 없습니다." };
+  if (!isCodexExecutable(normalized)) {
+    return { ok: false, connection: "failed", detail: "선택한 위치에서 Codex 실행 파일을 찾을 수 없습니다." };
   }
 
   // The path points at a real codex.exe. Try a live connection, but do not block
@@ -331,7 +334,7 @@ export async function validateCodexExecutablePath(candidate: string): Promise<{
   return {
     ok: true,
     connection: "failed",
-    detail: "codex.exe 경로를 저장했습니다. Codex Desktop 로그인 또는 실행 상태를 확인하세요.",
+    detail: "Codex 실행 경로를 저장했습니다. Codex Desktop 로그인 또는 실행 상태를 확인하세요.",
     usage
   };
 }
@@ -393,7 +396,41 @@ function resolveCodexExecutable(): { path: string; source: CodexExecutableSource
     throw new Error("Codex CLI executable was not found. Install or run Codex, or set CODEX_CLI_PATH to codex.exe.");
   }
 
-  return { path: "codex", source: "path", desktopInstalled };
+  const resolved = resolveMacCodexExecutable();
+  if (resolved) {
+    return { ...resolved, desktopInstalled };
+  }
+  if (_configuredExecutablePath) {
+    throw new Error("Configured Codex path is invalid.");
+  }
+  throw new Error("Codex CLI executable was not found. Install Codex or set CODEX_CLI_PATH.");
+}
+
+function resolveMacCodexExecutable(): { path: string; source: CodexExecutableSource } | null {
+  const appCandidates = [
+    "/Applications/ChatGPT.app/Contents/Resources/codex",
+    path.join(os.homedir(), "Applications", "ChatGPT.app", "Contents", "Resources", "codex")
+  ];
+  const appCandidate = appCandidates.find(isExecutableFile);
+  if (appCandidate) {
+    return { path: appCandidate, source: "mac-app" };
+  }
+
+  const pathCandidate = findCommandOnPath("codex");
+  if (pathCandidate) {
+    return { path: pathCandidate, source: "path" };
+  }
+
+  const homebrewCandidate = ["/opt/homebrew/bin/codex", "/usr/local/bin/codex"].find(isExecutableFile);
+  if (homebrewCandidate) {
+    return { path: homebrewCandidate, source: "homebrew" };
+  }
+
+  const npmCandidate = [
+    path.join(os.homedir(), ".npm-global", "bin", "codex"),
+    path.join(os.homedir(), ".local", "bin", "codex")
+  ].find(isExecutableFile);
+  return npmCandidate ? { path: npmCandidate, source: "npm-global" } : null;
 }
 
 function resolveWindowsCodexExecutable(): { path: string; source: CodexExecutableSource; desktopInstalled: boolean } | null {
@@ -485,6 +522,15 @@ function isExecutableFile(candidate: string) {
   } catch {
     return false;
   }
+}
+
+function isCodexExecutable(candidate: string) {
+  if (!path.isAbsolute(candidate) || !isExecutableFile(candidate)) {
+    return false;
+  }
+  return process.platform === "win32"
+    ? path.basename(candidate).toLowerCase() === "codex.exe"
+    : path.basename(candidate) === "codex";
 }
 
 function safeMtime(candidate: string) {

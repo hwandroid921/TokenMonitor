@@ -57,7 +57,8 @@ async function getClaudeSession(): Promise<CliSessionStatus> {
   const checkedAt = new Date().toISOString();
   const environment = createClaudeOAuthEnvironment();
   const direct = await runJsonCommand("claude", ["auth", "status", "--json"], 5000, environment);
-  const result = direct.ok ? direct : await runJsonCommand("npx.cmd", ["-y", "@anthropic-ai/claude-code", "auth", "status", "--json"], 30000, environment);
+  const npxCommand = process.platform === "win32" ? "npx.cmd" : "npx";
+  const result = direct.ok ? direct : await runJsonCommand(npxCommand, ["-y", "@anthropic-ai/claude-code", "auth", "status", "--json"], 30000, environment);
 
   if (!result.ok) {
     return {

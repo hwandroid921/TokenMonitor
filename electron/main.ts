@@ -1,4 +1,4 @@
-import { app, BrowserView, BrowserWindow, Menu, Notification, Tray, dialog, ipcMain, powerMonitor, screen, shell } from "electron";
+import { app, BrowserView, BrowserWindow, Menu, Notification, Tray, dialog, ipcMain, nativeImage, powerMonitor, screen, shell } from "electron";
 import { spawn } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
@@ -256,11 +256,19 @@ function createTray() {
     return tray;
   }
 
-  tray = new Tray(path.join(__dirname, "../build/icon.ico"));
+  const trayIcon = nativeImage.createFromPath(getAppIconPath());
+  if (process.platform === "darwin") {
+    trayIcon.setTemplateImage(true);
+  }
+  tray = new Tray(trayIcon);
   tray.on("click", showMainWindow);
   tray.on("double-click", showMainWindow);
   updateTrayMenu();
   return tray;
+}
+
+function getAppIconPath() {
+  return path.join(__dirname, "../build", process.platform === "darwin" ? "TrayTemplate.png" : "icon.ico");
 }
 
 function createWindow() {
@@ -270,7 +278,7 @@ function createWindow() {
     minWidth: 1040,
     minHeight: 680,
     title: "Token Monitor",
-    icon: path.join(__dirname, "../build/icon.ico"),
+    icon: getAppIconPath(),
     show: true,
     backgroundColor: "#f7f7f2",
     webPreferences: {
@@ -584,7 +592,7 @@ async function selectCodexExecutablePath() {
   const options: Electron.OpenDialogOptions = {
     title: "Codex 실행 파일 선택",
     properties: ["openFile"],
-    filters: [{ name: "Codex 실행 파일", extensions: ["exe"] }]
+    filters: [{ name: "Codex 실행 파일", extensions: process.platform === "win32" ? ["exe"] : ["*"] }]
   };
   const result = mainWindow
     ? await dialog.showOpenDialog(mainWindow, options)
@@ -1542,6 +1550,11 @@ if (!gotSingleInstanceLock) {
     initializeQuotaAlertState(app.getPath("userData"));
     providerSettings = loadProviderSettings();
     setCodexExecutablePath(providerSettings.codexExecutablePath);
+    // Keep the app-owned Status Line current even when Claude is already logged in.
+    const statusLineSetup = ensureClaudeStatusLine(app.getPath("userData"));
+    if (!statusLineSetup.ok) {
+      console.warn("Claude Status Line setup skipped:", statusLineSetup.detail);
+    }
     loadOverlaySettings();
     installKoreanMenu();
     createTray();

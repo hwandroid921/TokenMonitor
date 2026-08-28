@@ -57,6 +57,9 @@ export type CodexExecutableSource =
   | "local-direct"
   | "local-versioned"
   | "windows-apps"
+  | "mac-app"
+  | "homebrew"
+  | "npm-global"
   | "path"
   | "none";
 

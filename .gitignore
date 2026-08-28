@@ -2,6 +2,7 @@ node_modules/
 dist/
 dist-electron/
 dist-app/
+release/
 win-unpacked/
 builder-debug.yml
 builder-effective-config.yaml
@@ -12,6 +13,7 @@ TokenMonitor-*-x64.exe
 *.local
 *.log
 *.png
+!build/TrayTemplate.png
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
