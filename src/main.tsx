@@ -96,6 +96,7 @@ const defaultOverlaySettings: OverlaySettings = {
   showRemaining: true,
   showReset: true,
   opacity: 50,
+  fontSizePercent: 100,
   position: { mode: "default" }
 };
 
@@ -225,7 +226,7 @@ function App() {
       return;
     }
     const result = await window.tokenMonitor.beginOverlayPositioning();
-    setSettingsNotice(result.ok ? "오버레이를 드래그한 뒤 오버레이의 완료 버튼을 누르세요." : "오버레이 위치 조정을 시작하지 못했습니다.");
+    setSettingsNotice(result.ok ? "오버레이 창을 드래그한 뒤 우측 상단의 완료 버튼을 누르세요." : "오버레이 위치 변경을 시작하지 못했습니다.");
   }
 
   async function resetOverlayPosition() {
@@ -235,7 +236,7 @@ function App() {
     }
     const saved = await window.tokenMonitor.resetOverlayPosition();
     setOverlaySettings(saved);
-    setSettingsNotice("오버레이 위치를 기본 화면 우측 하단으로 되돌렸습니다.");
+    setSettingsNotice("오버레이 위치를 초기화했습니다.");
   }
 
   async function saveNotificationSettings(patch: Partial<NotificationSettings>) {
@@ -1147,13 +1148,27 @@ function SettingsPanel({
       <section className="setting-group overlay-position-settings" aria-labelledby="overlay-position-heading">
         <div>
           <h2 id="overlay-position-heading">오버레이 위치</h2>
-          <p>위치 조정 중에는 오버레이를 드래그할 수 있습니다. 완료하면 클릭 통과 상태로 돌아갑니다.</p>
+          <p>위치 변경 중에는 창 테두리가 강조되고 오버레이를 드래그할 수 있습니다. 완료하면 클릭 통과 상태로 돌아갑니다.</p>
         </div>
         <div className="button-row">
-          <button className="secondary-button" type="button" disabled={isSaving || !settings.enabled} onClick={() => void onBeginOverlayPositioning()}>위치 조정</button>
-          <button className="text-button" type="button" disabled={isSaving} onClick={() => void onResetOverlayPosition()}>우측 하단으로 되돌리기</button>
+          <button className="secondary-button" type="button" disabled={isSaving || !settings.enabled} onClick={() => void onBeginOverlayPositioning()}>위치 변경</button>
+          <button className="secondary-button" type="button" disabled={isSaving} onClick={() => void onResetOverlayPosition()}>위치 초기화</button>
         </div>
       </section>
+
+      <label className="overlay-font-size-control">
+        <span>오버레이 글자 크기</span>
+        <input
+          type="range"
+          min="50"
+          max="150"
+          step="5"
+          value={settings.fontSizePercent}
+          disabled={isSaving}
+          onChange={(event) => update({ fontSizePercent: Number(event.target.value) })}
+        />
+        <strong>{settings.fontSizePercent}%</strong>
+      </label>
 
       <label className="switch-row">
         <input type="checkbox" checked={settings.closeToTray} disabled={isSaving} onChange={(event) => update({ closeToTray: event.target.checked })} />
@@ -1475,7 +1490,6 @@ function OverlayApp() {
   const [settings, setSettings] = useState<OverlaySettings>(defaultOverlaySettings);
   const [notificationSettings, setNotificationSettings] = useState<NotificationSettings>(defaultNotificationSettings);
   const [isPositioning, setIsPositioning] = useState(false);
-  const [fontScale, setFontScale] = useState(1);
   const contentRef = useRef<HTMLElement | null>(null);
   const refreshRequestRef = useRef(0);
 
@@ -1555,13 +1569,9 @@ function OverlayApp() {
     const resize = () => {
       window.cancelAnimationFrame(frameId);
       frameId = window.requestAnimationFrame(() => {
-        const maximumContentHeight = Math.max(100, Math.floor(window.screen.availHeight / 3) - 20);
-        const nextScale = Math.max(0.35, Math.min(1, fontScale * (maximumContentHeight / content.scrollHeight)));
-        if (Math.abs(nextScale - fontScale) > 0.01) {
-          setFontScale(nextScale);
-          return;
-        }
-        void window.tokenMonitor?.resizeOverlay({ width: 620, height: content.scrollHeight });
+        const textWidth = Array.from(content.querySelectorAll<HTMLElement>("strong, span, .overlay-muted"))
+          .reduce((maximum, element) => Math.max(maximum, element.scrollWidth), 0);
+        void window.tokenMonitor?.resizeOverlay({ width: textWidth + 28, height: content.scrollHeight });
       });
     };
 
@@ -1572,18 +1582,18 @@ function OverlayApp() {
       observer.disconnect();
       window.cancelAnimationFrame(frameId);
     };
-  }, [providers, settings, fontScale, isPositioning]);
+  }, [providers, settings, isPositioning]);
 
   return (
     <main
       className={`overlay-root${isPositioning ? " position-editing" : ""}`}
       style={{
-        "--overlay-heading-size": `${Math.round(56 * fontScale)}px`,
-        "--overlay-detail-size": `${Math.round(48 * fontScale)}px`
+        "--overlay-heading-size": `${28 * settings.fontSizePercent / 100}px`,
+        "--overlay-detail-size": `${24 * settings.fontSizePercent / 100}px`
       } as React.CSSProperties}
     >
       <section className="overlay-card" ref={contentRef}>
-        {isPositioning ? <button className="overlay-position-finish" type="button" onClick={() => void window.tokenMonitor?.finishOverlayPositioning()}>위치 조정 완료</button> : null}
+        {isPositioning ? <button className="overlay-position-finish" type="button" onClick={() => void window.tokenMonitor?.finishOverlayPositioning()}>완료</button> : null}
         <div className="overlay-provider-list">
           {providers.length === 0 ? (
             <p className="overlay-muted">표시할 서비스 없음</p>

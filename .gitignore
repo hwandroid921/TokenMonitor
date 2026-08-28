@@ -2,6 +2,9 @@ node_modules/
 dist/
 dist-electron/
 dist-app/
+win-unpacked/
+builder-debug.yml
+builder-effective-config.yaml
 dist-portable/
 TokenMonitor-*-x64.exe
 .env*

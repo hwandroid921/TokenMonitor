@@ -20,6 +20,7 @@ export type OverlaySettings = {
   showRemaining: boolean;
   showReset: boolean;
   opacity: number;
+  fontSizePercent: number;
   position: OverlayPosition;
 };
 
@@ -49,6 +50,7 @@ export const defaultOverlaySettings: OverlaySettings = {
   showRemaining: true,
   showReset: true,
   opacity: 50,
+  fontSizePercent: 100,
   position: { mode: "default" }
 };
 
@@ -66,8 +68,14 @@ export function normalizeOverlaySettings(value: Partial<OverlaySettings>): Overl
     providerItems,
     closeToTray: Boolean(value.closeToTray ?? defaultOverlaySettings.closeToTray),
     opacity: 50,
+    fontSizePercent: normalizeFontSizePercent(value.fontSizePercent),
     position: normalizeOverlayPosition(value.position)
   };
+}
+
+function normalizeFontSizePercent(value: unknown) {
+  const requested = Number.isFinite(value) ? Number(value) : defaultOverlaySettings.fontSizePercent;
+  return Math.min(150, Math.max(50, Math.round(requested / 5) * 5));
 }
 
 function normalizeOverlayPosition(value: Partial<OverlayPosition> | undefined): OverlayPosition {

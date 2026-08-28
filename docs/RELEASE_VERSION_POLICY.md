@@ -73,10 +73,10 @@ Before `v1.0.0`, do not maintain a fixed version-by-version feature roadmap. Whe
 Current package version:
 
 ```text
-1.3.2
+1.3.5
 ```
 
-`v1.3.2` is the overlay positioning and layout maintenance release following the developer-mode reintegration milestone.
+`v1.3.5` is the adaptive overlay sizing maintenance release following the developer-mode reintegration milestone.
 
 - ChatGPT quota display through the Codex Desktop local usage flow, with an optional user-set `codex.exe` path
 - Claude quota display
@@ -161,7 +161,7 @@ Before finishing a task:
    ```
 
 8. Verify the generated executable and SHA256 hash when packaging is performed.
-9. For `MINOR` and `MAJOR` releases, remove older `TokenMonitor-*-x64.exe` artifacts from `dist-app/` and any user-designated release delivery directory only after the current version artifact and hash have been verified. Preserve the current version artifact.
+9. For `MINOR` and `MAJOR` releases, remove older `TokenMonitor-*-x64.exe` artifacts from the project root and any user-designated release delivery directory only after the current version artifact and hash have been verified. Preserve the current version artifact. Clean the legacy `dist-app/` directory after packaging.
 
 ## Git Releases And Tags From v1.0.0
 
@@ -197,6 +197,53 @@ For each release-worthy version bump, summarize:
 - Known limitations
 
 ## Release History
+
+### 1.3.5 — 2026-08-27 — PATCH
+
+**Change category:** PATCH (adaptive overlay layout)
+
+**User-visible changes:**
+- The overlay now starts from one-third of the selected display work area in both width and height.
+- Changing font size or display items measures the rendered content and expands the overlay window as needed, up to the selected display work area.
+- Position-change emphasis now uses an outline, so the visual border does not reduce space available to overlay text.
+
+**Packaging notes:**
+- Package version updated to `1.3.5`.
+- This PATCH release does not regenerate a portable executable by default.
+
+**Known limitations:**
+- At the full display width or height, exceptionally long single-line values remain truncated rather than overflowing the screen.
+
+### 1.3.4 — 2026-08-27 — PATCH
+
+**Change category:** PATCH (overlay position-mode clarity and user-controlled typography)
+
+**User-visible changes:**
+- Renamed the overlay location actions to **위치 변경** and **위치 초기화**.
+- Position-change mode now draws an emphasized window border and places the completion button at the overlay's upper-right corner.
+- Added a persistent 50% to 150% overlay font-size slider. Display-item changes no longer alter the selected font size.
+
+**Packaging notes:**
+- Package version updated to `1.3.4`.
+- This PATCH release does not regenerate a portable executable by default.
+
+**Known limitations:**
+- The window height remains capped at one-third of the selected display work area. Extremely dense provider content may require reducing the enabled display items or font size.
+
+### 1.3.3 — 2026-08-27 — PATCH
+
+**Change category:** PATCH (fixed overlay typography during display-item changes)
+
+**User-visible changes:**
+- Reduced the overlay's fixed base font sizes to 28px for service headings and 24px for detail rows.
+- Changing overlay display items now changes only content height and lower-edge alignment; it does not scale text up or down.
+
+**Packaging notes:**
+- Package version updated to `1.3.3`.
+- This PATCH release does not regenerate a portable executable by default.
+
+**Known limitations:**
+- The window height remains capped at one-third of the selected display work area. Extremely dense provider content may require reducing the enabled display items.
 
 ### 1.3.2 — 2026-08-27 — PATCH
 
