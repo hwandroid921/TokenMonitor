@@ -73,10 +73,10 @@ Before `v1.0.0`, do not maintain a fixed version-by-version feature roadmap. Whe
 Current package version:
 
 ```text
-1.3.12
+1.4.0
 ```
 
-`v1.3.12` correctly parses the current Gemini Apps Usage Limits page on macOS.
+`v1.4.0` introduces the quota-focused dashboard redesign, aligned provider rows, compact recovery guidance, and responsive quota comparison.
 
 - ChatGPT quota display through the Codex Desktop local usage flow, with an optional user-set `codex.exe` path
 - Claude quota display
@@ -197,6 +197,98 @@ For each release-worthy version bump, summarize:
 - Known limitations
 
 ## Release History
+
+### 1.4.0 — 2026-09-01 — MINOR
+
+**Change category:** MINOR (quota-focused dashboard redesign)
+
+**User-visible changes:**
+- The dashboard now compares provider quota windows in one aligned surface, with remaining percentages, progress indicators, and reset times as the primary hierarchy.
+- ChatGPT, Claude, Gemini Apps, and Antigravity retain their real provider-specific states while recovery guidance is consolidated into one expandable attention panel.
+- Gemini Apps and Antigravity weekly and periodic windows are grouped compactly so the dashboard remains readable at the default 1280 × 820 window size.
+- Provider brand marks, labeled header actions, responsive narrow-window behavior, and accessible progress/status semantics bring the implementation in line with the selected design direction.
+
+**Provider/data-source changes:**
+- No provider collection or credential-handling behavior changed.
+- A localhost-only design-preview state is available for visual QA and is excluded from packaged Electron behavior.
+
+**Packaging notes:**
+- Package version updated to `1.4.0`.
+- Windows x64 portable packaging is required for this MINOR release.
+
+**Known limitations:**
+- Providers expose different reset-time formats, so the dashboard shows the display-safe reset value supplied by each normalized collector rather than inventing a uniform absolute timestamp.
+
+### 1.3.17 — 2026-08-31 — PATCH
+
+**Change category:** PATCH (Claude account and recovery guidance)
+
+**User-visible changes:**
+- The Claude card now shows one **계정** row that combines a configured alias with the Claude CLI login state, instead of separate login and alias rows.
+- Claude recovery guidance now distinguishes missing CLI prerequisites, logged-out OAuth, Status Line configuration failure, missing execution snapshot, unreadable or invalid snapshots, and a valid snapshot without quota data.
+
+**Packaging notes:**
+- Package version updated to `1.3.17`; portable packaging is skipped for this patch release.
+
+**Known limitations:**
+- The dashboard cannot create a Claude Code interactive response itself; the user must complete the first normal Claude Code response to obtain an execution snapshot.
+
+### 1.3.16 — 2026-08-31 — PATCH
+
+**Change category:** PATCH (Claude Status Line execution guidance)
+
+**User-visible changes:**
+- The dashboard now records whether the display-safe Claude Status Line snapshot exists, separately from Status Line registration.
+- When registration is complete but the script has not executed, the Claude card directs the user to close pre-registration Claude Code sessions, start a new interactive `claude` session, and send a normal message.
+- Actual collection failures now direct the user to `claude --debug` after the fresh-session check; a received snapshot with no quota remains distinct from a script-execution wait.
+
+**Packaging notes:**
+- Package version updated to `1.3.16`; portable packaging is skipped for this patch release.
+
+**Known limitations:**
+- Claude.ai 5-hour and weekly limits are available only when Claude Code supplies `rate_limits` after the first API response for a qualifying Claude.ai subscription.
+
+### 1.3.15 — 2026-08-31 — PATCH
+
+**Change category:** PATCH (Claude Status Line state messaging)
+
+**User-visible changes:**
+- The dashboard now distinguishes Status Line registration required, registration complete with Claude Code conversation waiting, and actual registration or collection errors.
+- After successful registration, the Status Line registration action is hidden and the dashboard asks only for a new Claude Code conversation until usage data arrives.
+
+**Packaging notes:**
+- Package version updated to `1.3.15`; portable packaging is skipped for this patch release.
+
+**Known limitations:**
+- A Status Line can be verified as registered, but its execution can only be confirmed when Claude Code provides a new usage snapshot after a conversation.
+
+### 1.3.14 — 2026-08-31 — PATCH
+
+**Change category:** PATCH (Claude Status Line dashboard registration)
+
+**User-visible changes:**
+- The dashboard's **Status Line 새로 등록** action now registers the Token Monitor Claude usage collector as a new Claude Code Status Line command.
+- When a custom Status Line already exists, this explicit dashboard action replaces it and reports that replacement in the card.
+
+**Packaging notes:**
+- Package version updated to `1.3.14`; portable packaging is skipped for this patch release.
+
+**Known limitations:**
+- Claude Code supports one configured Status Line command, so a replaced custom command must be manually restored or combined if it is still needed.
+
+### 1.3.13 — 2026-08-31 — PATCH
+
+**Change category:** PATCH (dashboard provider setup actions)
+
+**User-visible changes:**
+- Dashboard provider cards now expose Codex connection settings, Claude CLI login, Claude Status Line registration, Gemini Apps login/usage checks, and Antigravity CLI login as applicable.
+- Claude CLI login and Status Line registration are separate actions, so an existing custom Status Line does not prevent OAuth login checks.
+
+**Packaging notes:**
+- Package version updated to `1.3.13`; portable packaging is skipped for this patch release.
+
+**Known limitations:**
+- A custom Claude Status Line remains protected and must be replaced or manually combined before Token Monitor can collect Claude quota data.
 
 ### 1.3.12 — 2026-08-28 — PATCH
 

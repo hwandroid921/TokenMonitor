@@ -10,15 +10,55 @@ export type ClaudeStatusLineSetupResult =
   | { ok: true; snapshotPath: string; detail: string }
   | { ok: false; detail: string };
 
+export type ClaudeStatusLineRegistrationStatus = {
+  state: "registered" | "needs-registration" | "error";
+  registered: boolean;
+  scriptReady: boolean;
+  snapshotAvailable: boolean;
+  detail: string;
+};
+
+type ClaudeStatusLineSetupOptions = {
+  replaceExisting?: boolean;
+};
+
 export function getClaudeStatusLineSnapshotPath(userDataPath: string) {
   return path.join(userDataPath, snapshotFileName);
 }
 
+export function getClaudeStatusLineRegistrationStatus(userDataPath: string): ClaudeStatusLineRegistrationStatus {
+  const scriptPath = path.join(userDataPath, statusLineFileName);
+  const scriptReady = fs.existsSync(scriptPath);
+  const snapshotAvailable = fs.existsSync(getClaudeStatusLineSnapshotPath(userDataPath));
+  const settingsPath = getClaudeSettingsPath();
+
+  let settings: Record<string, unknown>;
+  try {
+    if (!fs.existsSync(settingsPath)) {
+      return { state: "needs-registration", registered: false, scriptReady, snapshotAvailable, detail: "Claude Status Line 등록이 필요합니다." };
+    }
+    const value = JSON.parse(fs.readFileSync(settingsPath, "utf8"));
+    if (!value || typeof value !== "object" || Array.isArray(value)) {
+      return { state: "error", registered: false, scriptReady, snapshotAvailable, detail: "Claude 설정 파일 형식이 올바르지 않습니다." };
+    }
+    settings = value as Record<string, unknown>;
+  } catch {
+    return { state: "error", registered: false, scriptReady, snapshotAvailable, detail: "Claude Status Line 설정을 확인할 수 없습니다." };
+  }
+
+  if (scriptReady && isTokenMonitorStatusLine(settings.statusLine, scriptPath)) {
+    return { state: "registered", registered: true, scriptReady: true, snapshotAvailable, detail: "Token Monitor Status Line이 등록되었습니다." };
+  }
+
+  return { state: "needs-registration", registered: false, scriptReady, snapshotAvailable, detail: "Claude Status Line 등록이 필요합니다." };
+}
+
 /**
  * Installs the app-owned Status Line command without reading authentication
- * files. Existing custom Status Line commands are preserved and reported.
+ * files. Startup preserves custom commands; an explicit dashboard action can
+ * replace one with the Token Monitor collector.
  */
-export function ensureClaudeStatusLine(userDataPath: string): ClaudeStatusLineSetupResult {
+export function ensureClaudeStatusLine(userDataPath: string, options: ClaudeStatusLineSetupOptions = {}): ClaudeStatusLineSetupResult {
   const snapshotPath = getClaudeStatusLineSnapshotPath(userDataPath);
   const scriptPath = path.join(userDataPath, statusLineFileName);
 
@@ -29,7 +69,7 @@ export function ensureClaudeStatusLine(userDataPath: string): ClaudeStatusLineSe
     return { ok: false, detail: "Claude Status Line 수집 도구를 준비할 수 없습니다." };
   }
 
-  const settingsPath = path.join(process.env.CLAUDE_CONFIG_DIR || path.join(os.homedir(), ".claude"), "settings.json");
+  const settingsPath = getClaudeSettingsPath();
   let settings: Record<string, unknown> = {};
   try {
     if (fs.existsSync(settingsPath)) {
@@ -45,7 +85,9 @@ export function ensureClaudeStatusLine(userDataPath: string): ClaudeStatusLineSe
 
   const existingStatusLine = settings.statusLine;
   if (existingStatusLine && !isTokenMonitorStatusLine(existingStatusLine, scriptPath)) {
-    return { ok: false, detail: "기존 Claude Status Line 설정을 유지했습니다. Token Monitor 수집용 Status Line을 별도로 설정하세요." };
+    if (!options.replaceExisting) {
+      return { ok: false, detail: "기존 Claude Status Line 설정을 유지했습니다. 대시보드의 Status Line 새로 등록 버튼으로 Token Monitor 수집 스크립트를 등록할 수 있습니다." };
+    }
   }
 
   settings.statusLine = {
@@ -61,7 +103,18 @@ export function ensureClaudeStatusLine(userDataPath: string): ClaudeStatusLineSe
     return { ok: false, detail: "Claude Status Line 설정을 저장할 수 없습니다." };
   }
 
-  return { ok: true, snapshotPath, detail: "Claude Status Line 수집이 준비되었습니다. Claude Code에서 대화를 시작하세요." };
+  const replacedExisting = Boolean(existingStatusLine && !isTokenMonitorStatusLine(existingStatusLine, scriptPath));
+  return {
+    ok: true,
+    snapshotPath,
+    detail: replacedExisting
+      ? "기존 Claude Status Line을 Token Monitor 수집 스크립트로 교체해 새로 등록했습니다. Claude Code에서 대화를 시작하세요."
+      : "Token Monitor Claude Status Line 수집 스크립트를 등록했습니다. Claude Code에서 대화를 시작하세요."
+  };
+}
+
+function getClaudeSettingsPath() {
+  return path.join(process.env.CLAUDE_CONFIG_DIR || path.join(os.homedir(), ".claude"), "settings.json");
 }
 
 function isTokenMonitorStatusLine(value: unknown, scriptPath: string) {

@@ -13,6 +13,8 @@ contextBridge.exposeInMainWorld("tokenMonitor", {
   updateCodexExecutablePath: (candidate) => ipcRenderer.invoke("codex-path:update", candidate),
   resetCodexExecutablePath: () => ipcRenderer.invoke("codex-path:reset"),
   startClaudeLogin: () => ipcRenderer.invoke("claude-login:start"),
+  setupClaudeStatusLine: () => ipcRenderer.invoke("claude-statusline:setup"),
+  getClaudeStatusLineRegistration: () => ipcRenderer.invoke("claude-statusline:status"),
   startGeminiLogin: () => ipcRenderer.invoke("gemini-login:start"),
   startGeminiAppsLogin: (bounds) => ipcRenderer.invoke("gemini-apps-login:start", bounds),
   updateGeminiViewBounds: (bounds) => ipcRenderer.invoke("gemini-view:bounds", bounds),
