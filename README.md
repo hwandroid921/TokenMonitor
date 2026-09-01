@@ -4,14 +4,15 @@
 
 Token Monitor는 여러 AI 서비스의 로컬 로그인 상태와 제공자가 제공하는 사용량 정보를 읽어, 플랜·사용량·잔여량·초기화 시간을 대시보드와 화면 우측 하단 오버레이로 표시합니다. 해당 프로그램은 ChatGPT, Claude, Gemini 유료 플랜 이상 구독 사용자를 대상으로 합니다.
 
-**지원 환경:** Windows x64, macOS Apple Silicon · **현재 앱 버전:** `v1.4.0` · **배포 형식:** Windows 포터블 실행 파일, macOS ARM64 DMG/ZIP
+**지원 환경:** Windows x64, macOS Apple Silicon · **현재 앱 버전:** `v1.5.0` · **배포 형식:** Windows 포터블 실행 파일, macOS ARM64 DMG/ZIP
 
 [릴리즈 다운로드](https://github.com/hwandroid921/TokenMonitor/releases)
 
 ## 핵심 기능
 
 - ChatGPT/Codex, Claude, Gemini, Antigravity의 상태를 분리해 오버레이로 표시
-- 공급자별 주간·주기 잔여량과 초기화 시간을 하나의 비교형 대시보드에서 표시
+- 접을 수 있는 좌측 메뉴와 공급자별 세로 레인을 사용해 모델·별칭·플랜·수집 상태를 한 화면에서 비교
+- 공급자별 주간·주기 잔여량, 초기화까지 남은 시간, 초기화 예정 시각을 같은 강조 수준으로 표시
 - 주간 사용량, 주기 사용량 표시
 - 설정에서 계정별 별칭을 지정 및 관리하여 대시보드와 오버레이에 표시해서 어떤 계정인지 빠르게 구분 가능
 - 사용자 지정 수치별 잔여 사용량 알림

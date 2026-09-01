@@ -73,10 +73,10 @@ Before `v1.0.0`, do not maintain a fixed version-by-version feature roadmap. Whe
 Current package version:
 
 ```text
-1.4.0
+1.5.0
 ```
 
-`v1.4.0` introduces the quota-focused dashboard redesign, aligned provider rows, compact recovery guidance, and responsive quota comparison.
+`v1.5.0` introduces the selected sky-blue dashboard and settings layout, collapsible left navigation, provider metadata lanes, and dual reset-time visibility.
 
 - ChatGPT quota display through the Codex Desktop local usage flow, with an optional user-set `codex.exe` path
 - Claude quota display
@@ -197,6 +197,29 @@ For each release-worthy version bump, summarize:
 - Known limitations
 
 ## Release History
+
+### 1.5.0 — 2026-09-02 — MINOR
+
+**Change category:** MINOR (dashboard and settings layout implementation)
+
+**User-visible changes:**
+- The dashboard now uses a collapsible left navigation rail and continuous provider lanes for ChatGPT, Claude, and Gemini.
+- Each provider presents the model, safe account alias, plan, and current collection status before quota details.
+- Weekly and periodic quotas give remaining percentage, time until reset, and scheduled reset time equal visual emphasis with compact progress bars.
+- Gemini Apps and Antigravity remain visibly separated while sharing the same Google account alias model and consistent quota presentation.
+- General, notification, account, overlay-display, and Codex-connection settings now share one nested settings navigation and unified sky-blue component styling.
+- The selected chart icon is applied to the dashboard and Windows/macOS application icon assets.
+
+**Provider/data-source changes:**
+- No collection order, authentication flow, or credential handling changed.
+- Exact reset timestamps already supplied by Codex, Claude, and Antigravity are exposed to the renderer for relative and scheduled-time formatting. Gemini Apps continues to display only its provider-supplied reset value when no parseable timestamp is available.
+
+**Packaging notes:**
+- Package version updated to `1.5.0`.
+- Windows x64 portable packaging is required for this MINOR release.
+
+**Known limitations:**
+- Model names are displayed only where the underlying provider supplies a display-safe model identifier; otherwise the dashboard explicitly reports that the model cannot be confirmed.
 
 ### 1.4.0 — 2026-09-01 — MINOR
 

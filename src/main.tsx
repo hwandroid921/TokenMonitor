@@ -1,6 +1,6 @@
 import React, { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { createRoot } from "react-dom/client";
-import { AlertCircle, Bug, CalendarDays, CheckCircle2, ChevronDown, Clock3, ExternalLink, LayoutDashboard, Link, RefreshCw, Settings } from "lucide-react";
+import { AlertCircle, Bell, Bug, CheckCircle2, ChevronDown, ExternalLink, LayoutDashboard, Link, Link2, Monitor, PanelLeftClose, PanelLeftOpen, RefreshCw, Settings, SlidersHorizontal, UserRound } from "lucide-react";
 import { SiAnthropic, SiGoogle } from "react-icons/si";
 import { TbBrandOpenai } from "react-icons/tb";
 import "./styles.css";
@@ -44,6 +44,8 @@ type ProviderUsage = {
   needsAlias?: boolean;
   issues?: ProviderIssue[];
   statusLine?: ClaudeStatusLineRegistrationStatus | null;
+  model?: string;
+  alias?: string;
 };
 
 type ProviderField = {
@@ -51,6 +53,7 @@ type ProviderField = {
   value: string;
   kind: "identity" | "session" | "plan" | "quota" | "usage" | "remaining" | "reset";
   remainingPercent?: number | null;
+  resetsAt?: string | null;
 };
 
 type ProviderIssue = {
@@ -72,7 +75,7 @@ const accountProviderLabels: Record<AccountProvider, string> = {
   google: "Google (Gemini Apps + Antigravity)"
 };
 
-const appIconUrl = new URL("../assets/icon.svg", import.meta.url).href;
+const appIconUrl = new URL("../assets/icon.png", import.meta.url).href;
 
 const providerStatusLabels: Record<ProviderUsage["status"], string> = {
   live: "정상",
@@ -128,6 +131,20 @@ const claudeLoginPollTimeoutMs = 30_000;
 const geminiUsagePollIntervalMs = 2500;
 const geminiUsagePollTimeoutMs = 60_000;
 
+function isDesignPreviewMode() {
+  return ["127.0.0.1", "localhost"].includes(window.location.hostname)
+    && new URLSearchParams(window.location.search).get("preview") === "design";
+}
+
+function buildDesignPreviewAccounts(): AccountAliasView[] {
+  const now = "2026-09-02T09:30:00+09:00";
+  return [
+    { recordId: "preview-codex", provider: "codex", maskedEmail: "p***@example.com", alias: "개인용", isCurrent: true, confidence: "verified", createdAt: now, lastSeenAt: now },
+    { recordId: "preview-claude", provider: "claude", maskedEmail: "w***@example.com", alias: "업무용", isCurrent: true, confidence: "verified", createdAt: now, lastSeenAt: now },
+    { recordId: "preview-google", provider: "google", maskedEmail: "g***@example.com", alias: "Google 개인용", isCurrent: true, confidence: "verified", createdAt: now, lastSeenAt: now }
+  ];
+}
+
 function App() {
   const geminiPanelRef = useRef<HTMLDivElement | null>(null);
   const geminiDialogRef = useRef<HTMLElement | null>(null);
@@ -138,9 +155,10 @@ function App() {
   const [geminiUsage, setGeminiUsage] = useState<GeminiUsageResult | null>(null);
   const [cliSessions, setCliSessions] = useState<CliSessionResult | null>(null);
   const [isRefreshing, setIsRefreshing] = useState(false);
-  const [overlaySettings, setOverlaySettings] = useState<OverlaySettings>(defaultOverlaySettings);
-  const [notificationSettings, setNotificationSettings] = useState<NotificationSettings>(defaultNotificationSettings);
+  const [overlaySettings, setOverlaySettings] = useState<OverlaySettings>(() => isDesignPreviewMode() ? { ...defaultOverlaySettings, enabled: true } : defaultOverlaySettings);
+  const [notificationSettings, setNotificationSettings] = useState<NotificationSettings>(() => isDesignPreviewMode() ? { ...defaultNotificationSettings, enabled: true } : defaultNotificationSettings);
   const [activeTab, setActiveTab] = useState<"dashboard" | "settings" | "developer">("dashboard");
+  const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
   const [requestedSettingsSection, setRequestedSettingsSection] = useState<"general" | "notifications" | "accounts" | "display" | "codex">("general");
   const [developerMode, setDeveloperMode] = useState<DeveloperModeInfo>({ enabled: false });
   const [developerDiagnostics, setDeveloperDiagnostics] = useState<DeveloperDiagnostics | null>(null);
@@ -159,7 +177,7 @@ function App() {
   const [settingsNotice, setSettingsNotice] = useState<string | null>(null);
   const [notificationNotice, setNotificationNotice] = useState<string | null>(null);
   const [isSettingsSaving, setIsSettingsSaving] = useState(false);
-  const [accountAliases, setAccountAliases] = useState<AccountAliasView[]>([]);
+  const [accountAliases, setAccountAliases] = useState<AccountAliasView[]>(() => isDesignPreviewMode() ? buildDesignPreviewAccounts() : []);
   const [accountAliasNotice, setAccountAliasNotice] = useState<string | null>(null);
   const refreshRequestRef = useRef(0);
   const notificationSettingsRef = useRef(notificationSettings);
@@ -167,7 +185,7 @@ function App() {
 
   const providers = useMemo(() => buildProviderUsage(codexUsage, claudeUsage, geminiUsage, cliSessions, claudeStatusLine), [codexUsage, claudeUsage, geminiUsage, cliSessions, claudeStatusLine]);
   const dashboardProviders = useMemo(
-    () => ["127.0.0.1", "localhost"].includes(window.location.hostname) && new URLSearchParams(window.location.search).get("preview") === "design"
+    () => isDesignPreviewMode()
       ? buildDesignPreviewProviders()
       : providers,
     [providers]
@@ -558,7 +576,7 @@ function App() {
   useEffect(() => {
     if (activeTab === "settings") {
       void refreshAccountAliases();
-    } else {
+    } else if (!isDesignPreviewMode()) {
       setAccountAliases([]);
     }
   }, [activeTab]);
@@ -628,18 +646,38 @@ function App() {
   }, [isGeminiPanelOpen]);
 
   return (
-    <main className="app-root">
+    <main className={`app-root${isSidebarCollapsed ? " sidebar-collapsed" : ""}`}>
+      <aside className="app-sidebar" aria-label="주요 메뉴">
+        <div className="sidebar-brand">
+          <span className="brand-mark">
+            <img src={appIconUrl} alt="" aria-hidden="true" />
+          </span>
+          <strong>Token Monitor</strong>
+        </div>
+        <nav className="sidebar-navigation" aria-label="화면 전환">
+          <button id="dashboard-tab" aria-current={activeTab === "dashboard" ? "page" : undefined} className={activeTab === "dashboard" ? "active" : ""} type="button" onKeyDown={handleTabKeyDown} onClick={() => setActiveTab("dashboard")}>
+            <LayoutDashboard size={18} aria-hidden="true" />
+            <span>대시보드</span>
+          </button>
+          <button id="settings-tab" aria-current={activeTab === "settings" ? "page" : undefined} className={activeTab === "settings" ? "active" : ""} type="button" onKeyDown={handleTabKeyDown} onClick={() => setActiveTab("settings")}>
+            <Settings size={18} aria-hidden="true" />
+            <span>설정</span>
+          </button>
+          {developerMode.enabled ? (
+            <button id="developer-tab" aria-current={activeTab === "developer" ? "page" : undefined} className={activeTab === "developer" ? "active" : ""} type="button" onKeyDown={handleTabKeyDown} onClick={() => setActiveTab("developer")}>
+              <Bug size={18} aria-hidden="true" />
+              <span>개발자</span>
+            </button>
+          ) : null}
+        </nav>
+        <button className="sidebar-collapse-button" type="button" onClick={() => setIsSidebarCollapsed((collapsed) => !collapsed)} aria-expanded={!isSidebarCollapsed} aria-label={isSidebarCollapsed ? "메뉴 펼치기" : "메뉴 접기"}>
+          {isSidebarCollapsed ? <PanelLeftOpen size={18} aria-hidden="true" /> : <PanelLeftClose size={18} aria-hidden="true" />}
+          <span>{isSidebarCollapsed ? "펼치기" : "메뉴 접기"}</span>
+        </button>
+      </aside>
+
       <section className="main-panel">
         <header className="app-header">
-          <div className="brand">
-            <span className="brand-mark">
-              <img src={appIconUrl} alt="" aria-hidden="true" />
-            </span>
-            <div>
-              <strong>Token Monitor</strong>
-            </div>
-          </div>
-
           <div className="header-utility">
             <p className="header-refresh-status" role="status" aria-live="polite">
               <CheckCircle2 size={17} aria-hidden="true" />
@@ -660,39 +698,12 @@ function App() {
               <ExternalLink size={17} aria-hidden="true" />
               <span>ChatGPT 한도</span>
             </button>
-            <button className="header-action-button header-action-secondary" type="button" onClick={() => setActiveTab("settings")}>
-              <Settings size={17} aria-hidden="true" />
-              <span>설정</span>
-            </button>
             </div>
           </div>
         </header>
 
-        <nav className="tab-bar" role="tablist" aria-label="화면 전환">
-          <button id="dashboard-tab" role="tab" aria-selected={activeTab === "dashboard"} aria-controls="dashboard-panel" tabIndex={activeTab === "dashboard" ? 0 : -1} className={activeTab === "dashboard" ? "active" : ""} type="button" onKeyDown={handleTabKeyDown} onClick={() => setActiveTab("dashboard")}>
-            <LayoutDashboard size={16} aria-hidden="true" />
-            사용량
-          </button>
-          <button id="settings-tab" role="tab" aria-selected={activeTab === "settings"} aria-controls="settings-panel" tabIndex={activeTab === "settings" ? 0 : -1} className={activeTab === "settings" ? "active" : ""} type="button" onKeyDown={handleTabKeyDown} onClick={() => setActiveTab("settings")}>
-            <Settings size={16} aria-hidden="true" />
-            설정
-          </button>
-          {developerMode.enabled ? (
-            <button id="developer-tab" role="tab" aria-selected={activeTab === "developer"} aria-controls="developer-panel" tabIndex={activeTab === "developer" ? 0 : -1} className={activeTab === "developer" ? "active" : ""} type="button" onKeyDown={handleTabKeyDown} onClick={() => setActiveTab("developer")}>
-              <Bug size={16} aria-hidden="true" />
-              개발자
-            </button>
-          ) : null}
-        </nav>
-
         {activeTab === "dashboard" ? (
-          <section id="dashboard-panel" role="tabpanel" aria-labelledby="dashboard-tab" className="provider-grid" aria-label="서비스별 사용량">
-            <div className="quota-table-header" aria-hidden="true">
-              <span>제공자</span>
-              <span>항목</span>
-              <span>남은 사용량</span>
-              <span>초기화 시간</span>
-            </div>
+          <section id="dashboard-panel" className="provider-grid" aria-label="서비스별 사용량">
             <div className="provider-list">
             {dashboardProviders.map((provider) => (
               <ProviderCard
@@ -805,19 +816,25 @@ function ProviderCard({
 }) {
   const effectiveStatus = getEffectiveProviderStatus(provider);
   const quotaFields = getQuotaFields(provider);
+  const identityField = (provider.fields ?? []).find((field) => field.kind === "identity");
+  const alias = provider.alias ?? identityField?.value ?? (provider.needsAlias ? "별칭 미지정" : "계정 확인 중");
 
   return (
     <article className="provider-card">
       <div className="provider-identity">
-        <div className="provider-title-row">
-          <span className="provider-source">{provider.source}</span>
-          <span className={`status-badge ${effectiveStatus}`}>{providerStatusLabels[effectiveStatus]}</span>
-        </div>
         <div className="provider-name-row">
           <ProviderBrandIcon providerId={provider.id} />
-          <h2>{provider.name}</h2>
+          <div>
+            <span className="provider-source">{provider.source}</span>
+            <h2>{provider.name}</h2>
+          </div>
         </div>
-        <p className="provider-plan">{provider.plan}</p>
+        <dl className="provider-metadata">
+          <div><dt>모델</dt><dd>{provider.model ?? "확인 불가"}</dd></div>
+          <div><dt>별칭</dt><dd>{alias}</dd></div>
+          <div><dt>플랜</dt><dd>{provider.plan}</dd></div>
+          <div><dt>수집 현황</dt><dd><span className={`status-badge ${effectiveStatus}`}>{providerStatusLabels[effectiveStatus]}</span></dd></div>
+        </dl>
         {provider.needsAlias ? (
           <button className="provider-inline-action" type="button" onClick={onManageAliases}>
             <Settings size={14} aria-hidden="true" />
@@ -827,6 +844,7 @@ function ProviderCard({
       </div>
 
       <div className="provider-quota-list">
+        <QuotaLegend />
         {provider.id === "gemini"
           ? getGeminiQuotaGroups(quotaFields).map((group) => <GeminiQuotaRow key={group.label} label={group.label} fields={group.fields} />)
           : quotaFields.map((field) => <QuotaRow key={field.label} field={field} providerId={provider.id} />)}
@@ -868,17 +886,12 @@ function QuotaRow({ field, providerId }: { field: ProviderField; providerId: Pro
     <div className={`quota-row${display.available ? "" : " unavailable"}`}>
       <div className="quota-label-cell">
         {subgroup ? <span className="quota-subgroup">{subgroup}</span> : null}
-        <div>
-          {isWeekly ? <CalendarDays size={18} aria-hidden="true" /> : <Clock3 size={18} aria-hidden="true" />}
-          <strong>{displayLabel}</strong>
-        </div>
+        <strong>{isWeekly ? "주간 사용량" : displayLabel.includes("5시간") ? "5시간 주기 사용량" : "주기 사용량"}</strong>
       </div>
 
-      <div className="quota-remaining-cell">
-        <div className="quota-value-line">
-          <strong>{display.remainingLabel}</strong>
-          {display.available ? <span>남음</span> : null}
-        </div>
+      <div className="quota-metric quota-remaining-cell">
+        <span>잔여 사용량</span>
+        <strong>{display.remainingLabel}</strong>
         {display.percent != null ? (
           <progress max="100" value={display.percent} aria-label={`${field.label} 잔여량 ${display.percent}%`} />
         ) : (
@@ -886,9 +899,13 @@ function QuotaRow({ field, providerId }: { field: ProviderField; providerId: Pro
         )}
       </div>
 
-      <div className="quota-reset-cell">
-        <span>초기화</span>
-        <strong>{display.reset}</strong>
+      <div className="quota-metric quota-reset-cell">
+        <span>초기화까지</span>
+        <strong>{display.resetRelative}</strong>
+      </div>
+      <div className="quota-metric quota-reset-cell quota-reset-time-cell">
+        <span>초기화 시각</span>
+        <strong>{display.resetAbsolute}</strong>
       </div>
     </div>
   );
@@ -896,34 +913,49 @@ function QuotaRow({ field, providerId }: { field: ProviderField; providerId: Pro
 
 function GeminiQuotaRow({ label, fields }: { label: string; fields: ProviderField[] }) {
   return (
-    <div className="quota-row gemini-quota-row">
-      <div className="quota-label-cell">
-        <span className="quota-subgroup">{label}</span>
-        <div>
-          <CalendarDays size={18} aria-hidden="true" />
-          <strong>한도</strong>
-        </div>
-      </div>
-      <div className="gemini-quota-metrics">
-        {fields.map((field) => {
-          const display = parseQuotaDisplay(field);
-          const windowLabel = field.label.replace(/^Gemini\s+/, "").replace(/^Antigravity\s+/, "");
-          return (
-            <div className={`gemini-quota-metric${display.available ? "" : " unavailable"}`} key={field.label}>
-              <span>{windowLabel}</span>
-              <strong>{display.remainingLabel}</strong>
-              {display.percent != null ? <progress max="100" value={display.percent} aria-label={`${field.label} 잔여량 ${display.percent}%`} /> : <p>{display.supportingText}</p>}
-            </div>
-          );
-        })}
-      </div>
-      <div className="gemini-reset-list">
-        {fields.map((field) => {
-          const display = parseQuotaDisplay(field);
-          const windowLabel = field.label.replace(/^Gemini\s+/, "").replace(/^Antigravity\s+/, "");
-          return <p key={field.label}><span>{windowLabel}</span><strong>{display.reset}</strong></p>;
-        })}
-      </div>
+    <section className="gemini-quota-group" aria-label={`${label} 사용량`}>
+      <h3>{label}</h3>
+      {fields.map((field) => <QuotaRow key={field.label} field={field} providerId="gemini" />)}
+    </section>
+  );
+}
+
+function formatRelativeReset(value: string | null | undefined) {
+  if (!value) return null;
+  const timestamp = new Date(value).getTime();
+  if (!Number.isFinite(timestamp)) return null;
+  const remainingMinutes = Math.max(0, Math.ceil((timestamp - Date.now()) / 60_000));
+  if (remainingMinutes < 60) return `${remainingMinutes}분 후`;
+  const days = Math.floor(remainingMinutes / 1440);
+  const hours = Math.floor((remainingMinutes % 1440) / 60);
+  const minutes = remainingMinutes % 60;
+  if (days > 0) return `${days}일 ${hours}시간`;
+  return `${hours}시간 ${minutes}분`;
+}
+
+function formatAbsoluteReset(value: string | null | undefined) {
+  if (!value) return null;
+  const date = new Date(value);
+  if (!Number.isFinite(date.getTime())) return null;
+  const parts = new Intl.DateTimeFormat("ko-KR", {
+    year: "numeric", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit", hour12: false
+  }).formatToParts(date).reduce<Record<string, string>>((result, part) => ({ ...result, [part.type]: part.value }), {});
+  return `${parts.month}.${parts.day} ${parts.hour}:${parts.minute}`;
+}
+
+function resolveResetLabels(field: ProviderField, fallback: string) {
+  const relativeFromTimestamp = formatRelativeReset(field.resetsAt);
+  const absoluteFromTimestamp = formatAbsoluteReset(field.resetsAt);
+  return {
+    relative: relativeFromTimestamp ?? (/후$/.test(fallback) ? fallback : "확인 불가"),
+    absolute: absoluteFromTimestamp ?? (!/후$/.test(fallback) && fallback !== "—" ? fallback : "확인 불가")
+  };
+}
+
+function QuotaLegend() {
+  return (
+    <div className="quota-legend" aria-hidden="true">
+      <span>사용량</span><span>잔여 사용량</span><span>초기화까지</span><span>초기화 시각</span>
     </div>
   );
 }
@@ -1035,6 +1067,7 @@ function parseQuotaDisplay(field: ProviderField) {
   const percentMatch = field.value.match(/잔여량\s+([0-9]+(?:\.[0-9]+)?)%/);
   const percent = field.remainingPercent ?? (percentMatch ? Number(percentMatch[1]) : null);
   const resetMatch = field.value.match(/초기화\s+(.+)$/);
+  const resetLabels = resolveResetLabels(field, resetMatch?.[1] ?? "—");
   const available = percent != null;
   const supportingText = field.value
     .replace(/^사용량\s+[^/]+\/\s*/, "")
@@ -1046,7 +1079,8 @@ function parseQuotaDisplay(field: ProviderField) {
     available,
     percent,
     remainingLabel: available ? `${Math.round(percent)}%` : isUnavailableValue(field.value) ? "연동 필요" : "확인 중",
-    reset: resetMatch?.[1] ?? "—",
+    resetRelative: resetLabels.relative,
+    resetAbsolute: resetLabels.absolute,
     supportingText: supportingText || "사용량 정보를 확인하고 있습니다."
   };
 }
@@ -1235,6 +1269,8 @@ function buildDesignPreviewProviders(): ProviderUsage[] {
       name: "ChatGPT",
       source: "OpenAI",
       status: "live",
+      model: "GPT-5.6",
+      alias: "개인용",
       plan: "Plus",
       session: "로그인됨",
       used: "주간 28% / 주기 52%",
@@ -1243,8 +1279,8 @@ function buildDesignPreviewProviders(): ProviderUsage[] {
       detail: "최근 갱신 09:32",
       fields: [
         { label: "플랜", value: "Plus", kind: "plan" },
-        { label: "주간", value: "사용량 28% / 잔여량 72% / 초기화 2일 14시간 후", kind: "quota", remainingPercent: 72 },
-        { label: "주기", value: "사용량 52% / 잔여량 48% / 초기화 3시간 12분 후", kind: "quota", remainingPercent: 48 }
+        { label: "주간", value: "사용량 28% / 잔여량 72% / 초기화 2일 14시간 후", kind: "quota", remainingPercent: 72, resetsAt: "2026-09-04T23:30:00+09:00" },
+        { label: "주기", value: "사용량 52% / 잔여량 48% / 초기화 3시간 12분 후", kind: "quota", remainingPercent: 48, resetsAt: "2026-09-02T15:30:00+09:00" }
       ]
     },
     {
@@ -1252,6 +1288,8 @@ function buildDesignPreviewProviders(): ProviderUsage[] {
       name: "Claude",
       source: "Anthropic",
       status: "live",
+      model: "Claude Opus 4.1",
+      alias: "업무용",
       plan: "Pro",
       session: "로그인됨",
       used: "주간 64% / 주기 18%",
@@ -1261,8 +1299,8 @@ function buildDesignPreviewProviders(): ProviderUsage[] {
       statusLine: { state: "registered", registered: true, scriptReady: true, snapshotAvailable: true, detail: "Status Line 등록 및 실행이 확인되었습니다." },
       fields: [
         { label: "플랜", value: "Pro", kind: "plan" },
-        { label: "주간", value: "사용량 64% / 잔여량 36% / 초기화 4일 8시간 후", kind: "quota", remainingPercent: 36 },
-        { label: "주기 (5시간)", value: "사용량 18% / 잔여량 82% / 초기화 2시간 5분 후", kind: "quota", remainingPercent: 82 }
+        { label: "주간", value: "사용량 64% / 잔여량 36% / 초기화 4일 8시간 후", kind: "quota", remainingPercent: 36, resetsAt: "2026-09-06T17:20:00+09:00" },
+        { label: "주기 (5시간)", value: "사용량 18% / 잔여량 82% / 초기화 2시간 5분 후", kind: "quota", remainingPercent: 82, resetsAt: "2026-09-02T14:25:00+09:00" }
       ]
     },
     {
@@ -1270,6 +1308,8 @@ function buildDesignPreviewProviders(): ProviderUsage[] {
       name: "Gemini",
       source: "Google",
       status: "live",
+      model: "Gemini 2.5 Pro",
+      alias: "Google 개인용",
       plan: "Google AI Pro",
       session: "Gemini Apps + Antigravity",
       used: "Gemini 주간 37%",
@@ -1279,8 +1319,8 @@ function buildDesignPreviewProviders(): ProviderUsage[] {
       issues: [{ reason: "Antigravity 사용량 연동 필요", steps: ["Antigravity CLI 로그인을 실행", "Google 인증 완료 후 새로고침"] }],
       fields: [
         { label: "플랜", value: "Google AI Pro", kind: "plan" },
-        { label: "Gemini 주간", value: "사용량 37% / 잔여량 63% / 초기화 5일 11시간 후", kind: "quota", remainingPercent: 63 },
-        { label: "Gemini 주기", value: "사용량 55% / 잔여량 45% / 초기화 1시간 42분 후", kind: "quota", remainingPercent: 45 },
+        { label: "Gemini 주간", value: "사용량 37% / 잔여량 63% / 초기화 5일 11시간 후", kind: "quota", remainingPercent: 63, resetsAt: "2026-09-07T20:30:00+09:00" },
+        { label: "Gemini 주기", value: "사용량 55% / 잔여량 45% / 초기화 1시간 42분 후", kind: "quota", remainingPercent: 45, resetsAt: "2026-09-02T14:02:00+09:00" },
         { label: "Antigravity 주간", value: "명시적 주간 데이터 없음", kind: "quota", remainingPercent: null },
         { label: "Antigravity 주기", value: "남은 사용량 확인 불가 / 초기화 확인 불가", kind: "quota", remainingPercent: null }
       ]
@@ -1349,27 +1389,33 @@ function SettingsPanel({
 
   return (
     <section className="settings-panel" aria-label="설정" aria-busy={isSaving}>
-      <div className="settings-heading">
-        <div>
-          <span className="eyebrow">앱 설정</span>
-          <h1>설정</h1>
-        </div>
-        <Settings size={20} aria-hidden="true" />
-      </div>
-
       <nav className="settings-subnav" aria-label="설정 항목">
         {([
-          ["general", "일반"],
-          ["notifications", "알림"],
-          ["accounts", "계정 및 별칭"],
-          ["display", "오버레이 표시"],
-          ["codex", "Codex 연결"]
-        ] as const).map(([id, label]) => (
+          ["general", "일반", SlidersHorizontal],
+          ["notifications", "알림", Bell],
+          ["accounts", "계정 및 별칭", UserRound],
+          ["display", "오버레이 표시", Monitor],
+          ["codex", "Codex 연결", Link2]
+        ] as const).map(([id, label, Icon]) => (
           <button key={id} type="button" className={activeSection === id ? "active" : ""} aria-current={activeSection === id ? "page" : undefined} onClick={() => setActiveSection(id)}>
-            {label}
+            <Icon size={17} aria-hidden="true" />
+            <span>{label}</span>
           </button>
         ))}
       </nav>
+
+      <div className="settings-content">
+        <header className="settings-content-heading">
+          <span>앱 설정</span>
+          <h2>{({ general: "일반", notifications: "알림", accounts: "계정 및 별칭", display: "오버레이 표시", codex: "Codex 연결" } as const)[activeSection]}</h2>
+          <p>{({
+            general: "앱의 기본 동작과 오버레이 크기를 조정합니다.",
+            notifications: "사용량 변화와 초기화 시점 알림을 관리합니다.",
+            accounts: "감지된 계정을 구분하기 위한 안전한 별칭을 관리합니다.",
+            display: "오버레이에 표시할 서비스와 세부 항목을 선택합니다.",
+            codex: "Codex 실행 파일 연결과 수집 상태를 확인합니다."
+          } as const)[activeSection]}</p>
+        </header>
 
       {activeSection === "general" ? <>
       <section className="setting-group overlay-behavior-settings" aria-labelledby="overlay-behavior-heading">
@@ -1392,6 +1438,7 @@ function SettingsPanel({
 
         <label className="overlay-font-size-control">
           <span>오버레이 글자 크기</span>
+          <small>50%</small>
           <input
             type="range"
             min="50"
@@ -1402,6 +1449,7 @@ function SettingsPanel({
             onChange={(event) => update({ fontSizePercent: Number(event.target.value) })}
           />
           <strong>{settings.fontSizePercent}%</strong>
+          <small>150%</small>
         </label>
 
         <label className="switch-row">
@@ -1445,7 +1493,7 @@ function SettingsPanel({
 
                 {!item.enabled ? <p className="provider-disabled-note">현재 오버레이에는 표시되지 않습니다.</p> : null}
 
-                <details className="provider-display-options">
+                <details className="provider-display-options" open>
                   <summary>표시 항목 사용자화</summary>
                   <fieldset disabled={!item.enabled || isSaving}>
                     <legend className="visually-hidden">{providerLabels[id]} 표시 항목</legend>
@@ -1482,6 +1530,7 @@ function SettingsPanel({
 
       {activeSection === "codex" ? <CodexPathSettings /> : null}
 
+      </div>
     </section>
   );
 }
@@ -2009,6 +2058,8 @@ function buildCodexProvider(usage: CodexUsageResult | null, sessions: CliSession
     name: "ChatGPT",
     source: "OpenAI",
     status: "live",
+    model: "확인 불가",
+    alias: usage.account.alias ?? (usage.account.detected ? "별칭 미지정" : "계정 확인 중"),
     plan: usage.planType ?? "로그인됨",
     session: formatSession(sessions?.codex),
     used: formatWindows(usage.weekly, usage.periodic, "used"),
@@ -2017,8 +2068,8 @@ function buildCodexProvider(usage: CodexUsageResult | null, sessions: CliSession
     fields: [
       ...(usage.account.detected ? [{ label: "계정", value: formatAccountAlias(usage.account), kind: "identity" as const }] : []),
       { label: "플랜", value: usage.planType ?? "로그인됨", kind: "plan" },
-      { label: "주간", value: formatCodexWindowSummary(usage.weekly), kind: "quota", remainingPercent: usage.weekly?.remainingPercent ?? null },
-      { label: "주기", value: formatCodexWindowSummary(usage.periodic), kind: "quota", remainingPercent: usage.periodic?.remainingPercent ?? null }
+      { label: "주간", value: formatCodexWindowSummary(usage.weekly), kind: "quota", remainingPercent: usage.weekly?.remainingPercent ?? null, resetsAt: usage.weekly?.resetsAt ?? null },
+      { label: "주기", value: formatCodexWindowSummary(usage.periodic), kind: "quota", remainingPercent: usage.periodic?.remainingPercent ?? null, resetsAt: usage.periodic?.resetsAt ?? null }
     ],
     detail: `최근 갱신 ${formatTime(usage.updatedAt)}`,
     needsAlias: usage.account.aliasRequired
@@ -2127,6 +2178,8 @@ function buildClaudeProvider(
     name: "Claude",
     source: "Anthropic",
     status: hasQuota ? "live" : "pending",
+    model: modelLabel ?? "확인 불가",
+    alias: account?.alias ?? (account?.detected ? "별칭 미지정" : "계정 확인 중"),
     plan: planLabel,
     session: sessionLabel,
     used: usedLabel,
@@ -2135,8 +2188,8 @@ function buildClaudeProvider(
     fields: [
       { label: "계정", value: accountLabel, kind: "identity" },
       { label: "플랜", value: planLabel, kind: "plan" },
-      { label: "주간", value: formatClaudeStatusLineWindowSummary(usage.sevenDay), kind: "quota", remainingPercent: usage.stale ? null : usage.sevenDay?.remainingPercent ?? null },
-      { label: "주기 (5시간)", value: formatClaudeStatusLineWindowSummary(usage.fiveHour), kind: "quota", remainingPercent: usage.stale ? null : usage.fiveHour?.remainingPercent ?? null }
+      { label: "주간", value: formatClaudeStatusLineWindowSummary(usage.sevenDay), kind: "quota", remainingPercent: usage.stale ? null : usage.sevenDay?.remainingPercent ?? null, resetsAt: usage.sevenDay?.resetsAt ?? null },
+      { label: "주기 (5시간)", value: formatClaudeStatusLineWindowSummary(usage.fiveHour), kind: "quota", remainingPercent: usage.stale ? null : usage.fiveHour?.remainingPercent ?? null, resetsAt: usage.fiveHour?.resetsAt ?? null }
     ],
     detail: `${modelLabel ? `${modelLabel} / ` : ""}Status Line ${usage.stale ? "마지막 확인 정보" : "최근 갱신"} ${formatTime(usage.capturedAt)}`,
     canLogin,
@@ -2190,9 +2243,9 @@ function buildGeminiProvider(usage: GeminiUsageResult | null): ProviderUsage {
       fields: [
         ...(usage.account.detected ? [{ label: "계정", value: formatAccountAlias(usage.account), kind: "identity" as const }] : []),
         { label: "플랜", value: planLabel, kind: "plan" },
-        { label: "Gemini 주간", value: formatGeminiAppsWebUsageSummary(usage.geminiApps?.weekly ?? null), kind: "quota", remainingPercent: parseRemainingPercent(usage.geminiApps?.weekly?.remaining ?? null) },
+        { label: "Gemini 주간", value: formatGeminiAppsWebUsageSummary(usage.geminiApps?.weekly ?? null), kind: "quota", remainingPercent: parseRemainingPercent(usage.geminiApps?.weekly?.remaining ?? null), resetsAt: usage.geminiApps?.weekly?.reset ?? null },
         { label: "Antigravity 주간", value: "명시적 주간 데이터 없음", kind: "quota" },
-        { label: "Gemini 주기", value: formatGeminiAppsWebUsageSummary(usage.geminiApps?.fiveHour ?? null), kind: "quota", remainingPercent: parseRemainingPercent(usage.geminiApps?.fiveHour?.remaining ?? null) },
+        { label: "Gemini 주기", value: formatGeminiAppsWebUsageSummary(usage.geminiApps?.fiveHour ?? null), kind: "quota", remainingPercent: parseRemainingPercent(usage.geminiApps?.fiveHour?.remaining ?? null), resetsAt: usage.geminiApps?.fiveHour?.reset ?? null },
         { label: "Antigravity 주기", value: "남은 사용량 확인 불가 / 초기화 확인 불가", kind: "quota" }
       ],
       detail: usage.error,
@@ -2209,10 +2262,10 @@ function buildGeminiProvider(usage: GeminiUsageResult | null): ProviderUsage {
   const planLabel = usage.geminiApps?.plan ?? usage.planType ?? "확인 필요";
   const promptCredits = formatPromptCredits(usage.promptCredits);
   const quotaFields: ProviderField[] = [
-    { label: "Gemini 주간", value: formatGeminiAppsWebUsageSummary(usage.geminiApps?.weekly ?? null), kind: "quota", remainingPercent: parseRemainingPercent(usage.geminiApps?.weekly?.remaining ?? null) },
-    ...(antigravityWeeklyWindow ? [{ label: "Antigravity 주간", value: formatGeminiWindowSummary(antigravityWeeklyWindow), kind: "quota" as const, remainingPercent: antigravityWeeklyWindow.remainingPercent }] : []),
-    { label: "Gemini 주기", value: formatGeminiAppsWebUsageSummary(usage.geminiApps?.fiveHour ?? null), kind: "quota", remainingPercent: parseRemainingPercent(usage.geminiApps?.fiveHour?.remaining ?? null) },
-    { label: "Antigravity 주기", value: formatGeminiWindowSummary(antigravityFiveHourWindow), kind: "quota", remainingPercent: antigravityFiveHourWindow?.remainingPercent ?? null }
+    { label: "Gemini 주간", value: formatGeminiAppsWebUsageSummary(usage.geminiApps?.weekly ?? null), kind: "quota", remainingPercent: parseRemainingPercent(usage.geminiApps?.weekly?.remaining ?? null), resetsAt: usage.geminiApps?.weekly?.reset ?? null },
+    ...(antigravityWeeklyWindow ? [{ label: "Antigravity 주간", value: formatGeminiWindowSummary(antigravityWeeklyWindow), kind: "quota" as const, remainingPercent: antigravityWeeklyWindow.remainingPercent, resetsAt: antigravityWeeklyWindow.resetsAt }] : []),
+    { label: "Gemini 주기", value: formatGeminiAppsWebUsageSummary(usage.geminiApps?.fiveHour ?? null), kind: "quota", remainingPercent: parseRemainingPercent(usage.geminiApps?.fiveHour?.remaining ?? null), resetsAt: usage.geminiApps?.fiveHour?.reset ?? null },
+    { label: "Antigravity 주기", value: formatGeminiWindowSummary(antigravityFiveHourWindow), kind: "quota", remainingPercent: antigravityFiveHourWindow?.remainingPercent ?? null, resetsAt: antigravityFiveHourWindow?.resetsAt ?? null }
   ];
 
   return {
@@ -2220,6 +2273,8 @@ function buildGeminiProvider(usage: GeminiUsageResult | null): ProviderUsage {
     name: "Gemini",
     source: "Google",
     status: "live",
+    model: usage.models[0]?.label ?? usage.models[0]?.modelId ?? "모델별 한도",
+    alias: usage.account.alias ?? (usage.account.detected ? "별칭 미지정" : "계정 확인 중"),
     plan: planLabel,
     session: sourceLabel,
     used: formatGeminiWindows(antigravityWeeklyWindow, antigravityFiveHourWindow, null, "used"),

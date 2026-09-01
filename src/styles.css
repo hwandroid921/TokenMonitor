@@ -1775,7 +1775,7 @@ h2 {
   padding-left: 18px;
 }
 
-@media (max-width: 1040px) {
+@media (max-width: 900px) {
   .main-panel {
     padding: 22px 24px 30px;
   }
@@ -1888,6 +1888,670 @@ body.overlay-body #root {
   width: 100vw;
   min-height: 100vh;
   background: transparent !important;
+}
+
+/* Selected sky-blue dashboard and settings direction. */
+body:not(.overlay-body) {
+  color: #25333c;
+  background: #f2f6f8;
+}
+
+body:not(.overlay-body) button:focus-visible,
+body:not(.overlay-body) input:focus-visible,
+body:not(.overlay-body) summary:focus-visible {
+  outline-color: #78b4cf;
+}
+
+.app-root:not(.overlay-root) {
+  display: grid;
+  grid-template-columns: 220px minmax(0, 1fr);
+  min-height: 100vh;
+  padding: 0;
+  background: #f2f6f8;
+  transition: grid-template-columns 180ms ease;
+}
+
+.app-root.sidebar-collapsed {
+  grid-template-columns: 76px minmax(0, 1fr);
+}
+
+.app-sidebar {
+  position: sticky;
+  top: 0;
+  z-index: 10;
+  display: flex;
+  flex-direction: column;
+  min-height: 100vh;
+  padding: 22px 14px 16px;
+  overflow: hidden;
+  color: #40515c;
+  background: #fbfdfe;
+  border-right: 1px solid #dce7ed;
+}
+
+.sidebar-brand {
+  display: flex;
+  align-items: center;
+  gap: 11px;
+  min-width: 190px;
+  padding: 0 6px 22px;
+}
+
+.sidebar-brand .brand-mark {
+  flex: 0 0 auto;
+  width: 52px;
+  height: 52px;
+  border-radius: 13px;
+  box-shadow: 0 6px 16px rgba(74, 113, 148, 0.18);
+}
+
+.sidebar-brand strong {
+  color: #23333e;
+  font-size: 15px;
+  letter-spacing: -0.02em;
+}
+
+.sidebar-navigation {
+  display: grid;
+  gap: 5px;
+}
+
+.sidebar-navigation button,
+.sidebar-collapse-button {
+  display: flex;
+  align-items: center;
+  gap: 11px;
+  width: 100%;
+  min-width: 190px;
+  min-height: 42px;
+  padding: 0 12px;
+  color: #657783;
+  background: transparent;
+  border: 0;
+  border-radius: 9px;
+  cursor: pointer;
+  font-size: 13px;
+  font-weight: 750;
+  text-align: left;
+}
+
+.sidebar-navigation button:hover,
+.sidebar-collapse-button:hover {
+  color: #345a6f;
+  background: #f0f7fa;
+}
+
+.sidebar-navigation button.active {
+  color: #315f77;
+  background: #e9f4f8;
+  box-shadow: inset 3px 0 #7db8d2;
+}
+
+.sidebar-collapse-button {
+  margin-top: auto;
+  border-top: 1px solid #e5edf1;
+  border-radius: 0;
+}
+
+.sidebar-collapsed .app-sidebar {
+  padding-inline: 10px;
+}
+
+.sidebar-collapsed .sidebar-brand,
+.sidebar-collapsed .sidebar-navigation button,
+.sidebar-collapsed .sidebar-collapse-button {
+  min-width: 56px;
+}
+
+.sidebar-collapsed .sidebar-brand {
+  padding-inline: 9px;
+}
+
+.sidebar-collapsed .sidebar-brand strong,
+.sidebar-collapsed .sidebar-navigation span,
+.sidebar-collapsed .sidebar-collapse-button span {
+  display: none;
+}
+
+.app-root:not(.overlay-root) .main-panel {
+  min-width: 0;
+  padding: 0 24px 24px;
+  background: transparent;
+  border: 0;
+  border-radius: 0;
+  box-shadow: none;
+}
+
+.app-root:not(.overlay-root) .app-header {
+  justify-content: flex-end;
+  min-height: 88px;
+  padding: 18px 0;
+  border-bottom: 1px solid #dce7ed;
+}
+
+.page-heading span,
+.settings-content-heading > span {
+  color: #7a9cac;
+  font-size: 10px;
+  font-weight: 850;
+  letter-spacing: 0.13em;
+}
+
+.page-heading h1 {
+  margin-top: 5px;
+  color: #21333e;
+  font-size: 22px;
+  font-weight: 820;
+}
+
+.app-root:not(.overlay-root) .header-utility {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+}
+
+.app-root:not(.overlay-root) .header-refresh-status {
+  color: #687b86;
+}
+
+.app-root:not(.overlay-root) .header-refresh-status svg {
+  color: #72a98d;
+}
+
+.app-root:not(.overlay-root) .header-action-button {
+  min-height: 38px;
+  color: #315d73;
+  background: #eaf4f8;
+  border: 1px solid #cee1e9;
+  border-radius: 9px;
+}
+
+.app-root:not(.overlay-root) .header-action-button:hover {
+  background: #dceef5;
+}
+
+.app-root:not(.overlay-root) .header-action-secondary {
+  color: #536671;
+  background: #fbfdfe;
+  border-color: #d9e5ea;
+}
+
+.app-root:not(.overlay-root) .provider-grid {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 18px;
+  margin-top: 22px;
+}
+
+.app-root:not(.overlay-root) .provider-list {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  align-items: stretch;
+  gap: 0;
+  overflow: hidden;
+  background: #fbfdfe;
+  border: 1px solid #dce7ed;
+  border-radius: 12px;
+  box-shadow: 0 9px 24px rgba(55, 83, 99, 0.045);
+}
+
+.app-root:not(.overlay-root) .provider-card {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  padding: 0;
+  overflow: hidden;
+  background: #fbfdfe;
+  border: 0;
+  border-right: 1px solid #dce7ed;
+  border-radius: 0;
+  box-shadow: none;
+}
+
+.app-root:not(.overlay-root) .provider-card:last-child {
+  border-right: 0;
+  border-bottom: 0;
+}
+
+.app-root:not(.overlay-root) .provider-identity {
+  display: grid;
+  align-items: stretch;
+  align-content: start;
+  justify-content: stretch;
+  gap: 14px;
+  min-height: 194px;
+  padding: 20px;
+  background: linear-gradient(180deg, #fbfdfe 0%, #f7fbfd 100%);
+  border-bottom: 1px solid #e1ebef;
+}
+
+.app-root:not(.overlay-root) .provider-name-row {
+  gap: 12px;
+  margin: 0;
+}
+
+.app-root:not(.overlay-root) .provider-name-row > svg {
+  width: 30px;
+  color: #42677a;
+}
+
+.app-root:not(.overlay-root) .provider-card:nth-child(2) .provider-name-row > svg {
+  color: #a77a68;
+}
+
+.app-root:not(.overlay-root) .provider-card:nth-child(3) .provider-name-row > svg {
+  color: #6896b0;
+}
+
+.app-root:not(.overlay-root) .provider-source {
+  color: #8b9ba4;
+  font-size: 10px;
+  letter-spacing: 0.08em;
+}
+
+.app-root:not(.overlay-root) .provider-identity h2 {
+  margin-top: 2px;
+  color: #253641;
+  font-size: 18px;
+}
+
+.provider-metadata {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 9px 16px;
+}
+
+.provider-metadata div {
+  min-width: 0;
+}
+
+.provider-metadata dt {
+  color: #8a9aa3;
+  font-size: 11px;
+  font-weight: 730;
+}
+
+.provider-metadata dd {
+  margin: 4px 0 0;
+  overflow: hidden;
+  color: #3b4c56;
+  font-size: 13px;
+  font-weight: 760;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.app-root:not(.overlay-root) .status-badge {
+  height: 20px;
+  padding: 0 7px;
+  font-size: 10px;
+}
+
+.app-root:not(.overlay-root) .status-badge.live {
+  color: #477760;
+  background: #e5f3eb;
+}
+
+.app-root:not(.overlay-root) .status-badge.pending,
+.app-root:not(.overlay-root) .status-badge.loading {
+  color: #8b7041;
+  background: #f7f0dc;
+}
+
+.app-root:not(.overlay-root) .provider-inline-action {
+  margin-top: -4px;
+  color: #5487a0;
+}
+
+.app-root:not(.overlay-root) .provider-quota-list {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.quota-legend,
+.app-root:not(.overlay-root) .quota-row {
+  display: grid;
+  grid-template-columns: minmax(0, 0.8fr) minmax(0, 1fr) minmax(0, 1.3fr);
+  gap: 10px;
+}
+
+.quota-legend {
+  min-height: 36px;
+  align-items: center;
+  padding: 0 16px;
+  color: #8a9aa3;
+  border-bottom: 1px solid #e4edf1;
+  font-size: 9px;
+  font-weight: 780;
+}
+
+.quota-legend span:not(:first-child) {
+  display: none;
+}
+
+.app-root:not(.overlay-root) .quota-row {
+  align-items: start;
+  min-height: 96px;
+  padding: 10px 16px;
+  border-bottom: 1px solid #e7eef2;
+}
+
+.app-root:not(.overlay-root) .quota-label-cell {
+  grid-column: 1 / -1;
+  display: grid;
+  align-content: start;
+  gap: 5px;
+  padding: 0;
+}
+
+.app-root:not(.overlay-root) .quota-label-cell strong {
+  color: #364a55;
+  font-size: 13px;
+  line-height: 1.35;
+}
+
+.app-root:not(.overlay-root) .quota-subgroup {
+  color: #7da5b7;
+  font-size: 9px;
+}
+
+.quota-metric {
+  min-width: 0;
+}
+
+.quota-metric > span {
+  display: block;
+  color: #8a9aa3;
+  font-size: 11px;
+  font-weight: 720;
+}
+
+.quota-metric > strong {
+  display: block;
+  margin-top: 6px;
+  overflow: hidden;
+  color: #3d515d;
+  font-size: 14px;
+  font-weight: 780;
+  line-height: 1.3;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.app-root:not(.overlay-root) .quota-remaining-cell,
+.app-root:not(.overlay-root) .quota-reset-cell {
+  padding: 0;
+}
+
+.app-root:not(.overlay-root) .quota-remaining-cell > strong,
+.app-root:not(.overlay-root) .quota-reset-cell > strong {
+  color: #3f5d6d;
+  font-size: 14px;
+  letter-spacing: -0.01em;
+}
+
+.app-root:not(.overlay-root) .quota-row.unavailable .quota-remaining-cell > strong {
+  color: #a86255;
+  font-size: 11px;
+}
+
+.app-root:not(.overlay-root) .quota-remaining-cell progress {
+  width: 100%;
+  max-width: 100%;
+  height: 4px;
+  margin-top: 8px;
+  background: #e5edf1;
+}
+
+.app-root:not(.overlay-root) .quota-remaining-cell progress::-webkit-progress-bar {
+  background: #e5edf1;
+}
+
+.app-root:not(.overlay-root) .quota-remaining-cell progress::-webkit-progress-value {
+  background: #7bb5ce;
+}
+
+.app-root:not(.overlay-root) .quota-remaining-cell p {
+  margin-top: 6px;
+  color: #8b6d64;
+  font-size: 9px;
+  white-space: normal;
+}
+
+.gemini-quota-group h3 {
+  margin: 0;
+  padding: 10px 16px;
+  color: #50778a;
+  background: #f1f7fa;
+  border-bottom: 1px solid #e0ebf0;
+  font-size: 10px;
+  font-weight: 820;
+  letter-spacing: 0.04em;
+}
+
+.gemini-quota-group:last-child .quota-row:last-child,
+.app-root:not(.overlay-root) .provider-quota-list > .quota-row:last-child {
+  border-bottom: 0;
+}
+
+.app-root:not(.overlay-root) .dashboard-attention {
+  margin: 0;
+  color: #51626c;
+  background: #fbfcfd;
+  border-color: #dce7ed;
+  border-radius: 11px;
+}
+
+.app-root:not(.overlay-root) .attention-summary > svg,
+.app-root:not(.overlay-root) .attention-primary .attention-action-notice {
+  color: #819ba8;
+}
+
+.app-root:not(.overlay-root) .attention-primary {
+  border-left-color: #e0e9ed;
+}
+
+.app-root:not(.overlay-root) .provider-action,
+.app-root:not(.overlay-root) .secondary-button {
+  color: #3f6c81;
+  background: #edf6fa;
+  border-color: #cee2ea;
+}
+
+/* Settings uses the same left-to-right spacing and item treatment as dashboard cards. */
+.app-root:not(.overlay-root) .settings-panel {
+  display: grid;
+  grid-template-columns: 206px minmax(0, 1fr);
+  min-height: calc(100vh - 140px);
+  margin-top: 22px;
+  overflow: hidden;
+  background: #fbfdfe;
+  border: 1px solid #dce7ed;
+  border-radius: 12px;
+  box-shadow: 0 9px 24px rgba(55, 83, 99, 0.05);
+}
+
+.app-root:not(.overlay-root) .settings-subnav {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  margin: 0;
+  padding: 18px 12px;
+  background: #f6fafc;
+  border: 0;
+  border-right: 1px solid #dfe9ee;
+}
+
+.app-root:not(.overlay-root) .settings-subnav button {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  width: 100%;
+  min-height: 40px;
+  padding: 0 11px;
+  color: #647682;
+  background: transparent;
+  border: 0;
+  border-radius: 8px;
+  font-size: 12px;
+  text-align: left;
+}
+
+.app-root:not(.overlay-root) .settings-subnav button:hover {
+  background: #eef5f8;
+}
+
+.app-root:not(.overlay-root) .settings-subnav button.active {
+  color: #345f75;
+  background: #e7f2f7;
+  box-shadow: inset 3px 0 #7eb8d1;
+}
+
+.settings-content {
+  min-width: 0;
+  padding: 24px 28px 34px;
+}
+
+.settings-content-heading {
+  padding-bottom: 18px;
+  border-bottom: 1px solid #e2ebef;
+}
+
+.settings-content-heading h2 {
+  margin-top: 5px;
+  color: #273b46;
+  font-size: 20px;
+}
+
+.settings-content-heading p {
+  margin-top: 7px;
+  color: #748690;
+  font-size: 12px;
+}
+
+.app-root:not(.overlay-root) .setting-group {
+  display: grid;
+  gap: 14px;
+  margin-top: 18px;
+  padding: 0;
+  background: transparent;
+  border: 0;
+}
+
+.app-root:not(.overlay-root) .setting-group > h2,
+.app-root:not(.overlay-root) .notification-settings-heading h2,
+.app-root:not(.overlay-root) .account-alias-heading h2 {
+  color: #3b515d;
+  font-size: 13px;
+}
+
+.app-root:not(.overlay-root) .switch-row,
+.app-root:not(.overlay-root) .overlay-position-settings,
+.app-root:not(.overlay-root) .overlay-font-size-control,
+.app-root:not(.overlay-root) .provider-settings,
+.app-root:not(.overlay-root) .account-provider-card,
+.app-root:not(.overlay-root) .codex-path-settings > label,
+.app-root:not(.overlay-root) .codex-path-settings > div,
+.app-root:not(.overlay-root) .notification-settings fieldset {
+  padding: 14px 16px;
+  background: #f8fbfc;
+  border: 1px solid #e0eaee;
+  border-radius: 10px;
+}
+
+.app-root:not(.overlay-root) input[type="checkbox"] {
+  accent-color: #78b4cf;
+}
+
+.app-root:not(.overlay-root) input[type="range"] {
+  accent-color: #78b4cf;
+}
+
+.app-root:not(.overlay-root) .settings-save-status,
+.app-root:not(.overlay-root) .account-alias-notice,
+.app-root:not(.overlay-root) .codex-path-notice.visible {
+  color: #527386;
+  background: #edf6fa;
+  border-color: #d2e5ed;
+}
+
+@media (max-width: 1120px) {
+  .app-root:not(.overlay-root) .provider-list {
+    grid-template-columns: 1fr;
+  }
+
+  .app-root:not(.overlay-root) .provider-card {
+    display: grid;
+    grid-template-columns: 230px minmax(0, 1fr);
+  }
+
+  .app-root:not(.overlay-root) .provider-identity {
+    min-height: 0;
+    border-right: 1px solid #e1ebef;
+    border-bottom: 0;
+  }
+}
+
+@media (max-width: 760px) {
+  .app-root:not(.overlay-root),
+  .app-root.sidebar-collapsed {
+    grid-template-columns: 64px minmax(0, 1fr);
+  }
+
+  .app-sidebar {
+    padding-inline: 7px;
+  }
+
+  .sidebar-brand,
+  .sidebar-navigation button,
+  .sidebar-collapse-button {
+    min-width: 50px;
+  }
+
+  .sidebar-brand {
+    padding-inline: 6px;
+  }
+
+  .sidebar-brand strong,
+  .sidebar-navigation span,
+  .sidebar-collapse-button span {
+    display: none;
+  }
+
+  .app-root:not(.overlay-root) .main-panel {
+    padding: 0 14px 20px;
+  }
+
+  .app-root:not(.overlay-root) .app-header {
+    align-items: center;
+  }
+
+  .app-root:not(.overlay-root) .provider-card {
+    display: flex;
+  }
+
+  .quota-legend,
+  .app-root:not(.overlay-root) .quota-row {
+    grid-template-columns: 1fr repeat(3, minmax(62px, 0.8fr));
+  }
+
+  .app-root:not(.overlay-root) .settings-panel {
+    grid-template-columns: 1fr;
+  }
+
+  .app-root:not(.overlay-root) .settings-subnav {
+    flex-direction: row;
+    overflow-x: auto;
+    border-right: 0;
+    border-bottom: 1px solid #dfe9ee;
+  }
+
+  .app-root:not(.overlay-root) .settings-subnav button {
+    width: auto;
+    min-width: max-content;
+  }
 }
 
 .overlay-root.position-editing {
@@ -2220,4 +2884,105 @@ body.overlay-body #root {
   background: #edf6ed;
   border: 1px solid #d7e8d7;
   border-radius: 7px;
+}
+
+/* Final settings alignment overrides. */
+.app-root:not(.overlay-root) .switch-row input[type="checkbox"] {
+  position: relative;
+  flex: 0 0 auto;
+  width: 36px;
+  height: 20px;
+  margin: 0;
+  appearance: none;
+  background: #d8e1e5;
+  border: 0;
+  border-radius: 999px;
+  cursor: pointer;
+  transition: background 150ms ease;
+}
+
+.app-root:not(.overlay-root) .switch-row input[type="checkbox"]::after {
+  position: absolute;
+  top: 3px;
+  left: 3px;
+  width: 14px;
+  height: 14px;
+  content: "";
+  background: #ffffff;
+  border-radius: 50%;
+  box-shadow: 0 1px 3px rgba(54, 76, 88, 0.22);
+  transition: transform 150ms ease;
+}
+
+.app-root:not(.overlay-root) .switch-row input[type="checkbox"]:checked {
+  background: #78b4cf;
+}
+
+.app-root:not(.overlay-root) .switch-row input[type="checkbox"]:checked::after {
+  transform: translateX(16px);
+}
+
+.app-root:not(.overlay-root) .overlay-behavior-settings > .switch-row,
+.app-root:not(.overlay-root) .overlay-behavior-settings > .overlay-position-settings,
+.app-root:not(.overlay-root) .overlay-behavior-settings > .overlay-font-size-control {
+  min-height: 68px;
+  padding: 16px 0;
+  background: transparent;
+  border: 0;
+  border-bottom: 1px solid #e2ebef;
+  border-radius: 0;
+}
+
+.app-root:not(.overlay-root) .overlay-behavior-settings > .switch-row {
+  justify-content: space-between;
+}
+
+.app-root:not(.overlay-root) .overlay-font-size-control {
+  grid-template-columns: minmax(150px, 1fr) auto minmax(240px, 2fr) auto auto;
+}
+
+.app-root:not(.overlay-root) .overlay-font-size-control small {
+  color: #84959e;
+  font-size: 10px;
+}
+
+.app-root:not(.overlay-root) .provider-settings {
+  background: transparent;
+  border: 0;
+  border-bottom: 1px solid #e2ebef;
+  border-radius: 0;
+}
+
+.app-root:not(.overlay-root) .provider-settings .provider-toggle {
+  padding: 0;
+  background: transparent;
+  border: 0;
+}
+
+.app-root:not(.overlay-root) .provider-display-options {
+  margin-top: 10px;
+}
+
+.app-root:not(.overlay-root) .provider-display-options summary {
+  color: #6c7f89;
+  font-size: 11px;
+}
+
+.app-root:not(.overlay-root) .codex-path-hint code {
+  background: #edf4f7;
+}
+
+.app-root:not(.overlay-root) .codex-path-input-row input {
+  border-color: #cedde4;
+}
+
+.app-root:not(.overlay-root) .codex-path-state.connected {
+  color: #477760;
+  background: #e5f3eb;
+}
+
+.app-root:not(.overlay-root) .codex-path-notice.visible {
+  color: #527386;
+  background: #edf6fa;
+  border-color: #d2e5ed;
 }
