@@ -1,6 +1,6 @@
 {
   "name": "token-monitor",
-  "version": "1.5.0",
+  "version": "1.5.3",
   "description": "Desktop dashboard for monitoring LLM token usage and spend.",
   "main": "dist-electron/main.js",
   "type": "module",

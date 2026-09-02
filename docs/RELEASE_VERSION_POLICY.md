@@ -73,10 +73,10 @@ Before `v1.0.0`, do not maintain a fixed version-by-version feature roadmap. Whe
 Current package version:
 
 ```text
-1.5.0
+1.5.3
 ```
 
-`v1.5.0` introduces the selected sky-blue dashboard and settings layout, collapsible left navigation, provider metadata lanes, and dual reset-time visibility.
+`v1.5.3` preserves existing Claude Status Line output through an opt-in Token Monitor bridge, adds a visible Claude usage capture time to the dashboard, refreshes provider usage in the background every minute, and retains the selected sky-blue dashboard and settings layout, collapsible left navigation, provider metadata lanes, and dual reset-time visibility.
 
 - ChatGPT quota display through the Codex Desktop local usage flow, with an optional user-set `codex.exe` path
 - Claude quota display
@@ -197,6 +197,69 @@ For each release-worthy version bump, summarize:
 - Known limitations
 
 ## Release History
+
+### 1.5.3 — 2026-09-02 — PATCH
+
+**Change category:** PATCH (Claude Status Line bridge)
+
+**User-visible changes:**
+
+- When a custom Claude Status Line exists, the dashboard asks before enabling an integration bridge instead of replacing it without confirmation.
+- The bridge preserves the existing Status Line display while Token Monitor writes its usage snapshot.
+- The original Status Line configuration is backed up privately and can be restored from the Claude provider card.
+
+**Provider/data-source changes:**
+
+- Claude quota continues to use display-safe rate-limit fields emitted to the Claude Code Status Line.
+
+**Packaging notes:**
+
+- Package version updated to `1.5.3`.
+- Portable packaging is not required for this patch release.
+
+**Known limitations:**
+
+- Only command-based custom Status Lines can be integrated automatically. Unsupported formats remain unchanged.
+- The existing command is given up to three seconds to render before the bridge falls back to Token Monitor's compact output.
+
+### 1.5.2 — 2026-09-02 — PATCH
+
+**Change category:** PATCH (background usage refresh cadence)
+
+**User-visible changes:**
+
+- Background provider usage collection now runs once per minute instead of every five minutes.
+
+**Provider/data-source changes:**
+
+- No provider collection order, authentication flow, or credential handling changed.
+
+**Packaging notes:**
+
+- Package version updated to `1.5.2`.
+- Portable packaging is not required for this patch release.
+
+**Known limitations:**
+
+- A one-minute polling cadence increases local and provider collection activity; Claude usage remains new only after Claude Code writes a new Status Line snapshot.
+
+### 1.5.1 — 2026-09-02 — PATCH
+
+**Change category:** PATCH (Claude usage capture visibility)
+
+**User-visible changes:**
+
+- The Claude dashboard metadata now displays the time at which Claude Code Status Line last captured usage.
+- Stale Status Line data is explicitly labelled as the last usage collection time.
+
+**Packaging notes:**
+
+- Package version updated to `1.5.1`.
+- Portable packaging is not required for this patch release.
+
+**Known limitations:**
+
+- Claude capture time advances only after Claude Code produces a Status Line snapshot; background polling does not create new provider usage data.
 
 ### 1.5.0 — 2026-09-02 — MINOR
 

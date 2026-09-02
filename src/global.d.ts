@@ -176,9 +176,11 @@ export type ClaudeUsageWindow = {
 
 export type ClaudeStatusLineRegistrationStatus = {
   state: "registered" | "needs-registration" | "error";
+  mode: "standalone" | "bridge" | "custom" | "none";
   registered: boolean;
   scriptReady: boolean;
   snapshotAvailable: boolean;
+  backupAvailable: boolean;
   detail: string;
 };
 
@@ -313,7 +315,8 @@ declare global {
       updateCodexExecutablePath: (candidate: string) => Promise<CodexPathUpdateResult>;
       resetCodexExecutablePath: () => Promise<CodexPathUpdateResult>;
       startClaudeLogin: () => Promise<{ ok: boolean; command: string; skipped?: boolean; detail?: string }>;
-      setupClaudeStatusLine: () => Promise<{ ok: boolean; snapshotPath?: string; detail: string }>;
+      setupClaudeStatusLine: (integrateExisting?: boolean) => Promise<{ ok: boolean; snapshotPath?: string; detail: string; requiresIntegration?: boolean }>;
+      restoreClaudeStatusLine: () => Promise<{ ok: boolean; snapshotPath?: string; detail: string }>;
       getClaudeStatusLineRegistration: () => Promise<ClaudeStatusLineRegistrationStatus>;
       startGeminiLogin: () => Promise<{ ok: boolean; command: string; skipped?: boolean; detail?: string }>;
       startGeminiAppsLogin: (bounds?: Partial<GeminiViewBounds>) => Promise<{ ok: boolean; detail?: string }>;
