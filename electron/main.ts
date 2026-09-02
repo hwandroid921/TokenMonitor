@@ -6,7 +6,7 @@ import { fileURLToPath } from "node:url";
 import { getClaudeUsage } from "./claude-usage.js";
 import { getCliSessionStatus } from "./cli-session.js";
 import { createClaudeOAuthEnvironment, getClaudeOAuthEnvironmentResetCommands } from "./claude-oauth-env.js";
-import { ensureClaudeStatusLine, getClaudeStatusLineSnapshotPath } from "./claude-statusline.js";
+import { ensureClaudeStatusLine, getClaudeStatusLineRegistrationStatus, getClaudeStatusLineSnapshotPath } from "./claude-statusline.js";
 import {
   getCodexPathStatus,
   getCodexUsage,
@@ -1023,15 +1023,6 @@ function sendTestNotification() {
 }
 
 async function startClaudeLogin() {
-  const statusLineSetup = ensureClaudeStatusLine(app.getPath("userData"));
-  if (!statusLineSetup.ok) {
-    return {
-      ok: false,
-      command: "Claude Status Line setup",
-      detail: statusLineSetup.detail
-    };
-  }
-
   const sessionStatus = await readCliSessionShared(true);
   cliSessionCache = sessionStatus;
   cliSessionCacheTime = Date.now();
@@ -1041,7 +1032,7 @@ async function startClaudeLogin() {
       ok: true,
       command: "claude auth status --json",
       skipped: true,
-      detail: statusLineSetup.detail
+      detail: "Claude CLI 로그인이 이미 확인되었습니다. 사용량 수집이 필요하면 Status Line 등록 버튼을 누르세요."
     };
   }
 
@@ -1073,6 +1064,17 @@ async function startClaudeLogin() {
   });
   child.unref();
   return { ok: true, command: "npx -y @anthropic-ai/claude-code auth login --claudeai" };
+}
+
+function setupClaudeStatusLine() {
+  const result = ensureClaudeStatusLine(app.getPath("userData"), { replaceExisting: true });
+  claudeUsageCache = null;
+  claudeUsageCacheTime = 0;
+  return result;
+}
+
+function readClaudeStatusLineRegistration() {
+  return getClaudeStatusLineRegistrationStatus(app.getPath("userData"));
 }
 
 function findCommandOnPath(command: string) {
@@ -1570,6 +1572,8 @@ if (!gotSingleInstanceLock) {
     ipcMain.handle("codex-path:update", (event, candidate: string) => isMainWindowSender(event) ? applyCodexExecutablePath(candidate) : { ok: false, canceled: false, status: readCodexPathSettings() });
     ipcMain.handle("codex-path:reset", (event) => isMainWindowSender(event) ? resetCodexExecutablePath() : { ok: false, canceled: false, status: readCodexPathSettings() });
     ipcMain.handle("claude-login:start", (event) => isMainWindowSender(event) ? startClaudeLogin() : { ok: false, detail: "기본 창에서만 실행할 수 있습니다." });
+    ipcMain.handle("claude-statusline:setup", (event) => isMainWindowSender(event) ? setupClaudeStatusLine() : { ok: false, detail: "기본 창에서만 실행할 수 있습니다." });
+    ipcMain.handle("claude-statusline:status", (event) => isAppWindowSender(event) ? readClaudeStatusLineRegistration() : { state: "error", registered: false, scriptReady: false, detail: "기본 창에서만 확인할 수 있습니다." });
     ipcMain.handle("gemini-login:start", (event) => isMainWindowSender(event) ? startGeminiLogin() : { ok: false, detail: "기본 창에서만 실행할 수 있습니다." });
     ipcMain.handle("gemini-apps-login:start", (event, bounds?: Partial<GeminiViewBounds>) => isMainWindowSender(event) ? startGeminiAppsLogin(bounds) : { ok: false, detail: "기본 창에서만 실행할 수 있습니다." });
     ipcMain.handle("gemini-view:bounds", (event, bounds?: Partial<GeminiViewBounds>) => isMainWindowSender(event) ? updateEmbeddedGeminiBounds(bounds) : { ok: false });
