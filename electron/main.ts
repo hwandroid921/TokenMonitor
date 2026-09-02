@@ -6,7 +6,7 @@ import { fileURLToPath } from "node:url";
 import { getClaudeUsage } from "./claude-usage.js";
 import { getCliSessionStatus } from "./cli-session.js";
 import { createClaudeOAuthEnvironment, getClaudeOAuthEnvironmentResetCommands } from "./claude-oauth-env.js";
-import { ensureClaudeStatusLine, getClaudeStatusLineRegistrationStatus, getClaudeStatusLineSnapshotPath } from "./claude-statusline.js";
+import { ensureClaudeStatusLine, getClaudeStatusLineRegistrationStatus, getClaudeStatusLineSnapshotPath, restoreClaudeStatusLine } from "./claude-statusline.js";
 import {
   getCodexPathStatus,
   getCodexUsage,
@@ -98,7 +98,7 @@ let latestQuotaSamples: NormalizedQuotaSample[] = [];
 let resetRetryAttempt = 0;
 const gotSingleInstanceLock = app.requestSingleInstanceLock();
 const initialOverlayDelayMs = 1200;
-const usageMonitorIntervalMs = 5 * 60 * 1000;
+const usageMonitorIntervalMs = 60 * 1000;
 const resetGraceMs = 20_000;
 const resetRetryDelaysMs = [60_000, 5 * 60_000, 10 * 60_000];
 const trayProviderLabels: Record<ProviderId, string> = {
@@ -1066,8 +1066,15 @@ async function startClaudeLogin() {
   return { ok: true, command: "npx -y @anthropic-ai/claude-code auth login --claudeai" };
 }
 
-function setupClaudeStatusLine() {
-  const result = ensureClaudeStatusLine(app.getPath("userData"), { replaceExisting: true });
+function setupClaudeStatusLine(integrateExisting = false) {
+  const result = ensureClaudeStatusLine(app.getPath("userData"), { integrateExisting });
+  claudeUsageCache = null;
+  claudeUsageCacheTime = 0;
+  return result;
+}
+
+function restoreClaudeStatusLineSetup() {
+  const result = restoreClaudeStatusLine(app.getPath("userData"));
   claudeUsageCache = null;
   claudeUsageCacheTime = 0;
   return result;
@@ -1572,8 +1579,9 @@ if (!gotSingleInstanceLock) {
     ipcMain.handle("codex-path:update", (event, candidate: string) => isMainWindowSender(event) ? applyCodexExecutablePath(candidate) : { ok: false, canceled: false, status: readCodexPathSettings() });
     ipcMain.handle("codex-path:reset", (event) => isMainWindowSender(event) ? resetCodexExecutablePath() : { ok: false, canceled: false, status: readCodexPathSettings() });
     ipcMain.handle("claude-login:start", (event) => isMainWindowSender(event) ? startClaudeLogin() : { ok: false, detail: "기본 창에서만 실행할 수 있습니다." });
-    ipcMain.handle("claude-statusline:setup", (event) => isMainWindowSender(event) ? setupClaudeStatusLine() : { ok: false, detail: "기본 창에서만 실행할 수 있습니다." });
-    ipcMain.handle("claude-statusline:status", (event) => isAppWindowSender(event) ? readClaudeStatusLineRegistration() : { state: "error", registered: false, scriptReady: false, detail: "기본 창에서만 확인할 수 있습니다." });
+    ipcMain.handle("claude-statusline:setup", (event, integrateExisting?: boolean) => isMainWindowSender(event) ? setupClaudeStatusLine(Boolean(integrateExisting)) : { ok: false, detail: "기본 창에서만 실행할 수 있습니다." });
+    ipcMain.handle("claude-statusline:restore", (event) => isMainWindowSender(event) ? restoreClaudeStatusLineSetup() : { ok: false, detail: "기본 창에서만 실행할 수 있습니다." });
+    ipcMain.handle("claude-statusline:status", (event) => isAppWindowSender(event) ? readClaudeStatusLineRegistration() : { state: "error", mode: "none", registered: false, scriptReady: false, snapshotAvailable: false, backupAvailable: false, detail: "기본 창에서만 확인할 수 있습니다." });
     ipcMain.handle("gemini-login:start", (event) => isMainWindowSender(event) ? startGeminiLogin() : { ok: false, detail: "기본 창에서만 실행할 수 있습니다." });
     ipcMain.handle("gemini-apps-login:start", (event, bounds?: Partial<GeminiViewBounds>) => isMainWindowSender(event) ? startGeminiAppsLogin(bounds) : { ok: false, detail: "기본 창에서만 실행할 수 있습니다." });
     ipcMain.handle("gemini-view:bounds", (event, bounds?: Partial<GeminiViewBounds>) => isMainWindowSender(event) ? updateEmbeddedGeminiBounds(bounds) : { ok: false });

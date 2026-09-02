@@ -2181,6 +2181,21 @@ body:not(.overlay-body) summary:focus-visible {
   white-space: nowrap;
 }
 
+.provider-usage-updated {
+  display: flex;
+  align-items: baseline;
+  gap: 5px;
+  margin: -5px 0 0;
+  color: #758892;
+  font-size: 11px;
+  font-weight: 680;
+}
+
+.provider-usage-updated strong {
+  color: #4f6875;
+  font-weight: 800;
+}
+
 .app-root:not(.overlay-root) .status-badge {
   height: 20px;
   padding: 0 7px;

@@ -46,6 +46,8 @@ type ProviderUsage = {
   statusLine?: ClaudeStatusLineRegistrationStatus | null;
   model?: string;
   alias?: string;
+  usageUpdatedAt?: string;
+  usageUpdateLabel?: string;
 };
 
 type ProviderField = {
@@ -166,6 +168,7 @@ function App() {
   const [showExitConfirm, setShowExitConfirm] = useState(false);
   const [isClaudeLoginPending, setIsClaudeLoginPending] = useState(false);
   const [isClaudeStatusLineSetupPending, setIsClaudeStatusLineSetupPending] = useState(false);
+  const [isClaudeStatusLineRestorePending, setIsClaudeStatusLineRestorePending] = useState(false);
   const [isGeminiLoginPending, setIsGeminiLoginPending] = useState(false);
   const [isGeminiAppsLoginPending, setIsGeminiAppsLoginPending] = useState(false);
   const [isGeminiUsageCheckBlocking, setIsGeminiUsageCheckBlocking] = useState(false);
@@ -460,13 +463,39 @@ function App() {
     setIsClaudeStatusLineSetupPending(true);
     setClaudeLoginNotice(null);
     try {
-      const result = await window.tokenMonitor?.setupClaudeStatusLine();
-      setClaudeLoginNotice(result?.detail ?? "Claude Status Line 새로 등록을 완료하지 못했습니다.");
+      let result = await window.tokenMonitor?.setupClaudeStatusLine();
+      if (result?.requiresIntegration) {
+        const shouldIntegrate = window.confirm("기존 Claude Status Line 표시는 유지하고 Token Monitor 사용량 수집을 함께 실행할까요? 기존 설정은 백업되며 언제든 복원할 수 있습니다.");
+        if (shouldIntegrate) {
+          result = await window.tokenMonitor?.setupClaudeStatusLine(true);
+        } else {
+          setClaudeLoginNotice("기존 Claude Status Line 설정을 유지했습니다.");
+          return;
+        }
+      }
+      setClaudeLoginNotice(result?.detail ?? "Claude Status Line 등록을 완료하지 못했습니다.");
       await refreshUsage();
     } catch (error) {
       setClaudeLoginNotice(error instanceof Error ? error.message : "Claude Status Line 새로 등록을 시작할 수 없습니다.");
     } finally {
       setIsClaudeStatusLineSetupPending(false);
+    }
+  }
+
+  async function handleClaudeStatusLineRestore() {
+    if (isClaudeStatusLineRestorePending || !window.confirm("Token Monitor 브리지를 해제하고 백업한 기존 Claude Status Line을 복원할까요? Claude 사용량 수집은 중지됩니다.")) {
+      return;
+    }
+    setIsClaudeStatusLineRestorePending(true);
+    setClaudeLoginNotice(null);
+    try {
+      const result = await window.tokenMonitor?.restoreClaudeStatusLine();
+      setClaudeLoginNotice(result?.detail ?? "기존 Claude Status Line을 복원하지 못했습니다.");
+      await refreshUsage();
+    } catch (error) {
+      setClaudeLoginNotice(error instanceof Error ? error.message : "기존 Claude Status Line을 복원하지 못했습니다.");
+    } finally {
+      setIsClaudeStatusLineRestorePending(false);
     }
   }
 
@@ -710,6 +739,8 @@ function App() {
                 key={provider.id}
                 provider={provider}
                 onManageAliases={() => { setRequestedSettingsSection("accounts"); setActiveTab("settings"); }}
+                onRestoreClaudeStatusLine={handleClaudeStatusLineRestore}
+                isClaudeStatusLineRestorePending={isClaudeStatusLineRestorePending}
               />
             ))}
             </div>
@@ -809,10 +840,14 @@ function App() {
 
 function ProviderCard({
   provider,
-  onManageAliases
+  onManageAliases,
+  onRestoreClaudeStatusLine,
+  isClaudeStatusLineRestorePending
 }: {
   provider: ProviderUsage;
   onManageAliases: () => void;
+  onRestoreClaudeStatusLine: () => void;
+  isClaudeStatusLineRestorePending: boolean;
 }) {
   const effectiveStatus = getEffectiveProviderStatus(provider);
   const quotaFields = getQuotaFields(provider);
@@ -835,6 +870,17 @@ function ProviderCard({
           <div><dt>플랜</dt><dd>{provider.plan}</dd></div>
           <div><dt>수집 현황</dt><dd><span className={`status-badge ${effectiveStatus}`}>{providerStatusLabels[effectiveStatus]}</span></dd></div>
         </dl>
+        {provider.usageUpdatedAt ? (
+          <p className="provider-usage-updated" title={provider.usageUpdatedAt}>
+            {provider.usageUpdateLabel ?? "사용량 갱신"} <strong>{formatTime(provider.usageUpdatedAt)}</strong>
+          </p>
+        ) : null}
+        {provider.id === "claude" && provider.statusLine?.mode === "bridge" && provider.statusLine.backupAvailable ? (
+          <button className="provider-inline-action" type="button" onClick={onRestoreClaudeStatusLine} disabled={isClaudeStatusLineRestorePending}>
+            <RefreshCw size={14} aria-hidden="true" className={isClaudeStatusLineRestorePending ? "spinning" : ""} />
+            {isClaudeStatusLineRestorePending ? "복원 중" : "기존 Status Line 복원"}
+          </button>
+        ) : null}
         {provider.needsAlias ? (
           <button className="provider-inline-action" type="button" onClick={onManageAliases}>
             <Settings size={14} aria-hidden="true" />
@@ -1296,7 +1342,7 @@ function buildDesignPreviewProviders(): ProviderUsage[] {
       remaining: "주간 36% / 주기 82%",
       reset: "주간 4일 8시간 후 / 주기 2시간 5분 후",
       detail: "Status Line 최근 갱신 09:31",
-      statusLine: { state: "registered", registered: true, scriptReady: true, snapshotAvailable: true, detail: "Status Line 등록 및 실행이 확인되었습니다." },
+      statusLine: { state: "registered", mode: "standalone", registered: true, scriptReady: true, snapshotAvailable: true, backupAvailable: false, detail: "Status Line 등록 및 실행이 확인되었습니다." },
       fields: [
         { label: "플랜", value: "Pro", kind: "plan" },
         { label: "주간", value: "사용량 64% / 잔여량 36% / 초기화 4일 8시간 후", kind: "quota", remainingPercent: 36, resetsAt: "2026-09-06T17:20:00+09:00" },
@@ -2088,9 +2134,11 @@ function buildClaudeProvider(
   const planLabel = sessions?.claude.loggedIn ? "Claude 구독" : "확인 필요";
   const registration = statusLine ?? {
     state: "needs-registration" as const,
+    mode: "none" as const,
     registered: false,
     scriptReady: false,
     snapshotAvailable: false,
+    backupAvailable: false,
     detail: "Claude Status Line 등록 상태를 확인하고 있습니다."
   };
 
@@ -2192,6 +2240,8 @@ function buildClaudeProvider(
       { label: "주기 (5시간)", value: formatClaudeStatusLineWindowSummary(usage.fiveHour), kind: "quota", remainingPercent: usage.stale ? null : usage.fiveHour?.remainingPercent ?? null, resetsAt: usage.fiveHour?.resetsAt ?? null }
     ],
     detail: `${modelLabel ? `${modelLabel} / ` : ""}Status Line ${usage.stale ? "마지막 확인 정보" : "최근 갱신"} ${formatTime(usage.capturedAt)}`,
+    usageUpdatedAt: usage.capturedAt,
+    usageUpdateLabel: usage.stale ? "마지막 사용량 수집" : "사용량 갱신",
     canLogin,
     actionLabel: canLogin ? "Claude CLI 설치 및 로그인" : "Claude CLI 재연동",
     needsAlias: Boolean(account?.aliasRequired),
