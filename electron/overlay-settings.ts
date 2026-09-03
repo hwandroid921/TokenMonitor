@@ -75,7 +75,7 @@ export function normalizeOverlaySettings(value: Partial<OverlaySettings>): Overl
 
 function normalizeFontSizePercent(value: unknown) {
   const requested = Number.isFinite(value) ? Number(value) : defaultOverlaySettings.fontSizePercent;
-  return Math.min(150, Math.max(50, Math.round(requested / 5) * 5));
+  return Math.min(150, Math.max(50, Math.round(requested)));
 }
 
 function normalizeOverlayPosition(value: Partial<OverlayPosition> | undefined): OverlayPosition {

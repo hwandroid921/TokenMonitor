@@ -634,6 +634,13 @@ h2 {
   line-height: 1.45;
 }
 
+.overlay-position-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
 .settings-heading svg {
   color: #24483b;
 }
@@ -1894,6 +1901,7 @@ body.overlay-body #root {
 body:not(.overlay-body) {
   color: #25333c;
   background: #f2f6f8;
+  overflow: hidden;
 }
 
 body:not(.overlay-body) button:focus-visible,
@@ -1903,16 +1911,20 @@ body:not(.overlay-body) summary:focus-visible {
 }
 
 .app-root:not(.overlay-root) {
+  --sidebar-width: 220px;
+  --content-baseline-sidebar-width: 220px;
   display: grid;
-  grid-template-columns: 220px minmax(0, 1fr);
-  min-height: 100vh;
+  grid-template-columns: var(--sidebar-width) minmax(0, 1fr);
+  height: 100dvh;
+  min-height: 0;
   padding: 0;
+  overflow: hidden;
   background: #f2f6f8;
   transition: grid-template-columns 180ms ease;
 }
 
 .app-root.sidebar-collapsed {
-  grid-template-columns: 76px minmax(0, 1fr);
+  --sidebar-width: 76px;
 }
 
 .app-sidebar {
@@ -1921,7 +1933,8 @@ body:not(.overlay-body) summary:focus-visible {
   z-index: 10;
   display: flex;
   flex-direction: column;
-  min-height: 100vh;
+  height: 100dvh;
+  min-height: 0;
   padding: 22px 14px 16px;
   overflow: hidden;
   color: #40515c;
@@ -1946,9 +1959,19 @@ body:not(.overlay-body) summary:focus-visible {
 }
 
 .sidebar-brand strong {
+  display: block;
   color: #23333e;
   font-size: 15px;
   letter-spacing: -0.02em;
+}
+
+.sidebar-version {
+  display: block;
+  margin-top: 2px;
+  color: #7a929e;
+  font-size: 10px;
+  font-weight: 760;
+  letter-spacing: 0.03em;
 }
 
 .sidebar-navigation {
@@ -2007,15 +2030,21 @@ body:not(.overlay-body) summary:focus-visible {
   padding-inline: 9px;
 }
 
-.sidebar-collapsed .sidebar-brand strong,
+.sidebar-collapsed .sidebar-brand-copy,
 .sidebar-collapsed .sidebar-navigation span,
 .sidebar-collapsed .sidebar-collapse-button span {
   display: none;
 }
 
 .app-root:not(.overlay-root) .main-panel {
+  display: flex;
+  flex-direction: column;
+  width: min(100%, calc(100dvw - var(--content-baseline-sidebar-width)));
+  height: 100dvh;
+  min-height: 0;
+  justify-self: center;
   min-width: 0;
-  padding: 0 24px 24px;
+  padding: 0 24px;
   background: transparent;
   border: 0;
   border-radius: 0;
@@ -2023,10 +2052,19 @@ body:not(.overlay-body) summary:focus-visible {
 }
 
 .app-root:not(.overlay-root) .app-header {
+  flex: 0 0 auto;
   justify-content: flex-end;
   min-height: 88px;
   padding: 18px 0;
   border-bottom: 1px solid #dce7ed;
+}
+
+.app-scroll-content {
+  min-height: 0;
+  padding-bottom: 24px;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scrollbar-gutter: stable;
 }
 
 .page-heading span,
@@ -2157,7 +2195,7 @@ body:not(.overlay-body) summary:focus-visible {
 
 .provider-metadata {
   display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
+  grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 9px 16px;
 }
 
@@ -2375,11 +2413,11 @@ body:not(.overlay-body) summary:focus-visible {
   border-color: #cee2ea;
 }
 
-/* Settings uses the same left-to-right spacing and item treatment as dashboard cards. */
+/* Settings uses the same sky-blue controls while grouping section navigation above its content. */
 .app-root:not(.overlay-root) .settings-panel {
   display: grid;
-  grid-template-columns: 206px minmax(0, 1fr);
-  min-height: calc(100vh - 140px);
+  grid-template-rows: auto minmax(0, 1fr);
+  min-height: 0;
   margin-top: 22px;
   overflow: hidden;
   background: #fbfdfe;
@@ -2390,20 +2428,20 @@ body:not(.overlay-body) summary:focus-visible {
 
 .app-root:not(.overlay-root) .settings-subnav {
   display: flex;
-  flex-direction: column;
+  flex-wrap: wrap;
   gap: 5px;
   margin: 0;
-  padding: 18px 12px;
+  padding: 12px 16px;
   background: #f6fafc;
   border: 0;
-  border-right: 1px solid #dfe9ee;
+  border-bottom: 1px solid #dfe9ee;
 }
 
 .app-root:not(.overlay-root) .settings-subnav button {
   display: flex;
   align-items: center;
   gap: 9px;
-  width: 100%;
+  width: auto;
   min-height: 40px;
   padding: 0 11px;
   color: #647682;
@@ -2421,7 +2459,7 @@ body:not(.overlay-body) summary:focus-visible {
 .app-root:not(.overlay-root) .settings-subnav button.active {
   color: #345f75;
   background: #e7f2f7;
-  box-shadow: inset 3px 0 #7eb8d1;
+  box-shadow: inset 0 -3px #7eb8d1;
 }
 
 .settings-content {
@@ -2512,7 +2550,8 @@ body:not(.overlay-body) summary:focus-visible {
 @media (max-width: 760px) {
   .app-root:not(.overlay-root),
   .app-root.sidebar-collapsed {
-    grid-template-columns: 64px minmax(0, 1fr);
+    --sidebar-width: 64px;
+    --content-baseline-sidebar-width: 64px;
   }
 
   .app-sidebar {
@@ -2529,14 +2568,14 @@ body:not(.overlay-body) summary:focus-visible {
     padding-inline: 6px;
   }
 
-  .sidebar-brand strong,
+  .sidebar-brand-copy,
   .sidebar-navigation span,
   .sidebar-collapse-button span {
     display: none;
   }
 
   .app-root:not(.overlay-root) .main-panel {
-    padding: 0 14px 20px;
+    padding: 0 14px;
   }
 
   .app-root:not(.overlay-root) .app-header {
@@ -2553,14 +2592,12 @@ body:not(.overlay-body) summary:focus-visible {
   }
 
   .app-root:not(.overlay-root) .settings-panel {
-    grid-template-columns: 1fr;
+    grid-template-rows: auto minmax(0, 1fr);
   }
 
   .app-root:not(.overlay-root) .settings-subnav {
-    flex-direction: row;
+    flex-wrap: nowrap;
     overflow-x: auto;
-    border-right: 0;
-    border-bottom: 1px solid #dfe9ee;
   }
 
   .app-root:not(.overlay-root) .settings-subnav button {
@@ -2952,13 +2989,25 @@ body:not(.overlay-body) summary:focus-visible {
   justify-content: space-between;
 }
 
-.app-root:not(.overlay-root) .overlay-font-size-control {
-  grid-template-columns: minmax(150px, 1fr) auto minmax(240px, 2fr) auto auto;
+.app-root:not(.overlay-root) .overlay-toggle-copy {
+  display: grid;
+  gap: 3px;
+  min-width: 0;
 }
 
-.app-root:not(.overlay-root) .overlay-font-size-control small {
-  color: #84959e;
-  font-size: 10px;
+.app-root:not(.overlay-root) .overlay-toggle-copy strong {
+  color: #3b515d;
+  font-size: 13px;
+}
+
+.app-root:not(.overlay-root) .overlay-toggle-copy small {
+  color: #748690;
+  font-size: 11px;
+  line-height: 1.45;
+}
+
+.app-root:not(.overlay-root) .overlay-font-size-control {
+  grid-template-columns: minmax(150px, 1fr) minmax(240px, 2fr);
 }
 
 .app-root:not(.overlay-root) .provider-settings {

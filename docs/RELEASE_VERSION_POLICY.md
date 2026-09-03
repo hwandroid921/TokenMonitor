@@ -73,10 +73,10 @@ Before `v1.0.0`, do not maintain a fixed version-by-version feature roadmap. Whe
 Current package version:
 
 ```text
-1.5.3
+1.5.7
 ```
 
-`v1.5.3` preserves existing Claude Status Line output through an opt-in Token Monitor bridge, adds a visible Claude usage capture time to the dashboard, refreshes provider usage in the background every minute, and retains the selected sky-blue dashboard and settings layout, collapsible left navigation, provider metadata lanes, and dual reset-time visibility.
+`v1.5.7` keeps the selected sky-blue dashboard and settings layout while simplifying provider metadata to account alias, plan, and collection state. The application uses a fixed navigation and header with independently scrolling dashboard and settings content, settings navigation is presented above its content, and the overlay controls follow a clear task order.
 
 - ChatGPT quota display through the Codex Desktop local usage flow, with an optional user-set `codex.exe` path
 - Claude quota display
@@ -197,6 +197,98 @@ For each release-worthy version bump, summarize:
 - Known limitations
 
 ## Release History
+
+### 1.5.7 — 2026-09-02 — PATCH
+
+**Change category:** PATCH (overlay setting order)
+
+**User-visible changes:**
+
+- Overlay settings are ordered as enable, minimize to tray, position, and text size.
+- Each toggle presents its explanation on the left and its switch control on the right.
+
+**Provider/data-source changes:**
+
+- No provider collection order, authentication flow, or credential handling changed.
+
+**Packaging notes:**
+
+- Package version updated to `1.5.7`.
+- Portable packaging is not required for this patch release.
+
+**Known limitations:**
+
+- Overlay text size remains constrained to the supported 50%–150% range.
+
+### 1.5.6 — 2026-09-02 — PATCH
+
+**Change category:** PATCH (overlay control polish)
+
+**User-visible changes:**
+
+- The overlay position actions have clear spacing between them.
+- Overlay text size now adjusts in 1% increments through the range control and mouse wheel.
+- The range control no longer shows percentage endpoint or current-value labels.
+
+**Provider/data-source changes:**
+
+- No provider collection order, authentication flow, or credential handling changed.
+
+**Packaging notes:**
+
+- Package version updated to `1.5.6`.
+- Portable packaging is not required for this patch release.
+
+**Known limitations:**
+
+- Overlay text size remains constrained to the supported 50%–150% range.
+
+### 1.5.5 — 2026-09-02 — PATCH
+
+**Change category:** PATCH (dashboard navigation and scrolling)
+
+**User-visible changes:**
+
+- The top-right external action now opens the Token Monitor GitHub repository.
+- The left navigation and header stay fixed while dashboard and settings content scroll independently.
+- Collapsing the left navigation preserves the content width and centers the main surface within the available space.
+- Settings section navigation now appears above the settings content.
+
+**Provider/data-source changes:**
+
+- No provider collection order, authentication flow, or credential handling changed.
+
+**Packaging notes:**
+
+- Package version updated to `1.5.5`.
+- Portable packaging is not required for this patch release.
+
+**Known limitations:**
+
+- The settings navigation can scroll horizontally on narrow windows so every section remains available.
+
+### 1.5.4 — 2026-09-02 — PATCH
+
+**Change category:** PATCH (dashboard metadata clarity)
+
+**User-visible changes:**
+
+- Provider cards no longer show a model field, because the available provider data does not consistently identify the active model.
+- Provider metadata now presents the safe account alias, plan, and collection state in a consistent three-column layout.
+- The application version is displayed under the Token Monitor brand in the left navigation.
+
+**Provider/data-source changes:**
+
+- No provider collection order, authentication flow, or credential handling changed.
+
+**Packaging notes:**
+
+- Package version updated to `1.5.4`.
+- Portable packaging is not required for this patch release.
+
+**Known limitations:**
+
+- Model-specific quota rows remain available when a provider supplies them, but the dashboard does not claim that any one model is currently active.
 
 ### 1.5.3 — 2026-09-02 — PATCH
 

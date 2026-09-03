@@ -324,7 +324,7 @@ declare global {
       closeGeminiView: () => Promise<void>;
       minimizeToTray: () => Promise<void>;
       quitApp: () => Promise<void>;
-      openCodexUsageDashboard: () => Promise<void>;
+      openProjectRepository: () => Promise<void>;
       openNodeJsDownload: () => Promise<void>;
       getOverlaySettings: () => Promise<OverlaySettings>;
       updateOverlaySettings: (settings: OverlaySettings) => Promise<OverlaySettings>;
