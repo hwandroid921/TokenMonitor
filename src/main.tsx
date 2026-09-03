@@ -3,6 +3,7 @@ import { createRoot } from "react-dom/client";
 import { AlertCircle, Bell, Bug, CheckCircle2, ChevronDown, ExternalLink, LayoutDashboard, Link, Link2, Monitor, PanelLeftClose, PanelLeftOpen, RefreshCw, Settings, SlidersHorizontal, UserRound } from "lucide-react";
 import { SiAnthropic, SiGoogle } from "react-icons/si";
 import { TbBrandOpenai } from "react-icons/tb";
+import packageInfo from "../package.json";
 import "./styles.css";
 import type {
   AccountAliasView,
@@ -44,7 +45,6 @@ type ProviderUsage = {
   needsAlias?: boolean;
   issues?: ProviderIssue[];
   statusLine?: ClaudeStatusLineRegistrationStatus | null;
-  model?: string;
   alias?: string;
   usageUpdatedAt?: string;
   usageUpdateLabel?: string;
@@ -681,7 +681,10 @@ function App() {
           <span className="brand-mark">
             <img src={appIconUrl} alt="" aria-hidden="true" />
           </span>
-          <strong>Token Monitor</strong>
+          <div className="sidebar-brand-copy">
+            <strong>Token Monitor</strong>
+            <span className="sidebar-version">v{packageInfo.version}</span>
+          </div>
         </div>
         <nav className="sidebar-navigation" aria-label="화면 전환">
           <button id="dashboard-tab" aria-current={activeTab === "dashboard" ? "page" : undefined} className={activeTab === "dashboard" ? "active" : ""} type="button" onKeyDown={handleTabKeyDown} onClick={() => setActiveTab("dashboard")}>
@@ -720,78 +723,80 @@ function App() {
             <button
               className="header-action-button header-action-secondary"
               type="button"
-              onClick={() => void window.tokenMonitor?.openCodexUsageDashboard()}
-              aria-label="ChatGPT 사용량 대시보드 열기"
-              title="ChatGPT 사용량 대시보드 열기"
+              onClick={() => void window.tokenMonitor?.openProjectRepository()}
+              aria-label="Token Monitor GitHub 저장소 열기"
+              title="Token Monitor GitHub 저장소 열기"
             >
               <ExternalLink size={17} aria-hidden="true" />
-              <span>ChatGPT 한도</span>
+              <span>GitHub</span>
             </button>
             </div>
           </div>
         </header>
 
-        {activeTab === "dashboard" ? (
-          <section id="dashboard-panel" className="provider-grid" aria-label="서비스별 사용량">
-            <div className="provider-list">
-            {dashboardProviders.map((provider) => (
-              <ProviderCard
-                key={provider.id}
-                provider={provider}
-                onManageAliases={() => { setRequestedSettingsSection("accounts"); setActiveTab("settings"); }}
-                onRestoreClaudeStatusLine={handleClaudeStatusLineRestore}
-                isClaudeStatusLineRestorePending={isClaudeStatusLineRestorePending}
+        <div className="app-scroll-content">
+          {activeTab === "dashboard" ? (
+            <section id="dashboard-panel" className="provider-grid" aria-label="서비스별 사용량">
+              <div className="provider-list">
+              {dashboardProviders.map((provider) => (
+                <ProviderCard
+                  key={provider.id}
+                  provider={provider}
+                  onManageAliases={() => { setRequestedSettingsSection("accounts"); setActiveTab("settings"); }}
+                  onRestoreClaudeStatusLine={handleClaudeStatusLineRestore}
+                  isClaudeStatusLineRestorePending={isClaudeStatusLineRestorePending}
+                />
+              ))}
+              </div>
+              <DashboardAttentionPanel
+                providers={dashboardProviders}
+                geminiUsage={geminiUsage}
+                isClaudeLoginPending={isClaudeLoginPending}
+                isClaudeStatusLineSetupPending={isClaudeStatusLineSetupPending}
+                isGeminiLoginPending={isGeminiLoginPending}
+                isGeminiAppsLoginPending={isGeminiAppsLoginPending}
+                actionNotices={{
+                  claude: claudeLoginNotice,
+                  gemini: [geminiLoginNotice, geminiAppsLoginNotice].filter(Boolean).join(" ") || null
+                }}
+                onClaudeLogin={handleClaudeLogin}
+                onClaudeStatusLineSetup={handleClaudeStatusLineSetup}
+                onGeminiLogin={handleGeminiLogin}
+                onGeminiAppsLogin={handleGeminiAppsLogin}
+                onOpenCodexSettings={() => { setRequestedSettingsSection("codex"); setActiveTab("settings"); }}
               />
-            ))}
+            </section>
+          ) : activeTab === "settings" ? (
+            <div id="settings-panel" role="tabpanel" aria-labelledby="settings-tab">
+              <SettingsPanel
+                settings={overlaySettings}
+                onChange={updateOverlaySettings}
+                onBeginOverlayPositioning={beginOverlayPositioning}
+                onResetOverlayPosition={resetOverlayPosition}
+                notice={settingsNotice}
+                isSaving={isSettingsSaving}
+                notificationSettings={notificationSettings}
+                notificationNotice={notificationNotice}
+                onNotificationChange={saveNotificationSettings}
+                accounts={accountAliases}
+                accountNotice={accountAliasNotice}
+                onRenameAccount={handleRenameAccountAlias}
+                onDeleteAccount={handleDeleteAccountAlias}
+                onDeleteProviderAccounts={handleDeleteProviderAliases}
+                onDeleteAllAccounts={handleDeleteAllAccountAliases}
+                requestedSection={requestedSettingsSection}
+              />
             </div>
-            <DashboardAttentionPanel
-              providers={dashboardProviders}
-              geminiUsage={geminiUsage}
-              isClaudeLoginPending={isClaudeLoginPending}
-              isClaudeStatusLineSetupPending={isClaudeStatusLineSetupPending}
-              isGeminiLoginPending={isGeminiLoginPending}
-              isGeminiAppsLoginPending={isGeminiAppsLoginPending}
-              actionNotices={{
-                claude: claudeLoginNotice,
-                gemini: [geminiLoginNotice, geminiAppsLoginNotice].filter(Boolean).join(" ") || null
-              }}
-              onClaudeLogin={handleClaudeLogin}
-              onClaudeStatusLineSetup={handleClaudeStatusLineSetup}
-              onGeminiLogin={handleGeminiLogin}
-              onGeminiAppsLogin={handleGeminiAppsLogin}
-              onOpenCodexSettings={() => { setRequestedSettingsSection("codex"); setActiveTab("settings"); }}
-            />
-          </section>
-        ) : activeTab === "settings" ? (
-          <div id="settings-panel" role="tabpanel" aria-labelledby="settings-tab">
-            <SettingsPanel
-              settings={overlaySettings}
-              onChange={updateOverlaySettings}
-              onBeginOverlayPositioning={beginOverlayPositioning}
-              onResetOverlayPosition={resetOverlayPosition}
-              notice={settingsNotice}
-              isSaving={isSettingsSaving}
-              notificationSettings={notificationSettings}
-              notificationNotice={notificationNotice}
-              onNotificationChange={saveNotificationSettings}
-              accounts={accountAliases}
-              accountNotice={accountAliasNotice}
-              onRenameAccount={handleRenameAccountAlias}
-              onDeleteAccount={handleDeleteAccountAlias}
-              onDeleteProviderAccounts={handleDeleteProviderAliases}
-              onDeleteAllAccounts={handleDeleteAllAccountAliases}
-              requestedSection={requestedSettingsSection}
-            />
-          </div>
-        ) : (
-          <div id="developer-panel" role="tabpanel" aria-labelledby="developer-tab">
-            <DeveloperPanel
-              diagnostics={developerDiagnostics}
-              isRefreshing={isDeveloperRefreshing}
-              onRefresh={() => void refreshDeveloperDiagnostics()}
-            />
-          </div>
-        )}
+          ) : (
+            <div id="developer-panel" role="tabpanel" aria-labelledby="developer-tab">
+              <DeveloperPanel
+                diagnostics={developerDiagnostics}
+                isRefreshing={isDeveloperRefreshing}
+                onRefresh={() => void refreshDeveloperDiagnostics()}
+              />
+            </div>
+          )}
+        </div>
       </section>
 
       {isGeminiPanelOpen ? (
@@ -865,7 +870,6 @@ function ProviderCard({
           </div>
         </div>
         <dl className="provider-metadata">
-          <div><dt>모델</dt><dd>{provider.model ?? "확인 불가"}</dd></div>
           <div><dt>별칭</dt><dd>{alias}</dd></div>
           <div><dt>플랜</dt><dd>{provider.plan}</dd></div>
           <div><dt>수집 현황</dt><dd><span className={`status-badge ${effectiveStatus}`}>{providerStatusLabels[effectiveStatus]}</span></dd></div>
@@ -1315,7 +1319,6 @@ function buildDesignPreviewProviders(): ProviderUsage[] {
       name: "ChatGPT",
       source: "OpenAI",
       status: "live",
-      model: "GPT-5.6",
       alias: "개인용",
       plan: "Plus",
       session: "로그인됨",
@@ -1334,7 +1337,6 @@ function buildDesignPreviewProviders(): ProviderUsage[] {
       name: "Claude",
       source: "Anthropic",
       status: "live",
-      model: "Claude Opus 4.1",
       alias: "업무용",
       plan: "Pro",
       session: "로그인됨",
@@ -1354,7 +1356,6 @@ function buildDesignPreviewProviders(): ProviderUsage[] {
       name: "Gemini",
       source: "Google",
       status: "live",
-      model: "Gemini 2.5 Pro",
       alias: "Google 개인용",
       plan: "Google AI Pro",
       session: "Gemini Apps + Antigravity",
@@ -1467,8 +1468,19 @@ function SettingsPanel({
       <section className="setting-group overlay-behavior-settings" aria-labelledby="overlay-behavior-heading">
         <h2 id="overlay-behavior-heading">오버레이 기본 동작</h2>
         <label className="switch-row">
+          <span className="overlay-toggle-copy">
+            <strong>오버레이 켜기</strong>
+            <small>화면 우측 하단에 사용량 정보를 표시합니다.</small>
+          </span>
           <input type="checkbox" checked={settings.enabled} disabled={isSaving} onChange={(event) => update({ enabled: event.target.checked })} />
-          <span>오버레이 켜기</span>
+        </label>
+
+        <label className="switch-row">
+          <span className="overlay-toggle-copy">
+            <strong>프로그램 종료 시 시스템 트레이로 최소화</strong>
+            <small>창을 닫아도 백그라운드에서 계속 실행합니다.</small>
+          </span>
+          <input type="checkbox" checked={settings.closeToTray} disabled={isSaving} onChange={(event) => update({ closeToTray: event.target.checked })} />
         </label>
 
         <section className="overlay-position-settings" aria-labelledby="overlay-position-heading">
@@ -1476,7 +1488,7 @@ function SettingsPanel({
             <h3 id="overlay-position-heading">오버레이 위치</h3>
             <p>위치 변경 중에는 창 테두리가 강조되고 오버레이를 드래그할 수 있습니다. 완료하면 클릭 통과 상태로 돌아갑니다.</p>
           </div>
-          <div className="button-row">
+          <div className="button-row overlay-position-actions">
             <button className="secondary-button" type="button" disabled={isSaving || !settings.enabled} onClick={() => void onBeginOverlayPositioning()}>위치 변경</button>
             <button className="secondary-button" type="button" disabled={isSaving} onClick={() => void onResetOverlayPosition()}>위치 초기화</button>
           </div>
@@ -1484,23 +1496,23 @@ function SettingsPanel({
 
         <label className="overlay-font-size-control">
           <span>오버레이 글자 크기</span>
-          <small>50%</small>
           <input
             type="range"
             min="50"
             max="150"
-            step="5"
+            step="1"
             value={settings.fontSizePercent}
             disabled={isSaving}
             onChange={(event) => update({ fontSizePercent: Number(event.target.value) })}
+            onWheel={(event) => {
+              event.preventDefault();
+              const direction = event.deltaY < 0 ? 1 : -1;
+              const nextValue = Math.min(150, Math.max(50, settings.fontSizePercent + direction));
+              if (nextValue !== settings.fontSizePercent) {
+                update({ fontSizePercent: nextValue });
+              }
+            }}
           />
-          <strong>{settings.fontSizePercent}%</strong>
-          <small>150%</small>
-        </label>
-
-        <label className="switch-row">
-          <input type="checkbox" checked={settings.closeToTray} disabled={isSaving} onChange={(event) => update({ closeToTray: event.target.checked })} />
-          <span>프로그램 종료 시 시스템 트레이로 최소화</span>
         </label>
       </section>
 
@@ -2104,7 +2116,6 @@ function buildCodexProvider(usage: CodexUsageResult | null, sessions: CliSession
     name: "ChatGPT",
     source: "OpenAI",
     status: "live",
-    model: "확인 불가",
     alias: usage.account.alias ?? (usage.account.detected ? "별칭 미지정" : "계정 확인 중"),
     plan: usage.planType ?? "로그인됨",
     session: formatSession(sessions?.codex),
@@ -2217,7 +2228,6 @@ function buildClaudeProvider(
   const usedLabel = formatClaudeStatusLineWindows(usage.sevenDay, usage.fiveHour, "used");
   const remainingLabel = formatClaudeStatusLineWindows(usage.sevenDay, usage.fiveHour, "remaining");
   const resetLabel = formatClaudeStatusLineResets(usage.sevenDay, usage.fiveHour);
-  const modelLabel = usage.model?.displayName ?? usage.model?.id ?? null;
   const hasQuota = Boolean(usage.fiveHour || usage.sevenDay);
   const account = sessions?.claude.account;
 
@@ -2226,7 +2236,6 @@ function buildClaudeProvider(
     name: "Claude",
     source: "Anthropic",
     status: hasQuota ? "live" : "pending",
-    model: modelLabel ?? "확인 불가",
     alias: account?.alias ?? (account?.detected ? "별칭 미지정" : "계정 확인 중"),
     plan: planLabel,
     session: sessionLabel,
@@ -2239,7 +2248,7 @@ function buildClaudeProvider(
       { label: "주간", value: formatClaudeStatusLineWindowSummary(usage.sevenDay), kind: "quota", remainingPercent: usage.stale ? null : usage.sevenDay?.remainingPercent ?? null, resetsAt: usage.sevenDay?.resetsAt ?? null },
       { label: "주기 (5시간)", value: formatClaudeStatusLineWindowSummary(usage.fiveHour), kind: "quota", remainingPercent: usage.stale ? null : usage.fiveHour?.remainingPercent ?? null, resetsAt: usage.fiveHour?.resetsAt ?? null }
     ],
-    detail: `${modelLabel ? `${modelLabel} / ` : ""}Status Line ${usage.stale ? "마지막 확인 정보" : "최근 갱신"} ${formatTime(usage.capturedAt)}`,
+    detail: `Status Line ${usage.stale ? "마지막 확인 정보" : "최근 갱신"} ${formatTime(usage.capturedAt)}`,
     usageUpdatedAt: usage.capturedAt,
     usageUpdateLabel: usage.stale ? "마지막 사용량 수집" : "사용량 갱신",
     canLogin,
@@ -2323,7 +2332,6 @@ function buildGeminiProvider(usage: GeminiUsageResult | null): ProviderUsage {
     name: "Gemini",
     source: "Google",
     status: "live",
-    model: usage.models[0]?.label ?? usage.models[0]?.modelId ?? "모델별 한도",
     alias: usage.account.alias ?? (usage.account.detected ? "별칭 미지정" : "계정 확인 중"),
     plan: planLabel,
     session: sourceLabel,

@@ -4,7 +4,7 @@
 
 Token Monitor는 여러 AI 서비스의 로컬 로그인 상태와 제공자가 제공하는 사용량 정보를 읽어, 플랜·사용량·잔여량·초기화 시간을 대시보드와 화면 우측 하단 오버레이로 표시합니다. 해당 프로그램은 ChatGPT, Claude, Gemini 유료 플랜 이상 구독 사용자를 대상으로 합니다.
 
-**지원 환경:** Windows x64, macOS Apple Silicon · **현재 앱 버전:** `v1.5.0` · **배포 형식:** Windows 포터블 실행 파일, macOS ARM64 DMG/ZIP
+**지원 환경:** Windows x64, macOS Apple Silicon · **현재 앱 버전:** `v1.5.7` · **배포 형식:** Windows 포터블 실행 파일, macOS ARM64 DMG/ZIP
 
 [릴리즈 다운로드](https://github.com/hwandroid921/TokenMonitor/releases)
 

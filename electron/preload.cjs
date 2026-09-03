@@ -22,7 +22,7 @@ contextBridge.exposeInMainWorld("tokenMonitor", {
   closeGeminiView: () => ipcRenderer.invoke("gemini-view:close"),
   minimizeToTray: () => ipcRenderer.invoke("app:minimize-to-tray"),
   quitApp: () => ipcRenderer.invoke("app:quit"),
-  openCodexUsageDashboard: () => ipcRenderer.invoke("codex-usage:open-dashboard"),
+  openProjectRepository: () => ipcRenderer.invoke("project-repository:open"),
   openNodeJsDownload: () => ipcRenderer.invoke("nodejs:open-download"),
   getOverlaySettings: () => ipcRenderer.invoke("overlay-settings:read"),
   updateOverlaySettings: (settings) => ipcRenderer.invoke("overlay-settings:update", settings),

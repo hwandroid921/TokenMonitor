@@ -1588,7 +1588,7 @@ if (!gotSingleInstanceLock) {
     ipcMain.handle("gemini-view:close", (event) => isMainWindowSender(event) ? closeEmbeddedGeminiView("manual") : undefined);
     ipcMain.handle("app:minimize-to-tray", (event) => isMainWindowSender(event) ? minimizeMainWindowToTray() : undefined);
     ipcMain.handle("app:quit", (event) => isMainWindowSender(event) ? quitApp() : undefined);
-    ipcMain.handle("codex-usage:open-dashboard", (event) => isMainWindowSender(event) ? shell.openExternal("https://chatgpt.com/codex/settings/usage") : undefined);
+    ipcMain.handle("project-repository:open", (event) => isMainWindowSender(event) ? shell.openExternal("https://github.com/hwandroid921/TokenMonitor") : undefined);
     ipcMain.handle("nodejs:open-download", (event) => isMainWindowSender(event) ? shell.openExternal("https://nodejs.org/ko/download") : undefined);
     ipcMain.handle("overlay-settings:read", (event) => isAppWindowSender(event) ? overlaySettings : defaultOverlaySettings);
     ipcMain.handle("overlay-settings:update", (event, nextSettings: OverlaySettings) => {
