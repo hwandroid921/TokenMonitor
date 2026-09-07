@@ -120,15 +120,6 @@ export type DeveloperDiagnostics = {
     cliSession: string;
   };
   providers: DeveloperProviderDiagnostic[];
-  geminiParser: {
-    sessionLoggedIn: boolean;
-    cacheAvailable: boolean;
-    planParsed: boolean;
-    fiveHourParsed: boolean;
-    weeklyParsed: boolean;
-    detail: string | null;
-    updatedAt: string | null;
-  } | null;
 };
 
 export type ProviderId = "codex" | "claude" | "gemini";
@@ -192,33 +183,6 @@ export type GeminiUsageWindow = {
   resetsAt: string | null;
 };
 
-export type GeminiAppsUsageWindow = {
-  label: "5시간" | "주간";
-  remaining: string | null;
-  reset: string | null;
-};
-
-export type GeminiAppsUsage = {
-  source: "gemini-web-usage-limits";
-  fiveHour: GeminiAppsUsageWindow | null;
-  weekly: GeminiAppsUsageWindow | null;
-  plan: string | null;
-  updatedAt: string;
-  detail: string | null;
-};
-
-export type GeminiAppsSessionStatus = {
-  loggedIn: boolean;
-  checkedAt: string | null;
-};
-
-export type GeminiViewBounds = {
-  x: number;
-  y: number;
-  width: number;
-  height: number;
-};
-
 export type GeminiUsageResult =
   | {
       ok: true;
@@ -231,8 +195,6 @@ export type GeminiUsageResult =
         usedPercent: number | null;
         remainingPercent: number | null;
       } | null;
-      geminiApps: GeminiAppsUsage | null;
-      geminiAppsSession: GeminiAppsSessionStatus;
       primary: GeminiUsageWindow | null;
       secondary: GeminiUsageWindow | null;
       tertiary: GeminiUsageWindow | null;
@@ -251,8 +213,6 @@ export type GeminiUsageResult =
       source: "antigravity-cli-google" | "antigravity-cli-local" | "antigravity-local" | "gemini-cli-oauth";
       error: string;
       account: AccountAliasState;
-      geminiApps: GeminiAppsUsage | null;
-      geminiAppsSession: GeminiAppsSessionStatus;
       updatedAt: string;
     };
 
@@ -319,9 +279,6 @@ declare global {
       restoreClaudeStatusLine: () => Promise<{ ok: boolean; snapshotPath?: string; detail: string }>;
       getClaudeStatusLineRegistration: () => Promise<ClaudeStatusLineRegistrationStatus>;
       startGeminiLogin: () => Promise<{ ok: boolean; command: string; skipped?: boolean; detail?: string }>;
-      startGeminiAppsLogin: (bounds?: Partial<GeminiViewBounds>) => Promise<{ ok: boolean; detail?: string }>;
-      updateGeminiViewBounds: (bounds: Partial<GeminiViewBounds>) => Promise<{ ok: boolean }>;
-      closeGeminiView: () => Promise<void>;
       minimizeToTray: () => Promise<void>;
       quitApp: () => Promise<void>;
       openProjectRepository: () => Promise<void>;
@@ -347,7 +304,6 @@ declare global {
       onNotificationSettingsChanged: (callback: (settings: NotificationSettings) => void) => () => void;
       onExitConfirmRequested: (callback: () => void) => () => void;
       onUsageRefreshRequested: (callback: () => void) => () => void;
-      onGeminiViewClosed: (callback: (payload: { reason: "login-complete" | "usage-complete" | "manual" | "hidden" }) => void) => () => void;
     };
   }
 }

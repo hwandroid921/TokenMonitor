@@ -85,7 +85,7 @@ npx electron-builder --win dir --x64 --publish never --config.win.signAndEditExe
 - A `MINOR` or `MAJOR` release must include portable packaging and cleanup of prior versioned portable executables. After the new executable and SHA256 hash are verified, remove only older `TokenMonitor-*-x64.exe` artifacts from the project root and any user-designated release delivery directory, while preserving the current release artifact.
 - After a `MINOR` or `MAJOR` release commit has been merged to the stable release branch, automatically create and push the matching `vMAJOR.MINOR.PATCH` tag and create the matching GitHub Release. Do not tag or publish an unmerged feature branch.
 - Write GitHub Release notes in Korean by default. Keep Git tags and portable artifact names in English; use another note language only when the user explicitly requests it.
-- For a `PATCH` release, push/PR, tag, GitHub Release, and portable packaging remain opt-in unless the user explicitly requests them or a more specific release instruction applies.
+- For a `PATCH` release, portable packaging is required whenever the app/exe version changes. Push/PR, tag, and GitHub Release remain opt-in unless the user explicitly requests them or a more specific release instruction applies.
 - Keep document versioning, project milestone versioning, and app/exe release versioning distinct.
 - The app/exe release version remains managed by `package.json` and `package-lock.json`.
 - The project milestone version and release history remain managed by `docs/RELEASE_VERSION_POLICY.md`.
@@ -167,8 +167,7 @@ Get-Process -Id <PID> -ErrorAction SilentlyContinue | Stop-Process -Force
 
 ## Packaging Rules
 
-- Package the portable Windows executable only for milestone release versions such as `0.3.0`, `0.4.0`, and later `MINOR.0` or `MAJOR.0` release points, unless the user explicitly requests a portable exe for another version.
-- For patch-level changes such as `0.3.1`, `0.3.2`, or `0.3.3`, skip portable packaging by default even when code changed.
+- Package the portable Windows executable for every app/exe version increment, including patch-level changes such as `0.3.1`, `0.3.2`, and `0.3.3`.
 - For documentation-only or instruction-only work, skip packaging unless the user explicitly asks for a new executable.
 - Generate portable Windows executables directly in the project root. Do not use `dist-app/` as a release delivery directory.
 - When the app/exe version changes and the user requested unpacked exe refreshes, regenerate `win-unpacked/` in the project root.

@@ -58,11 +58,11 @@ MAJOR.MINOR.PATCH
 
 Documentation-only or instruction-only changes do not require an app/exe version bump unless the user explicitly asks for a new executable.
 
-Portable executable packaging is performed only for milestone release versions such as `0.3.0`, `0.4.0`, and later `MINOR.0` or `MAJOR.0` release points. Patch releases such as `0.3.1`, `0.3.2`, and `0.3.3` do not produce a portable executable by default unless explicitly requested.
+Portable executable packaging is required for every app/exe version increment, including patch releases such as `0.3.1`, `0.3.2`, and `0.3.3`. After the new executable and SHA256 hash are verified, remove only older versioned portable executables from the project root and any explicit release delivery directory.
 
 For every `MINOR` or `MAJOR` release, release delivery is automatic: update the version files and Release History, run verification and required portable packaging, verify the executable and SHA256 hash, remove prior versioned portable executables from the explicit release output locations, commit, push the release branch, and create the PR without requiring a separate upload request. After the release commit is merged to the stable release branch, create and push the matching Git tag and create the matching GitHub Release. Tags and GitHub Releases must never be created from an unmerged feature branch.
 
-For `PATCH` releases, remote upload, PR creation, tagging, GitHub Release creation, and portable packaging remain opt-in unless the user explicitly requests them.
+For `PATCH` releases, portable packaging is required when the app/exe version changes. Remote upload, PR creation, tagging, and GitHub Release creation remain opt-in unless the user explicitly requests them.
 
 Beta/prerelease versions may produce portable artifacts when the user explicitly requests tag/release work or when the beta is intended for external validation.
 
@@ -73,10 +73,10 @@ Before `v1.0.0`, do not maintain a fixed version-by-version feature roadmap. Whe
 Current package version:
 
 ```text
-1.5.7
+1.5.9
 ```
 
-`v1.5.7` keeps the selected sky-blue dashboard and settings layout while simplifying provider metadata to account alias, plan, and collection state. The application uses a fixed navigation and header with independently scrolling dashboard and settings content, settings navigation is presented above its content, and the overlay controls follow a clear task order.
+`v1.5.9` keeps the selected sky-blue dashboard and settings layout while making the Google provider Antigravity-only. The application uses a fixed navigation and header with independently scrolling dashboard and settings content, settings navigation is presented above its content, and the overlay controls follow a clear task order.
 
 - ChatGPT quota display through the Codex Desktop local usage flow, with an optional user-set `codex.exe` path
 - Claude quota display
@@ -197,6 +197,51 @@ For each release-worthy version bump, summarize:
 - Known limitations
 
 ## Release History
+
+### 1.5.9 — 2026-09-08 — PATCH
+
+**Change category:** PATCH (5-hour quota labeling and overlay font-size control)
+
+**User-visible changes:**
+
+- Antigravity's periodic quota is labeled as `5시간 사용량` throughout the dashboard and overlay.
+- The overlay font-size slider accepts continuous mouse-wheel adjustment while settings are being saved.
+
+**Provider/data-source changes:**
+
+- No collection order, authentication flow, or credential handling changed.
+
+**Packaging notes:**
+
+- Package version updated to `1.5.9`.
+- Portable packaging is required under the current version policy.
+
+**Known limitations:**
+
+- Antigravity periodic usage reflects the most constrained eligible model when a shared window is not explicitly supplied.
+
+### 1.5.8 — 2026-09-08 — PATCH
+
+**Change category:** PATCH (Antigravity-only Google usage flow)
+
+**User-visible changes:**
+
+- The Google provider card, overlay, account label, and developer diagnostics now present Antigravity usage only.
+- Gemini Apps web login and Usage Limits actions are removed.
+
+**Provider/data-source changes:**
+
+- Antigravity collection order remains CLI Google, CLI auto/local, embedded local probe, then Gemini CLI OAuth fallback.
+- The removed Gemini Apps cache, session status, and dedicated browser partition are cleared on startup without touching Antigravity credentials.
+
+**Packaging notes:**
+
+- Package version updated to `1.5.8`.
+- Portable packaging is required under the current version policy and is performed for this release.
+
+**Known limitations:**
+
+- Antigravity periodic usage reflects the most constrained eligible model when a shared window is not explicitly supplied.
 
 ### 1.5.7 — 2026-09-02 — PATCH
 
