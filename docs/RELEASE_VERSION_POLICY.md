@@ -73,10 +73,10 @@ Before `v1.0.0`, do not maintain a fixed version-by-version feature roadmap. Whe
 Current package version:
 
 ```text
-1.5.9
+1.5.10
 ```
 
-`v1.5.9` keeps the selected sky-blue dashboard and settings layout while making the Google provider Antigravity-only. The application uses a fixed navigation and header with independently scrolling dashboard and settings content, settings navigation is presented above its content, and the overlay controls follow a clear task order.
+`v1.5.10` keeps the selected sky-blue dashboard and settings layout while making the Google provider Antigravity-only. The application uses a fixed navigation and header with independently scrolling dashboard and settings content, settings navigation is presented above its content, and the overlay controls follow a clear task order.
 
 - ChatGPT quota display through the Codex Desktop local usage flow, with an optional user-set `codex.exe` path
 - Claude quota display
@@ -197,6 +197,27 @@ For each release-worthy version bump, summarize:
 - Known limitations
 
 ## Release History
+
+### 1.5.10 — 2026-09-08 — PATCH
+
+**Change category:** PATCH (Codex 5-hour usage label)
+
+**User-visible changes:**
+
+- Codex's periodic quota is labeled as `5시간 사용량` throughout the dashboard and overlay.
+
+**Provider/data-source changes:**
+
+- No collection order, authentication flow, or credential handling changed.
+
+**Packaging notes:**
+
+- Package version updated to `1.5.10`.
+- Portable packaging is required under the current version policy.
+
+**Known limitations:**
+
+- The provider must supply a periodic quota window before its 5-hour usage can be displayed.
 
 ### 1.5.9 — 2026-09-08 — PATCH
 

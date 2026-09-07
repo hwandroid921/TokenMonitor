@@ -295,7 +295,7 @@ function formatWindowLabel(windowMinutes: number | null) {
   if (windowMinutes != null && Math.abs(windowMinutes - 5 * 60) <= 30) {
     return "주기 (5시간)";
   }
-  return "주기";
+  return "5시간 사용량";
 }
 
 function makeCredits(value: RpcCredits | null): CodexUsageSnapshot["credits"] {

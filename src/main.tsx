@@ -1107,14 +1107,14 @@ function buildDesignPreviewProviders(): ProviderUsage[] {
       alias: "개인용",
       plan: "Plus",
       session: "로그인됨",
-      used: "주간 28% / 주기 52%",
-      remaining: "주간 72% / 주기 48%",
-      reset: "주간 2일 14시간 후 / 주기 3시간 12분 후",
+      used: "주간 28% / 5시간 사용량 52%",
+      remaining: "주간 72% / 5시간 사용량 48%",
+      reset: "주간 2일 14시간 후 / 5시간 사용량 3시간 12분 후",
       detail: "최근 갱신 09:32",
       fields: [
         { label: "플랜", value: "Plus", kind: "plan" },
         { label: "주간", value: "사용량 28% / 잔여량 72% / 초기화 2일 14시간 후", kind: "quota", remainingPercent: 72, resetsAt: "2026-09-04T23:30:00+09:00" },
-        { label: "주기", value: "사용량 52% / 잔여량 48% / 초기화 3시간 12분 후", kind: "quota", remainingPercent: 48, resetsAt: "2026-09-02T15:30:00+09:00" }
+        { label: "5시간 사용량", value: "사용량 52% / 잔여량 48% / 초기화 3시간 12분 후", kind: "quota", remainingPercent: 48, resetsAt: "2026-09-02T15:30:00+09:00" }
       ]
     },
     {
@@ -1868,7 +1868,7 @@ function buildCodexProvider(usage: CodexUsageResult | null, sessions: CliSession
       fields: [
         { label: "플랜", value: "확인 중", kind: "plan" },
         { label: "주간", value: "확인 중", kind: "quota" },
-        { label: "주기", value: "확인 중", kind: "quota" }
+        { label: "5시간 사용량", value: "확인 중", kind: "quota" }
       ],
       detail: "Codex Desktop 로컬 앱 서버에서 ChatGPT 사용량을 읽고 있습니다."
     };
@@ -1888,7 +1888,7 @@ function buildCodexProvider(usage: CodexUsageResult | null, sessions: CliSession
       fields: [
         { label: "플랜", value: "확인 불가", kind: "plan" },
         { label: "주간", value: "확인 불가", kind: "quota" },
-        { label: "주기", value: "확인 불가", kind: "quota" }
+        { label: "5시간 사용량", value: "확인 불가", kind: "quota" }
       ],
       detail: usage.error
     };
@@ -1909,7 +1909,7 @@ function buildCodexProvider(usage: CodexUsageResult | null, sessions: CliSession
       ...(usage.account.detected ? [{ label: "계정", value: formatAccountAlias(usage.account), kind: "identity" as const }] : []),
       { label: "플랜", value: usage.planType ?? "로그인됨", kind: "plan" },
       { label: "주간", value: formatCodexWindowSummary(usage.weekly), kind: "quota", remainingPercent: usage.weekly?.remainingPercent ?? null, resetsAt: usage.weekly?.resetsAt ?? null },
-      { label: "주기", value: formatCodexWindowSummary(usage.periodic), kind: "quota", remainingPercent: usage.periodic?.remainingPercent ?? null, resetsAt: usage.periodic?.resetsAt ?? null }
+      { label: "5시간 사용량", value: formatCodexWindowSummary(usage.periodic), kind: "quota", remainingPercent: usage.periodic?.remainingPercent ?? null, resetsAt: usage.periodic?.resetsAt ?? null }
     ],
     detail: `최근 갱신 ${formatTime(usage.updatedAt)}`,
     needsAlias: usage.account.aliasRequired
