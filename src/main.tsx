@@ -19,8 +19,6 @@ import type {
   CodexUsageWindow,
   DeveloperDiagnostics,
   DeveloperModeInfo,
-  GeminiAppsUsage,
-  GeminiAppsUsageWindow,
   GeminiUsageResult,
   GeminiUsageWindow,
   NotificationSettings,
@@ -68,13 +66,13 @@ type GeminiQuotaModelView = Extract<GeminiUsageResult, { ok: true }>["models"][n
 const providerLabels: Record<ProviderId, string> = {
   codex: "ChatGPT",
   claude: "Claude",
-  gemini: "Gemini"
+  gemini: "Antigravity"
 };
 
 const accountProviderLabels: Record<AccountProvider, string> = {
   codex: "ChatGPT",
   claude: "Claude",
-  google: "Google (Gemini Apps + Antigravity)"
+  google: "Google (Antigravity)"
 };
 
 const appIconUrl = new URL("../assets/icon.png", import.meta.url).href;
@@ -130,8 +128,6 @@ const alertProviderLabels: Record<AlertProviderId, string> = {
 
 const claudeLoginPollIntervalMs = 2500;
 const claudeLoginPollTimeoutMs = 30_000;
-const geminiUsagePollIntervalMs = 2500;
-const geminiUsagePollTimeoutMs = 60_000;
 
 function isDesignPreviewMode() {
   return ["127.0.0.1", "localhost"].includes(window.location.hostname)
@@ -148,8 +144,6 @@ function buildDesignPreviewAccounts(): AccountAliasView[] {
 }
 
 function App() {
-  const geminiPanelRef = useRef<HTMLDivElement | null>(null);
-  const geminiDialogRef = useRef<HTMLElement | null>(null);
   const exitDialogRef = useRef<HTMLElement | null>(null);
   const [codexUsage, setCodexUsage] = useState<CodexUsageResult | null>(null);
   const [claudeUsage, setClaudeUsage] = useState<ClaudeUsageResult | null>(null);
@@ -170,12 +164,8 @@ function App() {
   const [isClaudeStatusLineSetupPending, setIsClaudeStatusLineSetupPending] = useState(false);
   const [isClaudeStatusLineRestorePending, setIsClaudeStatusLineRestorePending] = useState(false);
   const [isGeminiLoginPending, setIsGeminiLoginPending] = useState(false);
-  const [isGeminiAppsLoginPending, setIsGeminiAppsLoginPending] = useState(false);
-  const [isGeminiUsageCheckBlocking, setIsGeminiUsageCheckBlocking] = useState(false);
-  const [isGeminiPanelOpen, setIsGeminiPanelOpen] = useState(false);
   const [claudeLoginNotice, setClaudeLoginNotice] = useState<string | null>(null);
   const [geminiLoginNotice, setGeminiLoginNotice] = useState<string | null>(null);
-  const [geminiAppsLoginNotice, setGeminiAppsLoginNotice] = useState<string | null>(null);
   const [refreshNotice, setRefreshNotice] = useState("사용량 정보를 불러오는 중입니다.");
   const [settingsNotice, setSettingsNotice] = useState<string | null>(null);
   const [notificationNotice, setNotificationNotice] = useState<string | null>(null);
@@ -341,13 +331,6 @@ function App() {
     setShowExitConfirm(false);
   }
 
-  function closeGeminiPanel() {
-    setIsGeminiPanelOpen(false);
-    setIsGeminiUsageCheckBlocking(false);
-    setIsGeminiAppsLoginPending(false);
-    void window.tokenMonitor?.closeGeminiView();
-  }
-
   function handleTabKeyDown(event: React.KeyboardEvent<HTMLButtonElement>) {
     if (event.key !== "ArrowLeft" && event.key !== "ArrowRight") {
       return;
@@ -388,28 +371,6 @@ function App() {
       event.preventDefault();
       first.focus();
     }
-  }
-
-  function getGeminiPanelBounds() {
-    const rect = geminiPanelRef.current?.getBoundingClientRect();
-    if (!rect) {
-      return undefined;
-    }
-
-    return {
-      x: rect.x,
-      y: rect.y,
-      width: rect.width,
-      height: rect.height
-    };
-  }
-
-  async function syncGeminiPanelBounds() {
-    const bounds = getGeminiPanelBounds();
-    if (bounds) {
-      await window.tokenMonitor?.updateGeminiViewBounds(bounds);
-    }
-    return bounds;
   }
 
   async function handleMinimizeToTray() {
@@ -523,52 +484,6 @@ function App() {
     }
   }
 
-  async function handleGeminiAppsLogin() {
-    if (isGeminiAppsLoginPending) {
-      return;
-    }
-
-    const isUsageCheck = Boolean(geminiUsage?.geminiAppsSession.loggedIn);
-    const previousGeminiAppsUpdatedAt = geminiUsage?.ok ? geminiUsage.geminiApps?.updatedAt ?? null : null;
-    setIsGeminiAppsLoginPending(true);
-    setIsGeminiUsageCheckBlocking(isUsageCheck);
-    setIsGeminiPanelOpen(true);
-    setGeminiAppsLoginNotice(null);
-    try {
-      await new Promise((resolve) => window.requestAnimationFrame(resolve));
-      const bounds = await syncGeminiPanelBounds();
-      const startResult = await window.tokenMonitor?.startGeminiAppsLogin(bounds);
-      if (!startResult?.ok) {
-        setGeminiAppsLoginNotice(startResult?.detail ?? "Gemini 작업을 시작할 수 없습니다.");
-        return;
-      }
-
-      setGeminiAppsLoginNotice(startResult.detail ?? (isUsageCheck ? "Gemini 사용량을 확인하고 있습니다." : "Gemini 로그인 상태를 확인하고 있습니다."));
-      if (isUsageCheck) {
-        const result = await waitForGeminiAppsUsageCompletion(previousGeminiAppsUpdatedAt, setGeminiUsage);
-        setGeminiAppsLoginNotice(result.completed ? null : "Usage Limits 화면에서 남은 사용량 %를 확인하지 못했습니다. 사용량 확인 버튼으로 다시 시도하세요.");
-        return;
-      }
-
-      window.setTimeout(() => {
-        void refreshUsage();
-        setIsGeminiAppsLoginPending(false);
-      }, 5000);
-      return;
-    } catch (error) {
-      setGeminiAppsLoginNotice(error instanceof Error ? error.message : "Gemini 작업을 시작할 수 없습니다.");
-      return;
-    } finally {
-      if (isUsageCheck) {
-        setIsGeminiUsageCheckBlocking(false);
-        setIsGeminiAppsLoginPending(false);
-      } else {
-        setIsGeminiUsageCheckBlocking(false);
-        setIsGeminiAppsLoginPending(false);
-      }
-    }
-  }
-
   async function refreshDeveloperDiagnostics() {
     if (!window.tokenMonitor?.getDeveloperDiagnostics) {
       return;
@@ -632,31 +547,6 @@ function App() {
   }, []);
 
   useEffect(() => {
-    if (!isGeminiPanelOpen) {
-      return;
-    }
-
-    void syncGeminiPanelBounds();
-    const handleResize = () => {
-      void syncGeminiPanelBounds();
-    };
-    window.addEventListener("resize", handleResize);
-    return () => window.removeEventListener("resize", handleResize);
-  }, [isGeminiPanelOpen]);
-
-  useEffect(() => {
-    const unsubscribe = window.tokenMonitor?.onGeminiViewClosed((payload) => {
-      setIsGeminiPanelOpen(false);
-      setIsGeminiUsageCheckBlocking(false);
-      setIsGeminiAppsLoginPending(false);
-      if (payload.reason === "login-complete" || payload.reason === "usage-complete") {
-        void refreshUsage();
-      }
-    });
-    return () => unsubscribe?.();
-  }, []);
-
-  useEffect(() => {
     if (!showExitConfirm) {
       return;
     }
@@ -664,15 +554,6 @@ function App() {
     exitDialogRef.current?.querySelector<HTMLElement>("[data-autofocus]")?.focus();
     return () => previouslyFocused?.focus();
   }, [showExitConfirm]);
-
-  useEffect(() => {
-    if (!isGeminiPanelOpen) {
-      return;
-    }
-    const previouslyFocused = document.activeElement as HTMLElement | null;
-    geminiDialogRef.current?.querySelector<HTMLElement>("button")?.focus();
-    return () => previouslyFocused?.focus();
-  }, [isGeminiPanelOpen]);
 
   return (
     <main className={`app-root${isSidebarCollapsed ? " sidebar-collapsed" : ""}`}>
@@ -750,19 +631,16 @@ function App() {
               </div>
               <DashboardAttentionPanel
                 providers={dashboardProviders}
-                geminiUsage={geminiUsage}
                 isClaudeLoginPending={isClaudeLoginPending}
                 isClaudeStatusLineSetupPending={isClaudeStatusLineSetupPending}
                 isGeminiLoginPending={isGeminiLoginPending}
-                isGeminiAppsLoginPending={isGeminiAppsLoginPending}
                 actionNotices={{
                   claude: claudeLoginNotice,
-                  gemini: [geminiLoginNotice, geminiAppsLoginNotice].filter(Boolean).join(" ") || null
+                  gemini: geminiLoginNotice
                 }}
                 onClaudeLogin={handleClaudeLogin}
                 onClaudeStatusLineSetup={handleClaudeStatusLineSetup}
                 onGeminiLogin={handleGeminiLogin}
-                onGeminiAppsLogin={handleGeminiAppsLogin}
                 onOpenCodexSettings={() => { setRequestedSettingsSection("codex"); setActiveTab("settings"); }}
               />
             </section>
@@ -798,25 +676,6 @@ function App() {
           )}
         </div>
       </section>
-
-      {isGeminiPanelOpen ? (
-        <section ref={geminiDialogRef} className="gemini-browser-panel" role="dialog" aria-modal="true" aria-labelledby="gemini-browser-title" onKeyDown={(event) => handleDialogKeyDown(event, closeGeminiPanel)}>
-          <div className="gemini-browser-panel-header">
-            <div>
-              <strong id="gemini-browser-title">{geminiUsage?.geminiAppsSession.loggedIn ? "Gemini 사용량 확인" : "Gemini 로그인"}</strong>
-              {isGeminiUsageCheckBlocking ? <span className="gemini-browser-status" role="status" aria-live="polite">Usage Limits 정보를 확인하고 있습니다.</span> : null}
-            </div>
-            <button
-              className="provider-secondary-action"
-              type="button"
-              onClick={closeGeminiPanel}
-            >
-              닫기
-            </button>
-          </div>
-          <div ref={geminiPanelRef} className="gemini-browser-view-host" />
-        </section>
-      ) : null}
 
       {showExitConfirm ? (
         <div className="app-dialog-backdrop" role="presentation">
@@ -895,9 +754,7 @@ function ProviderCard({
 
       <div className="provider-quota-list">
         <QuotaLegend />
-        {provider.id === "gemini"
-          ? getGeminiQuotaGroups(quotaFields).map((group) => <GeminiQuotaRow key={group.label} label={group.label} fields={group.fields} />)
-          : quotaFields.map((field) => <QuotaRow key={field.label} field={field} providerId={provider.id} />)}
+        {quotaFields.map((field) => <QuotaRow key={field.label} field={field} providerId={provider.id} />)}
         {quotaFields.length === 0 ? (
           <div className="quota-empty-state">
             <span>사용량 항목</span>
@@ -921,22 +778,16 @@ function ProviderBrandIcon({ providerId }: { providerId: ProviderId }) {
 
 function QuotaRow({ field, providerId }: { field: ProviderField; providerId: ProviderId }) {
   const display = parseQuotaDisplay(field);
-  const label = field.label.replace(/^Gemini\s+/, "").replace(/^Antigravity\s+/, "");
-  const subgroup = field.label.startsWith("Gemini ")
-    ? "Gemini Apps"
-    : field.label.startsWith("Antigravity ")
-      ? "Antigravity"
-      : null;
+  const label = field.label;
   const isWeekly = label.includes("주간");
   const displayLabel = providerId === "claude" && label.includes("5시간")
     ? "5시간"
-    : label.replace("주기", "주기");
+    : label;
 
   return (
     <div className={`quota-row${display.available ? "" : " unavailable"}`}>
       <div className="quota-label-cell">
-        {subgroup ? <span className="quota-subgroup">{subgroup}</span> : null}
-        <strong>{isWeekly ? "주간 사용량" : displayLabel.includes("5시간") ? "5시간 주기 사용량" : "주기 사용량"}</strong>
+        <strong>{isWeekly ? "주간 사용량" : displayLabel.includes("5시간") ? "5시간 사용량" : "주기 사용량"}</strong>
       </div>
 
       <div className="quota-metric quota-remaining-cell">
@@ -958,15 +809,6 @@ function QuotaRow({ field, providerId }: { field: ProviderField; providerId: Pro
         <strong>{display.resetAbsolute}</strong>
       </div>
     </div>
-  );
-}
-
-function GeminiQuotaRow({ label, fields }: { label: string; fields: ProviderField[] }) {
-  return (
-    <section className="gemini-quota-group" aria-label={`${label} 사용량`}>
-      <h3>{label}</h3>
-      {fields.map((field) => <QuotaRow key={field.label} field={field} providerId="gemini" />)}
-    </section>
   );
 }
 
@@ -1012,29 +854,23 @@ function QuotaLegend() {
 
 function DashboardAttentionPanel({
   providers,
-  geminiUsage,
   isClaudeLoginPending,
   isClaudeStatusLineSetupPending,
   isGeminiLoginPending,
-  isGeminiAppsLoginPending,
   actionNotices,
   onClaudeLogin,
   onClaudeStatusLineSetup,
   onGeminiLogin,
-  onGeminiAppsLogin,
   onOpenCodexSettings
 }: {
   providers: ProviderUsage[];
-  geminiUsage: GeminiUsageResult | null;
   isClaudeLoginPending: boolean;
   isClaudeStatusLineSetupPending: boolean;
   isGeminiLoginPending: boolean;
-  isGeminiAppsLoginPending: boolean;
   actionNotices: Partial<Record<ProviderId, string | null>>;
   onClaudeLogin: () => void;
   onClaudeStatusLineSetup: () => void;
   onGeminiLogin: () => void;
-  onGeminiAppsLogin: () => void;
   onOpenCodexSettings: () => void;
 }) {
   const attentionProviders = providers.filter((provider) => getEffectiveProviderStatus(provider) !== "live");
@@ -1045,16 +881,13 @@ function DashboardAttentionPanel({
 
   const primaryIssue = (primary.issues ?? getProviderIssues(primary))[0];
   const primaryNotice = actionNotices[primary.id];
-  const geminiAppsLoggedIn = Boolean(geminiUsage?.geminiAppsSession.loggedIn);
   const primaryAction = primary.id === "codex"
     ? { label: "연결 설정", pending: false, onClick: onOpenCodexSettings }
     : primary.id === "claude" && !primary.statusLine?.registered
       ? { label: isClaudeStatusLineSetupPending ? "등록 중" : "Status Line 등록", pending: isClaudeStatusLineSetupPending, onClick: onClaudeStatusLineSetup }
       : primary.id === "claude"
         ? { label: isClaudeLoginPending ? "연동 확인 중" : "Claude 연결", pending: isClaudeLoginPending, onClick: onClaudeLogin }
-        : primaryIssue?.reason.includes("Gemini 앱")
-          ? { label: isGeminiAppsLoginPending ? "확인 중" : geminiAppsLoggedIn ? "사용량 확인" : "Gemini 로그인", pending: isGeminiAppsLoginPending, onClick: onGeminiAppsLogin }
-          : { label: isGeminiLoginPending ? "연동 확인 중" : "Antigravity 연결", pending: isGeminiLoginPending, onClick: onGeminiLogin };
+        : { label: isGeminiLoginPending ? "연동 확인 중" : "Antigravity 연결", pending: isGeminiLoginPending, onClick: onGeminiLogin };
 
   return (
     <section className="dashboard-attention" aria-labelledby="dashboard-attention-title">
@@ -1106,13 +939,6 @@ function getQuotaFields(provider: ProviderUsage) {
   return (provider.fields ?? defaultProviderFields(provider)).filter((field) => field.kind === "quota");
 }
 
-function getGeminiQuotaGroups(fields: ProviderField[]) {
-  return [
-    { label: "Gemini Apps", fields: fields.filter((field) => field.label.startsWith("Gemini ")) },
-    { label: "Antigravity", fields: fields.filter((field) => field.label.startsWith("Antigravity ")) }
-  ].filter((group) => group.fields.length > 0);
-}
-
 function parseQuotaDisplay(field: ProviderField) {
   const percentMatch = field.value.match(/잔여량\s+([0-9]+(?:\.[0-9]+)?)%/);
   const percent = field.remainingPercent ?? (percentMatch ? Number(percentMatch[1]) : null);
@@ -1136,28 +962,7 @@ function parseQuotaDisplay(field: ProviderField) {
 }
 
 function ProviderFields({ provider }: { provider: ProviderUsage }) {
-  const fields = provider.fields ?? defaultProviderFields(provider);
-  if (provider.id !== "gemini") {
-    return <UsageFieldList fields={fields} />;
-  }
-
-  const commonFields = fields.filter((field) => !field.label.startsWith("Gemini ") && !field.label.startsWith("Antigravity "));
-  const geminiFields = fields.filter((field) => field.label.startsWith("Gemini "));
-  const antigravityFields = fields.filter((field) => field.label.startsWith("Antigravity "));
-
-  return (
-    <div className="gemini-usage-groups">
-      {commonFields.length > 0 ? <UsageFieldList fields={commonFields} /> : null}
-      <section className="usage-field-group" aria-labelledby="gemini-apps-fields">
-        <h3 id="gemini-apps-fields">Gemini Apps</h3>
-        <UsageFieldList fields={geminiFields} trimPrefix="Gemini " />
-      </section>
-      <section className="usage-field-group" aria-labelledby="antigravity-fields">
-        <h3 id="antigravity-fields">Antigravity</h3>
-        <UsageFieldList fields={antigravityFields} trimPrefix="Antigravity " />
-      </section>
-    </div>
-  );
+  return <UsageFieldList fields={provider.fields ?? defaultProviderFields(provider)} />;
 }
 
 function UsageFieldList({ fields, trimPrefix = "" }: { fields: ProviderField[]; trimPrefix?: string }) {
@@ -1284,26 +1089,6 @@ function delay(ms: number) {
   return new Promise((resolve) => window.setTimeout(resolve, ms));
 }
 
-async function waitForGeminiAppsUsageCompletion(
-  previousUpdatedAt: string | null,
-  onUpdate: (usage: GeminiUsageResult) => void
-) {
-  const startedAt = Date.now();
-  while (Date.now() - startedAt < geminiUsagePollTimeoutMs) {
-    const latestGemini = await window.tokenMonitor?.getGeminiUsage(true);
-    if (latestGemini) {
-      onUpdate(latestGemini);
-      if (latestGemini.ok && latestGemini.geminiApps?.updatedAt && latestGemini.geminiApps.updatedAt !== previousUpdatedAt) {
-        return { completed: true, geminiUsage: latestGemini };
-      }
-    }
-
-    await delay(geminiUsagePollIntervalMs);
-  }
-
-  return { completed: false, geminiUsage: null };
-}
-
 function defaultProviderFields(provider: ProviderUsage): ProviderField[] {
   return [
     { label: "플랜", value: provider.plan, kind: "plan" },
@@ -1322,14 +1107,14 @@ function buildDesignPreviewProviders(): ProviderUsage[] {
       alias: "개인용",
       plan: "Plus",
       session: "로그인됨",
-      used: "주간 28% / 주기 52%",
-      remaining: "주간 72% / 주기 48%",
-      reset: "주간 2일 14시간 후 / 주기 3시간 12분 후",
+      used: "주간 28% / 5시간 사용량 52%",
+      remaining: "주간 72% / 5시간 사용량 48%",
+      reset: "주간 2일 14시간 후 / 5시간 사용량 3시간 12분 후",
       detail: "최근 갱신 09:32",
       fields: [
         { label: "플랜", value: "Plus", kind: "plan" },
         { label: "주간", value: "사용량 28% / 잔여량 72% / 초기화 2일 14시간 후", kind: "quota", remainingPercent: 72, resetsAt: "2026-09-04T23:30:00+09:00" },
-        { label: "주기", value: "사용량 52% / 잔여량 48% / 초기화 3시간 12분 후", kind: "quota", remainingPercent: 48, resetsAt: "2026-09-02T15:30:00+09:00" }
+        { label: "5시간 사용량", value: "사용량 52% / 잔여량 48% / 초기화 3시간 12분 후", kind: "quota", remainingPercent: 48, resetsAt: "2026-09-02T15:30:00+09:00" }
       ]
     },
     {
@@ -1353,23 +1138,21 @@ function buildDesignPreviewProviders(): ProviderUsage[] {
     },
     {
       id: "gemini",
-      name: "Gemini",
+      name: "Antigravity",
       source: "Google",
       status: "live",
       alias: "Google 개인용",
       plan: "Google AI Pro",
-      session: "Gemini Apps + Antigravity",
-      used: "Gemini 주간 37%",
-      remaining: "Gemini 주간 63%",
-      reset: "Gemini 주간 5일 11시간 후",
-      detail: "Gemini Apps 최근 갱신 09:30 / Antigravity 연동 필요",
+      session: "Antigravity CLI",
+      used: "주간 37% / 5시간 사용량 55%",
+      remaining: "주간 63% / 5시간 사용량 45%",
+      reset: "주간 5일 11시간 후 / 5시간 사용량 1시간 42분 후",
+      detail: "Antigravity 최근 갱신 09:30",
       issues: [{ reason: "Antigravity 사용량 연동 필요", steps: ["Antigravity CLI 로그인을 실행", "Google 인증 완료 후 새로고침"] }],
       fields: [
         { label: "플랜", value: "Google AI Pro", kind: "plan" },
-        { label: "Gemini 주간", value: "사용량 37% / 잔여량 63% / 초기화 5일 11시간 후", kind: "quota", remainingPercent: 63, resetsAt: "2026-09-07T20:30:00+09:00" },
-        { label: "Gemini 주기", value: "사용량 55% / 잔여량 45% / 초기화 1시간 42분 후", kind: "quota", remainingPercent: 45, resetsAt: "2026-09-02T14:02:00+09:00" },
-        { label: "Antigravity 주간", value: "명시적 주간 데이터 없음", kind: "quota", remainingPercent: null },
-        { label: "Antigravity 주기", value: "남은 사용량 확인 불가 / 초기화 확인 불가", kind: "quota", remainingPercent: null }
+        { label: "주간", value: "사용량 37% / 잔여량 63% / 초기화 5일 11시간 후", kind: "quota", remainingPercent: 63, resetsAt: "2026-09-07T20:30:00+09:00" },
+        { label: "5시간 사용량", value: "사용량 55% / 잔여량 45% / 초기화 1시간 42분 후", kind: "quota", remainingPercent: 45, resetsAt: "2026-09-02T14:02:00+09:00" }
       ]
     }
   ];
@@ -1502,13 +1285,15 @@ function SettingsPanel({
             max="150"
             step="1"
             value={settings.fontSizePercent}
-            disabled={isSaving}
+            aria-valuetext={`${settings.fontSizePercent}%`}
             onChange={(event) => update({ fontSizePercent: Number(event.target.value) })}
             onWheel={(event) => {
               event.preventDefault();
               const direction = event.deltaY < 0 ? 1 : -1;
-              const nextValue = Math.min(150, Math.max(50, settings.fontSizePercent + direction));
-              if (nextValue !== settings.fontSizePercent) {
+              const currentValue = Number(event.currentTarget.value);
+              const nextValue = Math.min(150, Math.max(50, currentValue + direction));
+              if (nextValue !== currentValue) {
+                event.currentTarget.value = String(nextValue);
                 update({ fontSizePercent: nextValue });
               }
             }}
@@ -1662,8 +1447,6 @@ function NotificationSettingsPanel({
             <label key={provider}><input type="checkbox" checked={settings.providers[provider]} onChange={(event) => toggleProvider(provider, event.target.checked)} />{alertProviderLabels[provider]}</label>
           ))}
         </div>
-        <p className="notification-help">Gemini Apps 웹 캐시는 자동 갱신 데이터가 아니므로 임계치·초기화 알림에서 제외됩니다.</p>
-
         <strong className="notification-subheading">잔여량 임계치</strong>
         <div className="threshold-grid">
           {availableNotificationThresholds.map((threshold) => (
@@ -2085,7 +1868,7 @@ function buildCodexProvider(usage: CodexUsageResult | null, sessions: CliSession
       fields: [
         { label: "플랜", value: "확인 중", kind: "plan" },
         { label: "주간", value: "확인 중", kind: "quota" },
-        { label: "주기", value: "확인 중", kind: "quota" }
+        { label: "5시간 사용량", value: "확인 중", kind: "quota" }
       ],
       detail: "Codex Desktop 로컬 앱 서버에서 ChatGPT 사용량을 읽고 있습니다."
     };
@@ -2105,7 +1888,7 @@ function buildCodexProvider(usage: CodexUsageResult | null, sessions: CliSession
       fields: [
         { label: "플랜", value: "확인 불가", kind: "plan" },
         { label: "주간", value: "확인 불가", kind: "quota" },
-        { label: "주기", value: "확인 불가", kind: "quota" }
+        { label: "5시간 사용량", value: "확인 불가", kind: "quota" }
       ],
       detail: usage.error
     };
@@ -2126,7 +1909,7 @@ function buildCodexProvider(usage: CodexUsageResult | null, sessions: CliSession
       ...(usage.account.detected ? [{ label: "계정", value: formatAccountAlias(usage.account), kind: "identity" as const }] : []),
       { label: "플랜", value: usage.planType ?? "로그인됨", kind: "plan" },
       { label: "주간", value: formatCodexWindowSummary(usage.weekly), kind: "quota", remainingPercent: usage.weekly?.remainingPercent ?? null, resetsAt: usage.weekly?.resetsAt ?? null },
-      { label: "주기", value: formatCodexWindowSummary(usage.periodic), kind: "quota", remainingPercent: usage.periodic?.remainingPercent ?? null, resetsAt: usage.periodic?.resetsAt ?? null }
+      { label: "5시간 사용량", value: formatCodexWindowSummary(usage.periodic), kind: "quota", remainingPercent: usage.periodic?.remainingPercent ?? null, resetsAt: usage.periodic?.resetsAt ?? null }
     ],
     detail: `최근 갱신 ${formatTime(usage.updatedAt)}`,
     needsAlias: usage.account.aliasRequired
@@ -2266,7 +2049,7 @@ function buildGeminiProvider(usage: GeminiUsageResult | null): ProviderUsage {
   if (usage == null) {
     return {
       id: "gemini",
-      name: "Gemini",
+      name: "Antigravity",
       source: "Google",
       status: "loading",
       plan: "확인 중",
@@ -2276,22 +2059,20 @@ function buildGeminiProvider(usage: GeminiUsageResult | null): ProviderUsage {
       reset: "확인 중",
       fields: [
         { label: "플랜", value: "확인 중", kind: "plan" },
-        { label: "Gemini 주간", value: "확인 중", kind: "quota" },
-        { label: "Antigravity 주간", value: "확인 중", kind: "quota" },
-        { label: "Gemini 주기", value: "확인 중", kind: "quota" },
-        { label: "Antigravity 주기", value: "확인 중", kind: "quota" }
+        { label: "주간", value: "확인 중", kind: "quota" },
+        { label: "5시간 사용량", value: "확인 중", kind: "quota" }
       ],
-      detail: "Gemini Apps 한도와 Antigravity 5시간 한도 수집 상태를 확인하고 있습니다.",
+      detail: "Antigravity 사용량 수집 상태를 확인하고 있습니다.",
       canLogin: true,
       actionLabel: "Antigravity CLI 설치 및 로그인"
     };
   }
 
   if (!usage.ok) {
-    const planLabel = usage.geminiApps?.plan ?? "확인 필요";
+    const planLabel = "확인 필요";
     return {
       id: "gemini",
-      name: "Gemini",
+      name: "Antigravity",
       source: "Google",
       status: "error",
       plan: planLabel,
@@ -2302,34 +2083,30 @@ function buildGeminiProvider(usage: GeminiUsageResult | null): ProviderUsage {
       fields: [
         ...(usage.account.detected ? [{ label: "계정", value: formatAccountAlias(usage.account), kind: "identity" as const }] : []),
         { label: "플랜", value: planLabel, kind: "plan" },
-        { label: "Gemini 주간", value: formatGeminiAppsWebUsageSummary(usage.geminiApps?.weekly ?? null), kind: "quota", remainingPercent: parseRemainingPercent(usage.geminiApps?.weekly?.remaining ?? null), resetsAt: usage.geminiApps?.weekly?.reset ?? null },
-        { label: "Antigravity 주간", value: "명시적 주간 데이터 없음", kind: "quota" },
-        { label: "Gemini 주기", value: formatGeminiAppsWebUsageSummary(usage.geminiApps?.fiveHour ?? null), kind: "quota", remainingPercent: parseRemainingPercent(usage.geminiApps?.fiveHour?.remaining ?? null), resetsAt: usage.geminiApps?.fiveHour?.reset ?? null },
-        { label: "Antigravity 주기", value: "남은 사용량 확인 불가 / 초기화 확인 불가", kind: "quota" }
+        { label: "주간", value: "명시적 주간 데이터 없음", kind: "quota" },
+        { label: "5시간 사용량", value: "남은 사용량 확인 불가 / 초기화 확인 불가", kind: "quota" }
       ],
       detail: usage.error,
       canLogin: true,
       actionLabel: "Antigravity CLI 설치 및 로그인",
       needsAlias: usage.account.aliasRequired,
-      issues: buildGeminiIssues(usage.geminiApps, null)
+      issues: buildAntigravityIssues(null)
     };
   }
 
   const antigravityFiveHourWindow = pickAntigravityFiveHourWindow(usage.models);
   const antigravityWeeklyWindow = pickAntigravityWeeklyWindow(usage.models);
   const sourceLabel = formatAntigravitySource(usage.source);
-  const planLabel = usage.geminiApps?.plan ?? usage.planType ?? "확인 필요";
+  const planLabel = usage.planType ?? "확인 필요";
   const promptCredits = formatPromptCredits(usage.promptCredits);
   const quotaFields: ProviderField[] = [
-    { label: "Gemini 주간", value: formatGeminiAppsWebUsageSummary(usage.geminiApps?.weekly ?? null), kind: "quota", remainingPercent: parseRemainingPercent(usage.geminiApps?.weekly?.remaining ?? null), resetsAt: usage.geminiApps?.weekly?.reset ?? null },
-    ...(antigravityWeeklyWindow ? [{ label: "Antigravity 주간", value: formatGeminiWindowSummary(antigravityWeeklyWindow), kind: "quota" as const, remainingPercent: antigravityWeeklyWindow.remainingPercent, resetsAt: antigravityWeeklyWindow.resetsAt }] : []),
-    { label: "Gemini 주기", value: formatGeminiAppsWebUsageSummary(usage.geminiApps?.fiveHour ?? null), kind: "quota", remainingPercent: parseRemainingPercent(usage.geminiApps?.fiveHour?.remaining ?? null), resetsAt: usage.geminiApps?.fiveHour?.reset ?? null },
-    { label: "Antigravity 주기", value: formatGeminiWindowSummary(antigravityFiveHourWindow), kind: "quota", remainingPercent: antigravityFiveHourWindow?.remainingPercent ?? null, resetsAt: antigravityFiveHourWindow?.resetsAt ?? null }
+    ...(antigravityWeeklyWindow ? [{ label: "주간", value: formatGeminiWindowSummary(antigravityWeeklyWindow), kind: "quota" as const, remainingPercent: antigravityWeeklyWindow.remainingPercent, resetsAt: antigravityWeeklyWindow.resetsAt }] : []),
+    { label: "5시간 사용량", value: formatGeminiWindowSummary(antigravityFiveHourWindow), kind: "quota", remainingPercent: antigravityFiveHourWindow?.remainingPercent ?? null, resetsAt: antigravityFiveHourWindow?.resetsAt ?? null }
   ];
 
   return {
     id: "gemini",
-    name: "Gemini",
+    name: "Antigravity",
     source: "Google",
     status: "live",
     alias: usage.account.alias ?? (usage.account.detected ? "별칭 미지정" : "계정 확인 중"),
@@ -2343,31 +2120,14 @@ function buildGeminiProvider(usage: GeminiUsageResult | null): ProviderUsage {
       { label: "플랜", value: planLabel, kind: "plan" },
       ...quotaFields
     ],
-    detail: promptCredits ?? formatGeminiDetail(usage.geminiApps?.updatedAt ?? null, usage.geminiApps?.detail ?? null, sourceLabel, usage.updatedAt),
+    detail: promptCredits ?? `Antigravity ${sourceLabel} 기준 최근 갱신 ${formatTime(usage.updatedAt)}`,
     needsAlias: usage.account.aliasRequired,
-    issues: buildGeminiIssues(usage.geminiApps, antigravityFiveHourWindow)
+    issues: buildAntigravityIssues(antigravityFiveHourWindow)
   };
 }
 
-function formatGeminiDetail(geminiAppsUpdatedAt: string | null, parsedGeminiAppsDetail: string | null, antigravitySource: string, antigravityUpdatedAt: string) {
-  const updateDetail = geminiAppsUpdatedAt ? `Gemini Apps 최근 갱신 ${formatTime(geminiAppsUpdatedAt)}` : "Gemini Apps Usage Limits 연동 필요";
-  const parsedDetail = parsedGeminiAppsDetail ? ` / ${parsedGeminiAppsDetail}` : "";
-  return `${updateDetail}${parsedDetail} / Antigravity ${antigravitySource} 기준 최근 갱신 ${formatTime(antigravityUpdatedAt)}`;
-}
-
-function buildGeminiIssues(geminiApps: GeminiAppsUsage | null, antigravityFiveHourWindow: GeminiUsageWindow | null): ProviderIssue[] {
+function buildAntigravityIssues(antigravityFiveHourWindow: GeminiUsageWindow | null): ProviderIssue[] {
   const issues: ProviderIssue[] = [];
-  if (!geminiApps?.plan || !geminiApps.fiveHour || !geminiApps.weekly) {
-    issues.push({
-      reason: "Gemini 앱 사용량 확인 필요",
-      steps: [
-        "Gemini 로그인 버튼 실행",
-        "로그인 완료 후 사용량 확인 버튼 실행",
-        "gemini.google.com/usage 페이지에서 플랜, 5시간, 주간 한도 확인"
-      ]
-    });
-  }
-
   if (!antigravityFiveHourWindow) {
     issues.push({
       reason: "Antigravity 사용량 연동 필요",
@@ -2481,8 +2241,6 @@ function makeGeminiError(error: string): GeminiUsageResult {
     source: "gemini-cli-oauth",
     error,
     account,
-    geminiApps: null,
-    geminiAppsSession: { loggedIn: false, checkedAt: null },
     updatedAt: new Date().toISOString()
   };
 }
@@ -2576,34 +2334,12 @@ function formatGeminiWindowSummary(window: GeminiUsageWindow | null) {
   return `사용량 ${window.usedPercent}% / 잔여량 ${window.remainingPercent}% / 초기화 ${reset}`;
 }
 
-function formatGeminiAppsWebUsageSummary(window: GeminiAppsUsageWindow | null) {
-  if (!window) {
-    return "남은 사용량 미연동 / 초기화 미연동";
-  }
-
-  const used = formatUsedFromRemaining(window.remaining);
-  return `사용량 ${used ?? "확인 필요"} / 잔여량 ${window.remaining ?? "확인 필요"} / 초기화 ${window.reset ?? "확인 필요"}`;
-}
-
-function formatUsedFromRemaining(remaining: string | null) {
-  const match = remaining?.match(/^([0-9]+(?:\.[0-9]+)?)%$/);
-  if (!match) {
-    return null;
-  }
-  return `${Math.max(0, Math.min(100, 100 - Number(match[1])))}%`;
-}
-
-function parseRemainingPercent(remaining: string | null | undefined) {
-  const match = remaining?.match(/^([0-9]+(?:\.[0-9]+)?)%$/);
-  return match ? Math.max(0, Math.min(100, Number(match[1]))) : null;
-}
-
 function pickAntigravityFiveHourWindow(models: GeminiQuotaModelView[]): GeminiUsageWindow | null {
   const candidates = models.filter((model) => {
     const text = `${model.modelId} ${model.label}`.toLowerCase();
     return !model.isAutocompleteOnly && !isWeeklyQuotaModel(model) && !text.includes("autocomplete");
   });
-  return quotaModelToWindow("5시간 한도", pickMostConstrainedModel(candidates));
+  return quotaModelToWindow("5시간 사용량", pickMostConstrainedModel(candidates));
 }
 
 function pickAntigravityWeeklyWindow(models: GeminiQuotaModelView[]): GeminiUsageWindow | null {
@@ -2925,20 +2661,6 @@ function DeveloperPanel({
         )}
       </section>
 
-      {diagnostics?.geminiParser ? (
-        <section className="developer-section">
-          <h2>Gemini Apps 파서</h2>
-          <dl className="developer-dl">
-            <div><dt>세션 로그인</dt><dd>{diagnostics.geminiParser.sessionLoggedIn ? "예" : "아니오"}</dd></div>
-            <div><dt>캐시 보유</dt><dd>{diagnostics.geminiParser.cacheAvailable ? "예" : "아니오"}</dd></div>
-            <div><dt>플랜 파싱</dt><dd>{diagnostics.geminiParser.planParsed ? "성공" : "실패"}</dd></div>
-            <div><dt>5시간 파싱</dt><dd>{diagnostics.geminiParser.fiveHourParsed ? "성공" : "실패"}</dd></div>
-            <div><dt>주간 파싱</dt><dd>{diagnostics.geminiParser.weeklyParsed ? "성공" : "실패"}</dd></div>
-            <div><dt>파서 메모</dt><dd>{diagnostics.geminiParser.detail ?? "없음"}</dd></div>
-            <div><dt>갱신 시각</dt><dd>{diagnostics.geminiParser.updatedAt ? formatTime(diagnostics.geminiParser.updatedAt) : "없음"}</dd></div>
-          </dl>
-        </section>
-      ) : null}
     </section>
   );
 }

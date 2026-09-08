@@ -17,9 +17,6 @@ contextBridge.exposeInMainWorld("tokenMonitor", {
   restoreClaudeStatusLine: () => ipcRenderer.invoke("claude-statusline:restore"),
   getClaudeStatusLineRegistration: () => ipcRenderer.invoke("claude-statusline:status"),
   startGeminiLogin: () => ipcRenderer.invoke("gemini-login:start"),
-  startGeminiAppsLogin: (bounds) => ipcRenderer.invoke("gemini-apps-login:start", bounds),
-  updateGeminiViewBounds: (bounds) => ipcRenderer.invoke("gemini-view:bounds", bounds),
-  closeGeminiView: () => ipcRenderer.invoke("gemini-view:close"),
   minimizeToTray: () => ipcRenderer.invoke("app:minimize-to-tray"),
   quitApp: () => ipcRenderer.invoke("app:quit"),
   openProjectRepository: () => ipcRenderer.invoke("project-repository:open"),
@@ -69,9 +66,4 @@ contextBridge.exposeInMainWorld("tokenMonitor", {
     ipcRenderer.on("usage:refresh-requested", listener);
     return () => ipcRenderer.removeListener("usage:refresh-requested", listener);
   },
-  onGeminiViewClosed: (callback) => {
-    const listener = (_event, payload) => callback(payload);
-    ipcRenderer.on("gemini-view:closed", listener);
-    return () => ipcRenderer.removeListener("gemini-view:closed", listener);
-  }
 });

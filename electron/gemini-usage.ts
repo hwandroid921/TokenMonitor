@@ -5,7 +5,6 @@ import https from "node:https";
 import os from "node:os";
 import path from "node:path";
 import type { RequestOptions } from "node:https";
-import { readGeminiAppsSessionStatus, readGeminiAppsUsageCache, type GeminiAppsSessionStatus, type GeminiAppsUsage } from "./gemini-apps-usage.js";
 import {
   getCurrentAccountState,
   observeAccount,
@@ -79,8 +78,6 @@ export type GeminiUsageResult =
       planType: string | null;
       account: AccountAliasState;
       promptCredits: PromptCredits | null;
-      geminiApps: GeminiAppsUsage | null;
-      geminiAppsSession: GeminiAppsSessionStatus;
       primary: GeminiUsageWindow | null;
       secondary: GeminiUsageWindow | null;
       tertiary: GeminiUsageWindow | null;
@@ -92,8 +89,6 @@ export type GeminiUsageResult =
       source: AntigravityUsageSource;
       error: string;
       account: AccountAliasState;
-      geminiApps: GeminiAppsUsage | null;
-      geminiAppsSession: GeminiAppsSessionStatus;
       updatedAt: string;
     };
 
@@ -149,8 +144,6 @@ export async function getGeminiUsage(): Promise<GeminiUsageResult> {
       planType: planFromCodeAssist(assist, claims.hostedDomain),
       account: observeAccount("google", claims.email),
       promptCredits: null,
-      geminiApps: readGeminiAppsUsageCache(),
-      geminiAppsSession: readGeminiAppsSessionStatus(),
       primary: makeWindow("Gemini Pro", pickModel(models, "pro")),
       secondary: makeWindow("Gemini Flash", pickModel(models, "flash")),
       tertiary: makeWindow("Gemini Flash Lite", pickModel(models, "flash-lite")),
@@ -168,8 +161,6 @@ function makeError(error: string, source: AntigravityUsageSource = "gemini-cli-o
     source,
     error,
     account: getCurrentAccountState("google"),
-    geminiApps: readGeminiAppsUsageCache(),
-    geminiAppsSession: readGeminiAppsSessionStatus(),
     updatedAt: new Date().toISOString()
   };
 }
@@ -205,8 +196,6 @@ async function getAntigravityLocalUsage(): Promise<GeminiUsageResult> {
       planType: normalizeGeminiPlan(readAntigravityPlan(payload)) ?? "확인 필요",
       account: observeAccount("google", readAntigravityEmail(userStatus ?? payload)),
       promptCredits: parseLocalPromptCredits(payload),
-      geminiApps: readGeminiAppsUsageCache(),
-      geminiAppsSession: readGeminiAppsSessionStatus(),
       primary: makeWindow("Claude", pickModel(models, "claude")),
       secondary: makeWindow("Gemini Pro", pickModel(models, "pro")),
       tertiary: makeWindow("Gemini Flash", pickModel(models, "flash")),
@@ -881,8 +870,6 @@ async function getAntigravityCliUsage(method: "google" | "auto"): Promise<Gemini
       planType,
       account: observeAccount("google", readGeminiAccountEmail(), "inferred"),
       promptCredits: parsePromptCredits(snapshot.promptCredits),
-      geminiApps: readGeminiAppsUsageCache(),
-      geminiAppsSession: readGeminiAppsSessionStatus(),
       primary: makeWindow("Claude", pickModel(models, "claude")),
       secondary: makeWindow("Gemini Pro", pickModel(models, "pro")),
       tertiary: makeWindow("Gemini Flash", pickModel(models, "flash")),
