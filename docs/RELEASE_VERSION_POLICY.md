@@ -73,10 +73,10 @@ Before `v1.0.0`, do not maintain a fixed version-by-version feature roadmap. Whe
 Current package version:
 
 ```text
-1.5.10
+1.6.0
 ```
 
-`v1.5.10` keeps the selected sky-blue dashboard and settings layout while making the Google provider Antigravity-only. The application uses a fixed navigation and header with independently scrolling dashboard and settings content, settings navigation is presented above its content, and the overlay controls follow a clear task order.
+`v1.6.0` keeps the selected sky-blue dashboard and settings layout while making Claude onboarding explicit: Node.js/npm, Claude CLI login, Status Line registration, and first usage collection are shown as separate states in the dashboard and overlay.
 
 - ChatGPT quota display through the Codex Desktop local usage flow, with an optional user-set `codex.exe` path
 - Claude quota display
@@ -197,6 +197,29 @@ For each release-worthy version bump, summarize:
 - Known limitations
 
 ## Release History
+
+### 1.6.0 — 2026-09-12 — MINOR
+
+**Change category:** MINOR (Claude connection flow)
+
+**User-visible changes:**
+
+- Claude setup now separates Node.js/npm availability, CLI login, Status Line registration, and first quota collection.
+- The dashboard shows the automatic Status Line registration result and keeps a manual registration or re-registration action available.
+- The overlay explains when a first Claude conversation response is still required before usage can be collected.
+
+**Provider/data-source changes:**
+
+- Claude OAuth remains the only supported authentication flow; no credentials or raw provider payloads are exposed.
+
+**Packaging notes:**
+
+- Package version updated to `1.6.0`.
+- Portable packaging is required under the current version policy.
+
+**Known limitations:**
+
+- Claude Code must invoke Status Line during an interactive conversation before quota data can be shown.
 
 ### 1.5.10 — 2026-09-08 — PATCH
 

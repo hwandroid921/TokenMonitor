@@ -128,6 +128,7 @@ export type CliSessionStatus = {
   provider: "codex" | "claude";
   ok: boolean;
   installed: boolean;
+  nodeReady: boolean;
   loggedIn: boolean;
   authMethod: string | null;
   account: AccountAliasState;
@@ -172,6 +173,7 @@ export type ClaudeStatusLineRegistrationStatus = {
   scriptReady: boolean;
   snapshotAvailable: boolean;
   backupAvailable: boolean;
+  automaticSetupDetail?: string | null;
   detail: string;
 };
 

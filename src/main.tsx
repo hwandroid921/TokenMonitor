@@ -46,6 +46,19 @@ type ProviderUsage = {
   alias?: string;
   usageUpdatedAt?: string;
   usageUpdateLabel?: string;
+  claudeConnection?: ClaudeConnectionProgress;
+  claudeNextAction?: "node" | "login" | "status-line" | null;
+};
+
+type ClaudeConnectionStep = {
+  label: string;
+  state: "complete" | "pending" | "required" | "error";
+  detail: string;
+};
+
+type ClaudeConnectionProgress = {
+  steps: ClaudeConnectionStep[];
+  overlayNotice: string | null;
 };
 
 type ProviderField = {
@@ -624,7 +637,9 @@ function App() {
                   key={provider.id}
                   provider={provider}
                   onManageAliases={() => { setRequestedSettingsSection("accounts"); setActiveTab("settings"); }}
+                  onClaudeStatusLineSetup={handleClaudeStatusLineSetup}
                   onRestoreClaudeStatusLine={handleClaudeStatusLineRestore}
+                  isClaudeStatusLineSetupPending={isClaudeStatusLineSetupPending}
                   isClaudeStatusLineRestorePending={isClaudeStatusLineRestorePending}
                 />
               ))}
@@ -641,6 +656,7 @@ function App() {
                 onClaudeLogin={handleClaudeLogin}
                 onClaudeStatusLineSetup={handleClaudeStatusLineSetup}
                 onGeminiLogin={handleGeminiLogin}
+                onOpenNodeJsDownload={() => void window.tokenMonitor?.openNodeJsDownload()}
                 onOpenCodexSettings={() => { setRequestedSettingsSection("codex"); setActiveTab("settings"); }}
               />
             </section>
@@ -705,12 +721,16 @@ function App() {
 function ProviderCard({
   provider,
   onManageAliases,
+  onClaudeStatusLineSetup,
   onRestoreClaudeStatusLine,
+  isClaudeStatusLineSetupPending,
   isClaudeStatusLineRestorePending
 }: {
   provider: ProviderUsage;
   onManageAliases: () => void;
+  onClaudeStatusLineSetup: () => void;
   onRestoreClaudeStatusLine: () => void;
+  isClaudeStatusLineSetupPending: boolean;
   isClaudeStatusLineRestorePending: boolean;
 }) {
   const effectiveStatus = getEffectiveProviderStatus(provider);
@@ -738,6 +758,13 @@ function ProviderCard({
             {provider.usageUpdateLabel ?? "사용량 갱신"} <strong>{formatTime(provider.usageUpdatedAt)}</strong>
           </p>
         ) : null}
+        {provider.claudeConnection ? <ClaudeConnectionChecklist progress={provider.claudeConnection} /> : null}
+        {provider.id === "claude" && !provider.canLogin ? (
+          <button className="provider-inline-action" type="button" onClick={onClaudeStatusLineSetup} disabled={isClaudeStatusLineSetupPending}>
+            <RefreshCw size={14} aria-hidden="true" className={isClaudeStatusLineSetupPending ? "spinning" : ""} />
+            {isClaudeStatusLineSetupPending ? "등록 중" : provider.statusLine?.registered ? "Status Line 재등록" : "Status Line 등록"}
+          </button>
+        ) : null}
         {provider.id === "claude" && provider.statusLine?.mode === "bridge" && provider.statusLine.backupAvailable ? (
           <button className="provider-inline-action" type="button" onClick={onRestoreClaudeStatusLine} disabled={isClaudeStatusLineRestorePending}>
             <RefreshCw size={14} aria-hidden="true" className={isClaudeStatusLineRestorePending ? "spinning" : ""} />
@@ -763,6 +790,19 @@ function ProviderCard({
         ) : null}
       </div>
     </article>
+  );
+}
+
+function ClaudeConnectionChecklist({ progress }: { progress: ClaudeConnectionProgress }) {
+  return (
+    <ol className="claude-connection-checklist" aria-label="Claude 연결 단계">
+      {progress.steps.map((step) => (
+        <li className={step.state} key={step.label}>
+          <span>{step.label}</span>
+          <strong>{step.detail}</strong>
+        </li>
+      ))}
+    </ol>
   );
 }
 
@@ -861,6 +901,7 @@ function DashboardAttentionPanel({
   onClaudeLogin,
   onClaudeStatusLineSetup,
   onGeminiLogin,
+  onOpenNodeJsDownload,
   onOpenCodexSettings
 }: {
   providers: ProviderUsage[];
@@ -871,6 +912,7 @@ function DashboardAttentionPanel({
   onClaudeLogin: () => void;
   onClaudeStatusLineSetup: () => void;
   onGeminiLogin: () => void;
+  onOpenNodeJsDownload: () => void;
   onOpenCodexSettings: () => void;
 }) {
   const attentionProviders = providers.filter((provider) => getEffectiveProviderStatus(provider) !== "live");
@@ -883,11 +925,15 @@ function DashboardAttentionPanel({
   const primaryNotice = actionNotices[primary.id];
   const primaryAction = primary.id === "codex"
     ? { label: "연결 설정", pending: false, onClick: onOpenCodexSettings }
-    : primary.id === "claude" && !primary.statusLine?.registered
-      ? { label: isClaudeStatusLineSetupPending ? "등록 중" : "Status Line 등록", pending: isClaudeStatusLineSetupPending, onClick: onClaudeStatusLineSetup }
-      : primary.id === "claude"
-        ? { label: isClaudeLoginPending ? "연동 확인 중" : "Claude 연결", pending: isClaudeLoginPending, onClick: onClaudeLogin }
-        : { label: isGeminiLoginPending ? "연동 확인 중" : "Antigravity 연결", pending: isGeminiLoginPending, onClick: onGeminiLogin };
+    : primary.id === "claude" && primary.claudeNextAction === "node"
+      ? { label: "Node.js 설치 안내", pending: false, onClick: onOpenNodeJsDownload }
+      : primary.id === "claude" && primary.claudeNextAction === "status-line"
+        ? { label: isClaudeStatusLineSetupPending ? "등록 중" : "Status Line 등록", pending: isClaudeStatusLineSetupPending, onClick: onClaudeStatusLineSetup }
+        : primary.id === "claude" && primary.claudeNextAction === "login"
+          ? { label: isClaudeLoginPending ? "로그인 확인 중" : "Claude 로그인", pending: isClaudeLoginPending, onClick: onClaudeLogin }
+          : primary.id === "claude"
+            ? null
+          : { label: isGeminiLoginPending ? "연동 확인 중" : "Antigravity 연결", pending: isGeminiLoginPending, onClick: onGeminiLogin };
 
   return (
     <section className="dashboard-attention" aria-labelledby="dashboard-attention-title">
@@ -903,10 +949,12 @@ function DashboardAttentionPanel({
           <p><strong>{primary.name}</strong> {primaryIssue?.reason ?? primary.detail}</p>
           {primaryNotice ? <p className="attention-action-notice" role="status" aria-live="polite">{primaryNotice}</p> : null}
         </div>
-        <button className="provider-action" type="button" onClick={primaryAction.onClick} disabled={primaryAction.pending} aria-busy={primaryAction.pending}>
-          {primaryAction.pending ? <RefreshCw size={15} aria-hidden="true" className="spinning" /> : <Link size={15} aria-hidden="true" />}
-          {primaryAction.label}
-        </button>
+        {primaryAction ? (
+          <button className="provider-action" type="button" onClick={primaryAction.onClick} disabled={primaryAction.pending} aria-busy={primaryAction.pending}>
+            {primaryAction.pending ? <RefreshCw size={15} aria-hidden="true" className="spinning" /> : <Link size={15} aria-hidden="true" />}
+            {primaryAction.label}
+          </button>
+        ) : null}
       </div>
       <details className="attention-details">
         <summary>세부 정보 보기 <ChevronDown size={16} aria-hidden="true" /></summary>
@@ -1615,6 +1663,7 @@ function OverlayApp() {
   const [claudeUsage, setClaudeUsage] = useState<ClaudeUsageResult | null>(null);
   const [geminiUsage, setGeminiUsage] = useState<GeminiUsageResult | null>(null);
   const [cliSessions, setCliSessions] = useState<CliSessionResult | null>(null);
+  const [claudeStatusLine, setClaudeStatusLine] = useState<ClaudeStatusLineRegistrationStatus | null>(null);
   const [settings, setSettings] = useState<OverlaySettings>(defaultOverlaySettings);
   const [notificationSettings, setNotificationSettings] = useState<NotificationSettings>(defaultNotificationSettings);
   const [isPositioning, setIsPositioning] = useState(false);
@@ -1622,8 +1671,8 @@ function OverlayApp() {
   const refreshRequestRef = useRef(0);
 
   const providers = useMemo(
-    () => buildProviderUsage(codexUsage, claudeUsage, geminiUsage, cliSessions, null).filter((provider) => getProviderDisplay(settings, provider.id).enabled),
-    [codexUsage, claudeUsage, geminiUsage, cliSessions, settings]
+    () => buildProviderUsage(codexUsage, claudeUsage, geminiUsage, cliSessions, claudeStatusLine).filter((provider) => getProviderDisplay(settings, provider.id).enabled),
+    [codexUsage, claudeUsage, geminiUsage, cliSessions, claudeStatusLine, settings]
   );
 
   useEffect(() => {
@@ -1663,11 +1712,12 @@ function OverlayApp() {
         return;
       }
 
-      const [latestCodex, latestClaude, latestGemini, latestSessions] = await Promise.all([
+      const [latestCodex, latestClaude, latestGemini, latestSessions, latestClaudeStatusLine] = await Promise.all([
         window.tokenMonitor.getCodexUsage(),
         window.tokenMonitor.getClaudeUsage(),
         window.tokenMonitor.getGeminiUsage(),
-        window.tokenMonitor.getCliSessionStatus()
+        window.tokenMonitor.getCliSessionStatus(),
+        window.tokenMonitor.getClaudeStatusLineRegistration?.() ?? Promise.resolve(null)
       ]);
       if (requestId !== refreshRequestRef.current) {
         return;
@@ -1676,6 +1726,7 @@ function OverlayApp() {
       setClaudeUsage(latestClaude);
       setGeminiUsage(latestGemini);
       setCliSessions(latestSessions);
+      setClaudeStatusLine(latestClaudeStatusLine);
     }
 
     void refresh();
@@ -1747,6 +1798,7 @@ function OverlayProvider({ provider, settings, notificationSettings }: { provide
       {detailFields.map((field) => (
         <span key={field.label}>{field.label} <OverlayFieldValue field={field} display={display} warningsEnabled={notificationSettings.enabled && notificationSettings.overlayWarnings} /></span>
       ))}
+      {provider.claudeConnection?.overlayNotice ? <span className="overlay-setup-notice">{provider.claudeConnection.overlayNotice}</span> : null}
     </article>
   );
 }
@@ -1921,7 +1973,9 @@ function buildClaudeProvider(
   sessions: CliSessionResult | null,
   statusLine: ClaudeStatusLineRegistrationStatus | null
 ): ProviderUsage {
-  const canLogin = !sessions?.claude.loggedIn;
+  const claudeSession = sessions?.claude;
+  const nodeMissing = Boolean(claudeSession && !claudeSession.nodeReady);
+  const canLogin = !claudeSession?.loggedIn;
   const sessionLabel = formatSession(sessions?.claude);
   const accountLabel = formatClaudeAccountStatus(sessions?.claude);
   const cliIssue = buildClaudeCliIssue(sessions?.claude);
@@ -1935,6 +1989,7 @@ function buildClaudeProvider(
     backupAvailable: false,
     detail: "Claude Status Line 등록 상태를 확인하고 있습니다."
   };
+  const connection = getClaudeConnectionProgress(claudeSession, registration, usage);
 
   if (usage == null) {
     return {
@@ -1951,12 +2006,14 @@ function buildClaudeProvider(
         { label: "계정", value: accountLabel, kind: "identity" },
         { label: "플랜", value: "확인 중", kind: "plan" },
         { label: "주간", value: "확인 중", kind: "quota" },
-        { label: "주기 (5시간)", value: "확인 중", kind: "quota" }
+        { label: "5시간 사용량", value: "확인 중", kind: "quota" }
       ],
-      detail: canLogin ? "Claude CLI 로그인이 필요합니다." : registration.registered ? "Claude Code에서 새 대화를 시작해 첫 응답을 받으세요." : registration.detail,
+      detail: nodeMissing ? "Node.js LTS와 npm 설치가 필요합니다." : connection.progress.overlayNotice ?? "Claude 연결 상태를 확인하고 있습니다.",
       canLogin,
       actionLabel: "Claude CLI 설치 및 로그인",
-      statusLine: registration
+      statusLine: registration,
+      claudeConnection: connection.progress,
+      claudeNextAction: connection.nextAction
     };
   }
 
@@ -1968,8 +2025,10 @@ function buildClaudeProvider(
     const actualUsageError = !canLogin && registration.registered && !awaitingConversation;
     const status = registrationError || actualUsageError ? "error" : "pending";
     const quotaValue = awaitingStatusLineExecution || awaitingConversation ? "Status Line 실행 후 확인됩니다." : "확인 불가";
-    const detail = canLogin
-      ? "Claude CLI 로그인이 필요합니다."
+    const detail = nodeMissing
+      ? "Node.js LTS와 npm 설치가 필요합니다."
+      : canLogin
+        ? "Claude CLI 로그인이 필요합니다. Claude 로그인 버튼으로 OAuth 로그인을 시작하세요."
       : registrationError
         ? registration.detail
         : awaitingStatusLineExecution || awaitingConversation
@@ -1992,12 +2051,14 @@ function buildClaudeProvider(
         { label: "계정", value: accountLabel, kind: "identity" },
         { label: "플랜", value: canLogin ? "로그인 필요" : "확인 필요", kind: "plan" },
         { label: "주간", value: quotaValue, kind: "quota" },
-        { label: "주기 (5시간)", value: quotaValue, kind: "quota" }
+        { label: "5시간 사용량", value: quotaValue, kind: "quota" }
       ],
       detail,
       canLogin,
       actionLabel: "Claude CLI 설치 및 로그인",
       statusLine: registration,
+      claudeConnection: connection.progress,
+      claudeNextAction: connection.nextAction,
       issues: cliIssue ? [cliIssue] : registrationError ? [{
         reason: registration.detail,
         steps: ["Status Line 새로 등록 버튼을 다시 실행", "계속되면 Claude 설정 파일 권한과 형식을 확인"]
@@ -2029,7 +2090,7 @@ function buildClaudeProvider(
       { label: "계정", value: accountLabel, kind: "identity" },
       { label: "플랜", value: planLabel, kind: "plan" },
       { label: "주간", value: formatClaudeStatusLineWindowSummary(usage.sevenDay), kind: "quota", remainingPercent: usage.stale ? null : usage.sevenDay?.remainingPercent ?? null, resetsAt: usage.sevenDay?.resetsAt ?? null },
-      { label: "주기 (5시간)", value: formatClaudeStatusLineWindowSummary(usage.fiveHour), kind: "quota", remainingPercent: usage.stale ? null : usage.fiveHour?.remainingPercent ?? null, resetsAt: usage.fiveHour?.resetsAt ?? null }
+      { label: "5시간 사용량", value: formatClaudeStatusLineWindowSummary(usage.fiveHour), kind: "quota", remainingPercent: usage.stale ? null : usage.fiveHour?.remainingPercent ?? null, resetsAt: usage.fiveHour?.resetsAt ?? null }
     ],
     detail: `Status Line ${usage.stale ? "마지막 확인 정보" : "최근 갱신"} ${formatTime(usage.capturedAt)}`,
     usageUpdatedAt: usage.capturedAt,
@@ -2038,11 +2099,73 @@ function buildClaudeProvider(
     actionLabel: canLogin ? "Claude CLI 설치 및 로그인" : "Claude CLI 재연동",
     needsAlias: Boolean(account?.aliasRequired),
     statusLine: registration,
+    claudeConnection: connection.progress,
+    claudeNextAction: connection.nextAction,
     issues: hasQuota ? undefined : [{
       reason: "Claude Status Line에서 quota 데이터를 받지 못했습니다.",
       steps: ["Claude.ai Pro/Max 구독 및 Claude.ai OAuth 로그인을 확인", "새 대화에서 첫 API 응답을 받은 뒤 대시보드를 새로고침", "계속되면 claude --debug로 Status Line 실행 상태 확인"]
     }]
   };
+}
+
+function getClaudeConnectionProgress(
+  session: CliSessionResult["claude"] | undefined,
+  registration: ClaudeStatusLineRegistrationStatus,
+  usage: ClaudeUsageResult | null
+): { progress: ClaudeConnectionProgress; nextAction: ProviderUsage["claudeNextAction"] } {
+  const nodeReady = session?.nodeReady;
+  const loggedIn = Boolean(session?.loggedIn);
+  const snapshotReady = Boolean(usage?.ok && registration.snapshotAvailable);
+  const quotaReceived = Boolean(usage?.ok && (usage.fiveHour || usage.sevenDay));
+  const steps: ClaudeConnectionStep[] = [
+    {
+      label: "1. Node.js/npm",
+      state: nodeReady == null ? "pending" : nodeReady ? "complete" : "required",
+      detail: nodeReady == null ? "확인 중" : nodeReady ? "준비됨" : "Node.js LTS 설치 필요"
+    },
+    {
+      label: "2. Claude CLI 로그인",
+      state: !nodeReady ? "pending" : loggedIn ? "complete" : "required",
+      detail: !nodeReady ? "Node.js/npm 확인 후 진행" : loggedIn ? "로그인 확인됨" : "Claude 로그인 필요"
+    },
+    {
+      label: "3. Status Line",
+      state: !loggedIn ? "pending" : registration.registered ? "complete" : registration.state === "error" ? "error" : "required",
+      detail: !loggedIn
+        ? "Claude 로그인 후 등록"
+        : registration.registered
+          ? registration.automaticSetupDetail ? `자동 등록 결과: ${registration.automaticSetupDetail}` : "등록됨"
+          : registration.detail
+    },
+    {
+      label: "4. 첫 사용량 수집",
+      state: !registration.registered ? "pending" : snapshotReady && quotaReceived ? "complete" : snapshotReady ? "error" : "required",
+      detail: !registration.registered
+        ? "Status Line 등록 후 진행"
+        : snapshotReady && quotaReceived
+          ? "사용량 수신됨"
+          : snapshotReady
+            ? "사용량 데이터 미제공"
+            : "새 Claude 대화에서 첫 응답 필요"
+    }
+  ];
+
+  const nextAction = nodeReady === false ? "node" : !session ? null : !loggedIn ? "login" : !registration.registered ? "status-line" : null;
+  const overlayNotice = nodeReady === false
+    ? "Node.js LTS와 npm 설치 후 Claude 로그인을 진행하세요."
+    : !session
+      ? null
+      : !loggedIn
+      ? "Claude 로그인 필요 — Token Monitor 대시보드에서 Claude 로그인을 시작하세요."
+      : !registration.registered
+        ? "Status Line 등록 필요 — Token Monitor 대시보드에서 등록하세요."
+        : !snapshotReady
+          ? "첫 사용량 수집 필요 — 새 Claude 대화에서 첫 응답을 받으세요."
+          : !quotaReceived
+            ? "사용량 데이터가 아직 제공되지 않았습니다."
+            : null;
+
+  return { progress: { steps, overlayNotice }, nextAction };
 }
 
 function buildGeminiProvider(usage: GeminiUsageResult | null): ProviderUsage {
