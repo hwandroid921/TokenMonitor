@@ -35,7 +35,7 @@ export function getClaudeStatusLineRegistrationStatus(userDataPath: string): Cla
   const scriptReady = fs.existsSync(scriptPath);
   const snapshotAvailable = fs.existsSync(getClaudeStatusLineSnapshotPath(userDataPath));
   const backup = readClaudeStatusLineBackup(userDataPath);
-  const backupAvailable = backup?.bridgeCommand === makeStatusLineCommand(scriptPath);
+  const backupAvailable = Boolean(backup && isTokenMonitorStatusLineCommand(backup.bridgeCommand, scriptPath));
   const settingsPath = getClaudeSettingsPath();
   let settings: Record<string, unknown>;
 
@@ -101,7 +101,7 @@ export function ensureClaudeStatusLine(userDataPath: string, options: ClaudeStat
 
   const existingBackup = existingIsTokenMonitor ? readClaudeStatusLineBackup(userDataPath) : null;
   const originalCommand = existingIsTokenMonitor
-    ? existingBackup?.bridgeCommand === makeStatusLineCommand(scriptPath) ? getStatusLineCommand(existingBackup.statusLine) : null
+    ? existingBackup && isTokenMonitorStatusLineCommand(existingBackup.bridgeCommand, scriptPath) ? getStatusLineCommand(existingBackup.statusLine) : null
     : existingStatusLine ? getStatusLineCommand(existingStatusLine) : null;
   try {
     fs.mkdirSync(userDataPath, { recursive: true });
@@ -154,7 +154,7 @@ export function restoreClaudeStatusLine(userDataPath: string): ClaudeStatusLineS
   } catch {
     return { ok: false, detail: "Claude 설정 파일을 안전하게 읽을 수 없습니다." };
   }
-  if (!isTokenMonitorStatusLine(settings.statusLine, scriptPath) || backup.bridgeCommand !== makeStatusLineCommand(scriptPath)) {
+  if (!isTokenMonitorStatusLine(settings.statusLine, scriptPath) || !isTokenMonitorStatusLineCommand(backup.bridgeCommand, scriptPath)) {
     return { ok: false, detail: "현재 Claude Status Line이 Token Monitor 브리지가 아니므로 기존 설정을 덮어쓰지 않았습니다." };
   }
 
@@ -233,7 +233,10 @@ function getRefreshInterval(value: StatusLineConfig | null) {
 function isTokenMonitorStatusLine(value: unknown, scriptPath: string) {
   const config = asStatusLineConfig(value);
   const command = config ? getStatusLineCommand(config) : null;
-  if (!command) return false;
+  return Boolean(command && isTokenMonitorStatusLineCommand(command, scriptPath));
+}
+
+function isTokenMonitorStatusLineCommand(command: string, scriptPath: string) {
   const legacyScriptPath = path.join(path.dirname(scriptPath), legacyStatusLineFileName);
   return command === makeStatusLineCommand(scriptPath)
     || command.toLocaleLowerCase() === `powershell -noprofile -executionpolicy bypass -file ${quotePowerShellArgument(legacyScriptPath)}`.toLocaleLowerCase()
@@ -263,9 +266,24 @@ function quotePowerShellArgument(value: string) {
 }
 
 function makeStatusLineCommand(scriptPath: string) {
-  const executable = quoteShellArgument(process.execPath);
+  const executable = quoteShellArgument(findNodeExecutable() ?? "node");
   const script = quoteShellArgument(scriptPath);
-  return process.platform === "win32" ? `set ELECTRON_RUN_AS_NODE=1&& ${executable} ${script}` : `ELECTRON_RUN_AS_NODE=1 ${executable} ${script}`;
+  return `${executable} ${script}`;
+}
+
+function findNodeExecutable() {
+  const candidates = process.platform === "win32" ? ["node.exe", "node"] : ["node"];
+  for (const directory of (process.env.PATH ?? "").split(path.delimiter).filter(Boolean)) {
+    for (const candidate of candidates) {
+      const target = path.join(directory, candidate);
+      try {
+        if (fs.statSync(target).isFile()) return target;
+      } catch {
+        // Continue searching PATH candidates.
+      }
+    }
+  }
+  return null;
 }
 
 function quoteShellArgument(value: string) {

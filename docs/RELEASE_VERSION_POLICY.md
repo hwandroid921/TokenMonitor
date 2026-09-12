@@ -73,10 +73,10 @@ Before `v1.0.0`, do not maintain a fixed version-by-version feature roadmap. Whe
 Current package version:
 
 ```text
-1.6.0
+1.6.2
 ```
 
-`v1.6.0` keeps the selected sky-blue dashboard and settings layout while making Claude onboarding explicit: Node.js/npm, Claude CLI login, Status Line registration, and first usage collection are shown as separate states in the dashboard and overlay.
+`v1.6.2` keeps the contextual Claude recovery guidance while running the Claude Status Line with the installed Node.js runtime instead of the Token Monitor Electron executable.
 
 - ChatGPT quota display through the Codex Desktop local usage flow, with an optional user-set `codex.exe` path
 - Claude quota display
@@ -197,6 +197,51 @@ For each release-worthy version bump, summarize:
 - Known limitations
 
 ## Release History
+
+### 1.6.2 — 2026-09-12 — PATCH
+
+**Change category:** PATCH (Claude Status Line runtime)
+
+**User-visible changes:**
+
+- Claude Status Line no longer brings the Token Monitor window to the foreground during a Claude Code conversation.
+- The Status Line now runs with the installed Node.js runtime so it can write the local quota snapshot needed by the dashboard and overlay.
+- A Status Line invocation that reaches the Electron single-instance handler is ignored instead of focusing the main window.
+
+**Provider/data-source changes:**
+
+- No quota source, authentication flow, or credential handling changed.
+
+**Packaging notes:**
+
+- Package version updated to `1.6.2`.
+- Portable packaging is required under the current version policy.
+
+**Known limitations:**
+
+- Claude Code must invoke Status Line during an interactive conversation before quota data can be shown.
+
+### 1.6.1 — 2026-09-12 — PATCH
+
+**Change category:** PATCH (Claude contextual guidance)
+
+**User-visible changes:**
+
+- Removed the sequential Claude setup checklist from the provider card.
+- The dashboard attention area now shows one message and action for the current Claude state: missing Node.js/npm, required login, Status Line registration error, first collection wait, or missing quota data.
+
+**Provider/data-source changes:**
+
+- No collection order, authentication flow, or credential handling changed.
+
+**Packaging notes:**
+
+- Package version updated to `1.6.1`.
+- Portable packaging is required under the current version policy.
+
+**Known limitations:**
+
+- Claude Code must invoke Status Line during an interactive conversation before quota data can be shown.
 
 ### 1.6.0 — 2026-09-12 — MINOR
 
