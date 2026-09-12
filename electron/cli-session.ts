@@ -1,4 +1,6 @@
 import { spawn } from "node:child_process";
+import fs from "node:fs";
+import path from "node:path";
 import { type CodexUsageResult, getCodexUsage } from "./codex-usage.js";
 import { createClaudeOAuthEnvironment } from "./claude-oauth-env.js";
 import { observeAccount, type AccountAliasState } from "./account-aliases.js";
@@ -7,6 +9,7 @@ export type CliSessionStatus = {
   provider: "codex" | "claude";
   ok: boolean;
   installed: boolean;
+  nodeReady: boolean;
   loggedIn: boolean;
   authMethod: string | null;
   account: AccountAliasState;
@@ -33,6 +36,7 @@ async function getCodexSession(usageResult?: CodexUsageResult): Promise<CliSessi
       provider: "codex",
       ok: false,
       installed: false,
+      nodeReady: false,
       loggedIn: false,
       authMethod: null,
       account: emptyAccountState(),
@@ -45,6 +49,7 @@ async function getCodexSession(usageResult?: CodexUsageResult): Promise<CliSessi
     provider: "codex",
     ok: true,
     installed: true,
+    nodeReady: false,
     loggedIn: Boolean(usage.accountType || usage.planType),
     authMethod: usage.accountType,
     account: usage.account,
@@ -56,19 +61,28 @@ async function getCodexSession(usageResult?: CodexUsageResult): Promise<CliSessi
 async function getClaudeSession(): Promise<CliSessionStatus> {
   const checkedAt = new Date().toISOString();
   const environment = createClaudeOAuthEnvironment();
-  const direct = await runJsonCommand("claude", ["auth", "status", "--json"], 5000, environment);
-  const npxCommand = process.platform === "win32" ? "npx.cmd" : "npx";
-  const result = direct.ok ? direct : await runJsonCommand(npxCommand, ["-y", "@anthropic-ai/claude-code", "auth", "status", "--json"], 30000, environment);
+  const claudeCommand = findCommandOnPath(process.platform === "win32" ? ["claude.cmd", "claude.exe", "claude"] : ["claude"]);
+  const npxCommand = findCommandOnPath(process.platform === "win32" ? ["npx.cmd", "npx.exe", "npx"] : ["npx"]);
+  const nodeReady = Boolean(npxCommand);
+  const direct = claudeCommand
+    ? await runJsonCommand(claudeCommand, ["auth", "status", "--json"], 5000, environment)
+    : { ok: false as const, error: "Claude CLI를 찾을 수 없습니다." };
+  const result = direct.ok || !npxCommand
+    ? direct
+    : await runJsonCommand(npxCommand, ["-y", "@anthropic-ai/claude-code", "auth", "status", "--json"], 30000, environment);
 
   if (!result.ok) {
     return {
       provider: "claude",
       ok: false,
-      installed: false,
+      installed: Boolean(claudeCommand || npxCommand),
+      nodeReady,
       loggedIn: false,
       authMethod: null,
       account: emptyAccountState(),
-      detail: "Claude CLI 상태를 확인할 수 없습니다. Node.js/npm 및 Claude 로그인을 확인하세요.",
+      detail: nodeReady
+        ? "Claude CLI 로그인 상태를 확인하지 못했습니다. Claude 로그인으로 다시 연결하세요."
+        : "Node.js LTS와 npm이 필요합니다.",
       checkedAt
     };
   }
@@ -82,12 +96,30 @@ async function getClaudeSession(): Promise<CliSessionStatus> {
     provider: "claude",
     ok: true,
     installed: true,
+    nodeReady,
     loggedIn,
     authMethod,
     account,
     detail: loggedIn ? `로그인됨${apiProvider ? ` (${apiProvider})` : ""}` : "로그인되지 않음",
     checkedAt
   };
+}
+
+function findCommandOnPath(candidates: string[]) {
+  const directories = (process.env.PATH ?? "").split(path.delimiter).filter(Boolean);
+  for (const directory of directories) {
+    for (const candidate of candidates) {
+      const target = path.join(directory, candidate);
+      try {
+        if (fs.statSync(target).isFile()) {
+          return target;
+        }
+      } catch {
+        // Continue searching PATH candidates.
+      }
+    }
+  }
+  return null;
 }
 
 function readAccount(data: Record<string, unknown>) {

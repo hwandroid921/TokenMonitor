@@ -4,7 +4,7 @@
 
 Token Monitor는 여러 AI 서비스의 로컬 로그인 상태와 제공자가 제공하는 사용량 정보를 읽어, 플랜·사용량·잔여량·초기화 시간을 대시보드와 화면 우측 하단 오버레이로 표시합니다. 해당 프로그램은 ChatGPT, Claude, Antigravity 사용자를 대상으로 합니다.
 
-**지원 환경:** Windows x64, macOS Apple Silicon · **현재 앱 버전:** `v1.5.10` · **배포 형식:** Windows 포터블 실행 파일, macOS ARM64 DMG/ZIP
+**지원 환경:** Windows x64, macOS Apple Silicon · **현재 앱 버전:** `v1.6.0` · **배포 형식:** Windows 포터블 실행 파일, macOS ARM64 DMG/ZIP
 
 [릴리즈 다운로드](https://github.com/hwandroid921/TokenMonitor/releases)
 
@@ -40,7 +40,7 @@ Windows에서는 `scripts\build-package-windows.bat`를 실행하면 현재 `pac
 
 1. Token Monitor를 실행하고 대시보드의 새로고침 버튼을 누릅니다.
 2. ChatGPT는 **Codex 연결 설정**에서 실행 파일을 확인하거나 지정한 뒤 Codex 또는 ChatGPT Desktop 로그인 상태를 확인합니다.
-3. Claude는 **Claude CLI 설치 및 로그인**으로 OAuth 인증을 완료한 뒤 **Status Line 새로 등록**을 누릅니다. 이 버튼은 Token Monitor 사용량 수집 스크립트를 Claude Code Status Line으로 등록하며 기존 Status Line 명령은 교체될 수 있습니다. 등록이 확인되면 버튼은 사라집니다. 등록 전에 실행 중이던 Claude Code는 모두 종료하고 새 터미널에서 `claude`를 실행해 일반 대화의 첫 응답을 받으세요. 앱은 등록 후 스냅샷 생성 전, 스냅샷 생성 후 quota 미제공, 실제 설정·수집 오류를 구분해 안내합니다.
+3. Claude는 연결 목록의 네 단계를 순서대로 확인합니다. **Node.js/npm**이 없으면 설치 안내가 표시됩니다. 준비가 끝나면 **Claude 로그인**으로 OAuth 인증을 시작합니다. 앱은 Status Line 자동 등록 결과를 표시하며, 필요하면 **Status Line 등록** 또는 **재등록** 버튼으로 다시 설정할 수 있습니다. 마지막으로 열려 있던 Claude Code를 종료하고 새 터미널에서 `claude`를 실행해 일반 대화의 첫 응답을 받으세요. 첫 수집 전에는 대시보드와 오버레이에 안내가 표시됩니다.
 4. Antigravity는 **Antigravity CLI 로그인**을 눌러 Google 인증을 완료합니다. Antigravity가 이미 실행 중이면 로컬 fallback도 시도합니다.
 5. 설정 탭에서 감지된 Antigravity Google 계정의 마스킹 이메일을 확인하고 계정별 별칭을 지정합니다.
 6. 오버레이와 제공자별 표시 항목을 조정합니다.
@@ -95,14 +95,14 @@ Codex 또는 ChatGPT Desktop 설치와 로그인을 확인하세요. 앱은 일�
 
 ### Claude 사용량이 표시되지 않습니다
 
-Node.js LTS와 npm을 설치한 뒤 Claude Code OAuth 로그인을 완료하세요. Status Line 등록 전에 열어 둔 Claude Code 세션은 설정을 반영하지 않을 수 있으므로 모두 종료한 뒤 새 터미널에서 `claude`를 실행하세요. 일반 대화의 첫 응답 후 대시보드를 새로고침하면 Status Line 최소 스냅샷이 생성됩니다. 스냅샷이 계속 생성되지 않으면 `claude --debug`로 첫 Status Line 호출의 실행 오류를 확인하세요. `claude -p` 같은 비대화형 호출은 Status Line을 갱신하지 않을 수 있습니다. 5시간·주간 한도는 Claude.ai Pro/Max 구독에서 첫 API 응답 이후 Claude Code가 제공할 때만 표시됩니다.
+Claude 연결 상태는 **Node.js/npm → Claude CLI 로그인 → Status Line 등록 → 첫 사용량 수집** 순서로 표시됩니다. Node.js LTS와 npm을 설치한 뒤 **Claude 로그인**으로 OAuth 인증을 완료하세요. Status Line 등록 전에 열어 둔 Claude Code 세션은 설정을 반영하지 않을 수 있으므로 모두 종료한 뒤 새 터미널에서 `claude`를 실행하세요. 일반 대화의 첫 응답 후 대시보드를 새로고침하면 Status Line 최소 스냅샷이 생성됩니다. 첫 수집 전에는 오버레이에도 안내가 표시됩니다. 스냅샷이 계속 생성되지 않으면 `claude --debug`로 첫 Status Line 호출의 실행 오류를 확인하세요. `claude -p` 같은 비대화형 호출은 Status Line을 갱신하지 않을 수 있습니다. 5시간·주간 한도는 Claude.ai Pro/Max 구독에서 첫 API 응답 이후 Claude Code가 제공할 때만 표시됩니다.
 
 Claude 카드의 **계정** 항목은 별칭과 로그인 상태를 한 줄로 표시합니다. 별칭은 설정의 **계정 및 별칭 관리**에서 바꾸며, 로그인 상태와 별도의 계정 행은 표시하지 않습니다. 카드에 표시되는 안내는 다음 상태에 맞춰 달라집니다.
 
 | 상태 | 필요한 조치 |
 | --- | --- |
-| Claude CLI 또는 Node.js/npm을 찾을 수 없음 | Node.js LTS·npm을 설치하고 **Claude CLI 설치 및 로그인**을 실행합니다. |
-| Claude CLI 로그아웃 | 버튼으로 Claude.ai OAuth 로그인을 완료한 뒤 새로고침합니다. |
+| Node.js/npm을 찾을 수 없음 | **Node.js 설치 안내**를 열어 Node.js LTS와 npm을 설치합니다. |
+| Claude CLI 로그인 필요 또는 로그인 확인 실패 | **Claude 로그인** 버튼으로 Claude.ai OAuth 로그인을 완료한 뒤 새로고침합니다. |
 | Status Line 미등록 또는 설정 오류 | **Status Line 새로 등록**을 실행합니다. 설정 파일 오류라면 권한·형식을 확인합니다. |
 | 등록 완료, 실행 스냅샷 없음 | 기존 Claude Code를 모두 종료하고 새 터미널에서 `claude`를 실행해 일반 대화의 첫 응답을 받습니다. |
 | 스냅샷 읽기 또는 형식 오류 | Token Monitor와 Claude Code를 다시 시작하거나 업데이트하고, `claude --debug`로 Status Line 오류를 확인합니다. |

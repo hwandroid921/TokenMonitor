@@ -18,6 +18,7 @@ export type ClaudeStatusLineRegistrationStatus = {
   scriptReady: boolean;
   snapshotAvailable: boolean;
   backupAvailable: boolean;
+  automaticSetupDetail?: string | null;
   detail: string;
 };
 

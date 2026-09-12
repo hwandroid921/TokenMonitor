@@ -84,6 +84,7 @@ let backgroundUsagePromise: Promise<void> | null = null;
 let backgroundUsageEventsPromise: Promise<QuotaAlertEvent[]> | null = null;
 let latestQuotaSamples: NormalizedQuotaSample[] = [];
 let resetRetryAttempt = 0;
+let claudeStatusLineAutomaticSetupDetail: string | null = null;
 const gotSingleInstanceLock = app.requestSingleInstanceLock();
 const initialOverlayDelayMs = 1200;
 const usageMonitorIntervalMs = 60 * 1000;
@@ -1059,7 +1060,10 @@ function restoreClaudeStatusLineSetup() {
 }
 
 function readClaudeStatusLineRegistration() {
-  return getClaudeStatusLineRegistrationStatus(app.getPath("userData"));
+  return {
+    ...getClaudeStatusLineRegistrationStatus(app.getPath("userData")),
+    automaticSetupDetail: claudeStatusLineAutomaticSetupDetail
+  };
 }
 
 function findCommandOnPath(command: string) {
@@ -1157,6 +1161,7 @@ if (!gotSingleInstanceLock) {
     setCodexExecutablePath(providerSettings.codexExecutablePath);
     // Keep the app-owned Status Line current even when Claude is already logged in.
     const statusLineSetup = ensureClaudeStatusLine(app.getPath("userData"));
+    claudeStatusLineAutomaticSetupDetail = statusLineSetup.detail;
     if (!statusLineSetup.ok) {
       console.warn("Claude Status Line setup skipped:", statusLineSetup.detail);
     }
