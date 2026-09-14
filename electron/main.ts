@@ -1066,6 +1066,10 @@ function readClaudeStatusLineRegistration() {
   };
 }
 
+function isClaudeStatusLineInvocation(commandLine: string[]) {
+  return commandLine.some((argument) => /claude-statusline\.(?:cjs|ps1)$/i.test(argument));
+}
+
 function findCommandOnPath(command: string) {
   const pathEntries = (process.env.PATH ?? "").split(path.delimiter).filter(Boolean);
   for (const entry of pathEntries) {
@@ -1143,7 +1147,10 @@ async function startGeminiLogin() {
 if (!gotSingleInstanceLock) {
   app.quit();
 } else {
-  app.on("second-instance", () => {
+  app.on("second-instance", (_event, commandLine) => {
+    if (isClaudeStatusLineInvocation(commandLine)) {
+      return;
+    }
     showMainWindow();
   });
 

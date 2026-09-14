@@ -90,7 +90,7 @@ Codex 또는 ChatGPT Desktop 설치와 로그인을 확인하세요. 앱은 일�
 
 ### Claude 사용량이 표시되지 않습니다
 
-Claude 연결 상태는 **Node.js/npm → Claude CLI 로그인 → Status Line 등록 → 첫 사용량 수집** 순서로 표시됩니다. Node.js LTS와 npm을 설치한 뒤 **Claude 로그인**으로 OAuth 인증을 완료하세요. Status Line 등록 전에 열어 둔 Claude Code 세션은 설정을 반영하지 않을 수 있으므로 모두 종료한 뒤 새 터미널에서 `claude`를 실행하세요. 일반 대화의 첫 응답 후 대시보드를 새로고침하면 Status Line 최소 스냅샷이 생성됩니다. 첫 수집 전에는 오버레이에도 안내가 표시됩니다. 스냅샷이 계속 생성되지 않으면 `claude --debug`로 첫 Status Line 호출의 실행 오류를 확인하세요. `claude -p` 같은 비대화형 호출은 Status Line을 갱신하지 않을 수 있습니다. 5시간·주간 한도는 Claude.ai Pro/Max 구독에서 첫 API 응답 이후 Claude Code가 제공할 때만 표시됩니다.
+Claude 연결 상태는 대시보드 하단에서 현재 필요한 조치만 안내합니다. Node.js/npm이 없으면 설치 안내를, 로그인이 필요하면 **Claude 로그인** 버튼을, Status Line 설정에 문제가 있으면 **Status Line 등록** 또는 **재등록** 버튼을 표시합니다. Status Line은 Token Monitor 앱 실행 파일이 아닌 Node.js 런타임으로 실행되므로 Claude 대화 중 앱 창을 전면에 표시하지 않습니다. 등록 전 열어 둔 Claude Code 세션은 설정을 반영하지 않을 수 있으므로 모두 종료한 뒤 새 터미널에서 `claude`를 실행하세요. 일반 대화의 첫 응답 후 대시보드를 새로고침하면 Status Line 최소 스냅샷이 생성됩니다. 첫 수집 전에는 오버레이에도 안내가 표시됩니다. 스냅샷이 계속 생성되지 않으면 `claude --debug`로 첫 Status Line 호출의 실행 오류를 확인하세요. `claude -p` 같은 비대화형 호출은 Status Line을 갱신하지 않을 수 있습니다. 5시간·주간 한도는 Claude.ai Pro/Max 구독에서 첫 API 응답 이후 Claude Code가 제공할 때만 표시됩니다.
 
 Claude 카드의 **계정** 항목은 별칭과 로그인 상태를 한 줄로 표시합니다. 별칭은 설정의 **계정 및 별칭 관리**에서 바꾸며, 로그인 상태와 별도의 계정 행은 표시하지 않습니다. 카드에 표시되는 안내는 다음 상태에 맞춰 달라집니다.
 

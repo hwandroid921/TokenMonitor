@@ -46,18 +46,12 @@ type ProviderUsage = {
   alias?: string;
   usageUpdatedAt?: string;
   usageUpdateLabel?: string;
-  claudeConnection?: ClaudeConnectionProgress;
+  claudeGuidance?: ClaudeConnectionGuidance;
   claudeNextAction?: "node" | "login" | "status-line" | null;
 };
 
-type ClaudeConnectionStep = {
-  label: string;
-  state: "complete" | "pending" | "required" | "error";
-  detail: string;
-};
-
-type ClaudeConnectionProgress = {
-  steps: ClaudeConnectionStep[];
+type ClaudeConnectionGuidance = {
+  dashboardMessage: string | null;
   overlayNotice: string | null;
 };
 
@@ -758,7 +752,6 @@ function ProviderCard({
             {provider.usageUpdateLabel ?? "사용량 갱신"} <strong>{formatTime(provider.usageUpdatedAt)}</strong>
           </p>
         ) : null}
-        {provider.claudeConnection ? <ClaudeConnectionChecklist progress={provider.claudeConnection} /> : null}
         {provider.id === "claude" && !provider.canLogin ? (
           <button className="provider-inline-action" type="button" onClick={onClaudeStatusLineSetup} disabled={isClaudeStatusLineSetupPending}>
             <RefreshCw size={14} aria-hidden="true" className={isClaudeStatusLineSetupPending ? "spinning" : ""} />
@@ -790,19 +783,6 @@ function ProviderCard({
         ) : null}
       </div>
     </article>
-  );
-}
-
-function ClaudeConnectionChecklist({ progress }: { progress: ClaudeConnectionProgress }) {
-  return (
-    <ol className="claude-connection-checklist" aria-label="Claude 연결 단계">
-      {progress.steps.map((step) => (
-        <li className={step.state} key={step.label}>
-          <span>{step.label}</span>
-          <strong>{step.detail}</strong>
-        </li>
-      ))}
-    </ol>
   );
 }
 
@@ -923,12 +903,15 @@ function DashboardAttentionPanel({
 
   const primaryIssue = (primary.issues ?? getProviderIssues(primary))[0];
   const primaryNotice = actionNotices[primary.id];
+  const primaryMessage = primary.id === "claude"
+    ? primary.claudeGuidance?.dashboardMessage ?? primaryIssue?.reason ?? primary.detail
+    : primaryIssue?.reason ?? primary.detail;
   const primaryAction = primary.id === "codex"
     ? { label: "연결 설정", pending: false, onClick: onOpenCodexSettings }
     : primary.id === "claude" && primary.claudeNextAction === "node"
       ? { label: "Node.js 설치 안내", pending: false, onClick: onOpenNodeJsDownload }
       : primary.id === "claude" && primary.claudeNextAction === "status-line"
-        ? { label: isClaudeStatusLineSetupPending ? "등록 중" : "Status Line 등록", pending: isClaudeStatusLineSetupPending, onClick: onClaudeStatusLineSetup }
+        ? { label: isClaudeStatusLineSetupPending ? "등록 중" : primary.statusLine?.registered ? "Status Line 재등록" : "Status Line 등록", pending: isClaudeStatusLineSetupPending, onClick: onClaudeStatusLineSetup }
         : primary.id === "claude" && primary.claudeNextAction === "login"
           ? { label: isClaudeLoginPending ? "로그인 확인 중" : "Claude 로그인", pending: isClaudeLoginPending, onClick: onClaudeLogin }
           : primary.id === "claude"
@@ -946,7 +929,7 @@ function DashboardAttentionPanel({
       </div>
       <div className="attention-primary">
         <div>
-          <p><strong>{primary.name}</strong> {primaryIssue?.reason ?? primary.detail}</p>
+          <p><strong>{primary.name}</strong> {primaryMessage}</p>
           {primaryNotice ? <p className="attention-action-notice" role="status" aria-live="polite">{primaryNotice}</p> : null}
         </div>
         {primaryAction ? (
@@ -962,7 +945,7 @@ function DashboardAttentionPanel({
           {attentionProviders.map((provider) => (
             <section key={provider.id}>
               <strong>{provider.name}</strong>
-              <p>{provider.detail}</p>
+              <p>{provider.id === "claude" ? provider.claudeGuidance?.dashboardMessage ?? provider.detail : provider.detail}</p>
               {(provider.issues ?? getProviderIssues(provider)).map((issue) => (
                 <div key={issue.reason}>
                   <span>{issue.reason}</span>
@@ -1798,7 +1781,7 @@ function OverlayProvider({ provider, settings, notificationSettings }: { provide
       {detailFields.map((field) => (
         <span key={field.label}>{field.label} <OverlayFieldValue field={field} display={display} warningsEnabled={notificationSettings.enabled && notificationSettings.overlayWarnings} /></span>
       ))}
-      {provider.claudeConnection?.overlayNotice ? <span className="overlay-setup-notice">{provider.claudeConnection.overlayNotice}</span> : null}
+      {provider.claudeGuidance?.overlayNotice ? <span className="overlay-setup-notice">{provider.claudeGuidance.overlayNotice}</span> : null}
     </article>
   );
 }
@@ -1989,7 +1972,7 @@ function buildClaudeProvider(
     backupAvailable: false,
     detail: "Claude Status Line 등록 상태를 확인하고 있습니다."
   };
-  const connection = getClaudeConnectionProgress(claudeSession, registration, usage);
+  const guidance = getClaudeConnectionGuidance(claudeSession, registration, usage);
 
   if (usage == null) {
     return {
@@ -2008,12 +1991,12 @@ function buildClaudeProvider(
         { label: "주간", value: "확인 중", kind: "quota" },
         { label: "5시간 사용량", value: "확인 중", kind: "quota" }
       ],
-      detail: nodeMissing ? "Node.js LTS와 npm 설치가 필요합니다." : connection.progress.overlayNotice ?? "Claude 연결 상태를 확인하고 있습니다.",
+      detail: nodeMissing ? "Node.js LTS와 npm 설치가 필요합니다." : guidance.dashboardMessage ?? "Claude 연결 상태를 확인하고 있습니다.",
       canLogin,
       actionLabel: "Claude CLI 설치 및 로그인",
       statusLine: registration,
-      claudeConnection: connection.progress,
-      claudeNextAction: connection.nextAction
+      claudeGuidance: guidance,
+      claudeNextAction: guidance.nextAction
     };
   }
 
@@ -2057,8 +2040,8 @@ function buildClaudeProvider(
       canLogin,
       actionLabel: "Claude CLI 설치 및 로그인",
       statusLine: registration,
-      claudeConnection: connection.progress,
-      claudeNextAction: connection.nextAction,
+      claudeGuidance: guidance,
+      claudeNextAction: guidance.nextAction,
       issues: cliIssue ? [cliIssue] : registrationError ? [{
         reason: registration.detail,
         steps: ["Status Line 새로 등록 버튼을 다시 실행", "계속되면 Claude 설정 파일 권한과 형식을 확인"]
@@ -2099,8 +2082,8 @@ function buildClaudeProvider(
     actionLabel: canLogin ? "Claude CLI 설치 및 로그인" : "Claude CLI 재연동",
     needsAlias: Boolean(account?.aliasRequired),
     statusLine: registration,
-    claudeConnection: connection.progress,
-    claudeNextAction: connection.nextAction,
+    claudeGuidance: guidance,
+    claudeNextAction: guidance.nextAction,
     issues: hasQuota ? undefined : [{
       reason: "Claude Status Line에서 quota 데이터를 받지 못했습니다.",
       steps: ["Claude.ai Pro/Max 구독 및 Claude.ai OAuth 로그인을 확인", "새 대화에서 첫 API 응답을 받은 뒤 대시보드를 새로고침", "계속되면 claude --debug로 Status Line 실행 상태 확인"]
@@ -2108,49 +2091,39 @@ function buildClaudeProvider(
   };
 }
 
-function getClaudeConnectionProgress(
+function getClaudeConnectionGuidance(
   session: CliSessionResult["claude"] | undefined,
   registration: ClaudeStatusLineRegistrationStatus,
   usage: ClaudeUsageResult | null
-): { progress: ClaudeConnectionProgress; nextAction: ProviderUsage["claudeNextAction"] } {
+): ClaudeConnectionGuidance & { nextAction: ProviderUsage["claudeNextAction"] } {
   const nodeReady = session?.nodeReady;
   const loggedIn = Boolean(session?.loggedIn);
   const snapshotReady = Boolean(usage?.ok && registration.snapshotAvailable);
   const quotaReceived = Boolean(usage?.ok && (usage.fiveHour || usage.sevenDay));
-  const steps: ClaudeConnectionStep[] = [
-    {
-      label: "1. Node.js/npm",
-      state: nodeReady == null ? "pending" : nodeReady ? "complete" : "required",
-      detail: nodeReady == null ? "확인 중" : nodeReady ? "준비됨" : "Node.js LTS 설치 필요"
-    },
-    {
-      label: "2. Claude CLI 로그인",
-      state: !nodeReady ? "pending" : loggedIn ? "complete" : "required",
-      detail: !nodeReady ? "Node.js/npm 확인 후 진행" : loggedIn ? "로그인 확인됨" : "Claude 로그인 필요"
-    },
-    {
-      label: "3. Status Line",
-      state: !loggedIn ? "pending" : registration.registered ? "complete" : registration.state === "error" ? "error" : "required",
-      detail: !loggedIn
-        ? "Claude 로그인 후 등록"
-        : registration.registered
-          ? registration.automaticSetupDetail ? `자동 등록 결과: ${registration.automaticSetupDetail}` : "등록됨"
-          : registration.detail
-    },
-    {
-      label: "4. 첫 사용량 수집",
-      state: !registration.registered ? "pending" : snapshotReady && quotaReceived ? "complete" : snapshotReady ? "error" : "required",
-      detail: !registration.registered
-        ? "Status Line 등록 후 진행"
-        : snapshotReady && quotaReceived
-          ? "사용량 수신됨"
-          : snapshotReady
-            ? "사용량 데이터 미제공"
-            : "새 Claude 대화에서 첫 응답 필요"
-    }
-  ];
-
-  const nextAction = nodeReady === false ? "node" : !session ? null : !loggedIn ? "login" : !registration.registered ? "status-line" : null;
+  const nextAction = nodeReady === false
+    ? "node"
+    : !session
+      ? null
+      : !loggedIn
+        ? "login"
+        : registration.state === "error" || !registration.registered
+          ? "status-line"
+          : null;
+  const dashboardMessage = nodeReady === false
+    ? "Node.js/npm이 감지되지 않았습니다. Node.js LTS를 설치한 뒤 Token Monitor를 다시 실행하세요."
+    : !session
+      ? "Claude 연결 상태를 확인하고 있습니다. 잠시 후 새로고침하세요."
+      : !loggedIn
+        ? "Claude CLI 로그인이 필요합니다. Claude 로그인으로 OAuth 인증을 완료하세요."
+        : registration.state === "error"
+          ? `Status Line 설정을 확인할 수 없습니다. ${registration.detail}`
+          : !registration.registered
+            ? `Status Line 등록이 필요합니다. ${registration.detail}`
+            : !snapshotReady
+              ? "첫 사용량 수집이 필요합니다. 새 터미널에서 claude를 실행하고 일반 대화의 첫 응답을 받으세요."
+              : !quotaReceived
+                ? "Claude Code가 quota 데이터를 제공하지 않았습니다. Claude.ai Pro/Max 구독과 OAuth 로그인을 확인하세요."
+                : null;
   const overlayNotice = nodeReady === false
     ? "Node.js LTS와 npm 설치 후 Claude 로그인을 진행하세요."
     : !session
@@ -2165,7 +2138,7 @@ function getClaudeConnectionProgress(
             ? "사용량 데이터가 아직 제공되지 않았습니다."
             : null;
 
-  return { progress: { steps, overlayNotice }, nextAction };
+  return { dashboardMessage, overlayNotice, nextAction };
 }
 
 function buildGeminiProvider(usage: GeminiUsageResult | null): ProviderUsage {
