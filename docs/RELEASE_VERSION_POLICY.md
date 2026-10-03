@@ -73,10 +73,10 @@ Before `v1.0.0`, do not maintain a fixed version-by-version feature roadmap. Whe
 Current package version:
 
 ```text
-1.6.2
+1.6.8
 ```
 
-`v1.6.2` keeps the contextual Claude recovery guidance while running the Claude Status Line with the installed Node.js runtime instead of the Token Monitor Electron executable.
+`v1.6.8` preserves overlay size while positioning and reapplies taskbar exclusion when positioning ends.
 
 - ChatGPT quota display through the Codex Desktop local usage flow, with an optional user-set `codex.exe` path
 - Claude quota display
@@ -197,6 +197,115 @@ For each release-worthy version bump, summarize:
 - Known limitations
 
 ## Release History
+
+### 1.6.8 — 2026-10-02 — PATCH
+
+- 위치 변경 모드의 추가 상단 여백을 제거해 완료 버튼 표시 여부가 오버레이 높이를 바꾸지 않도록 수정했습니다.
+- 완료 버튼을 왼쪽 위에 배치하고 위치 변경 전후 작업 표시줄 숨김을 다시 적용합니다.
+- 오버레이에 앱 아이콘을 명시합니다. 오버레이는 별도 Electron 창이므로 작업 관리자에는 표시될 수 있습니다.
+- 앱 버전은 `1.6.8`이며 포터블 패키지를 생성합니다.
+
+### 1.6.7 — 2026-10-02 — PATCH
+
+- 대시보드, 설정, 오버레이, 계정 관리, 알림 및 개발자 화면의 한국어 안내를 정리하고 실제 버튼명과 통일했습니다.
+- 알림 설정의 자동 수집 주기 설명을 실제 동작인 1분으로 수정했습니다.
+- Claude의 고정 10분 만료 기준을 제거하고 5시간·주간 한도를 각각 초기화 시각으로 판정합니다. 만료되지 않은 항목은 계속 표시하며, 만료된 항목은 알림 평가에서 제외합니다.
+- 앱 버전은 `1.6.7`이며 포터블 패키지를 생성합니다.
+- 초기화 후 새 서버 사용량 확인에는 Claude Code가 제공하는 새 Status Line 입력이 필요합니다.
+
+### 1.6.6 — 2026-09-30 — PATCH
+
+**Change category:** PATCH (overlay startup position persistence)
+
+**User-visible changes:**
+
+- The default overlay position remains anchored to the primary display's bottom-right corner when its rendered size changes during startup.
+- A position saved with `위치 변경` is restored on the same display after the program exits and restarts.
+- Text-size and content-size changes preserve a saved custom position while keeping the overlay inside the display work area.
+
+**Provider/data-source changes:**
+
+- No provider source changes.
+
+**Packaging notes:**
+
+- Package version updated to `1.6.6`.
+- Portable Windows packaging is required under the current patch-release policy.
+
+**Known limitations:**
+
+- If the saved display is disconnected, the overlay falls back to the primary display and clamps the saved offsets to its work area.
+
+### 1.6.5 — 2026-09-30 — PATCH
+
+**Change category:** PATCH (Claude Status Line recovery flow)
+
+**User-visible changes:**
+
+- Claude guidance now distinguishes the general Claude desktop app from Claude Code CLI whenever a CLI response is required to refresh Status Line usage.
+- Stale, missing, or failed Claude usage collection exposes a `Claude Code CLI 열기` action in the dashboard attention panel.
+- Status Line re-registration is available only from the dashboard attention panel instead of being duplicated inside the Claude provider card.
+- Successful Status Line registration displays a dismissible in-app confirmation.
+
+**Provider/data-source changes:**
+
+- Claude usage still comes from the documented Claude Code Status Line rate-limit fields. No credentials or account identifiers are exposed.
+
+**Packaging notes:**
+
+- Package version updated to `1.6.5`.
+- Portable Windows packaging is required under the current patch-release policy.
+
+**Known limitations:**
+
+- The opened Claude Code CLI still requires the user to send a normal message and wait for its first response; Token Monitor does not send prompts automatically.
+
+### 1.6.4 — 2026-09-30 — PATCH
+
+**Change category:** PATCH (Claude stale data and overlay geometry)
+
+**User-visible changes:**
+
+- Claude Status Line snapshots older than ten minutes no longer expose old quota percentages or reset dates as current values; the dashboard and overlay ask for a fresh interactive Claude response instead.
+- Reset timestamps that have already passed are shown as requiring refresh rather than as `0분 후` with an old absolute date.
+- A manually selected overlay position remains saved when the text size or other overlay settings change.
+- Position-editing bounds now follow the rendered overlay content instead of revealing a screen-third transparent window area.
+
+**Provider/data-source changes:**
+
+- Claude collection still uses the display-safe local Status Line snapshot. No credential or quota source changed.
+
+**Packaging notes:**
+
+- Package version updated to `1.6.4`.
+- Portable Windows packaging is required under the current patch-release policy.
+
+**Known limitations:**
+
+- Claude quota becomes current only after Claude Code invokes the registered Status Line during an interactive response.
+
+### 1.6.3 — 2026-09-12 — PATCH
+
+**Change category:** PATCH (Claude action-focused guidance)
+
+**User-visible changes:**
+
+- The Claude login state now tells the user to select the **Claude CLI 로그인** action.
+- Status Line errors and missing registration now direct the user to **Status Line 재설정**.
+- After Status Line registration, the dashboard usage area and overlay show a first-conversation notice until Claude Code provides usage data; the overlay hides weekly and 5-hour quota rows during that state.
+
+**Provider/data-source changes:**
+
+- No quota source, authentication flow, or credential handling changed.
+
+**Packaging notes:**
+
+- Package version updated to `1.6.3`.
+- Portable packaging is required under the current version policy.
+
+**Known limitations:**
+
+- Claude Code must invoke Status Line during an interactive conversation before quota data can be shown.
 
 ### 1.6.2 — 2026-09-12 — PATCH
 

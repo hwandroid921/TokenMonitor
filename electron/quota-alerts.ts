@@ -63,9 +63,10 @@ export function normalizeQuotaSamples(
     addWindow(samples, "codex", "ChatGPT", "periodic", codex.periodic?.label ?? "주기", codex.periodic, codex.updatedAt);
   }
 
-  if (claude.ok && !claude.stale) {
-    addWindow(samples, "claude", "Claude", "weekly", "주간", claude.sevenDay, claude.capturedAt);
-    addWindow(samples, "claude", "Claude", "periodic", "5시간", claude.fiveHour, claude.capturedAt);
+  if (claude.ok) {
+    const active = (window: typeof claude.fiveHour) => window?.resetsAt && Date.parse(window.resetsAt) > Date.now() ? window : null;
+    addWindow(samples, "claude", "Claude", "weekly", "주간", active(claude.sevenDay), claude.capturedAt);
+    addWindow(samples, "claude", "Claude", "periodic", "5시간", active(claude.fiveHour), claude.capturedAt);
   }
 
   if (gemini.ok) {
@@ -104,7 +105,7 @@ export function evaluateQuotaAlerts(samples: NormalizedQuotaSample[], settings: 
           quotaKey: sample.key,
           provider: sample.provider,
           title: `${sample.providerLabel} ${sample.windowLabel} 사용량 초기화`,
-          body: `잔여량이 ${formatPercent(sample.remainingPercent)}로 갱신되었습니다.${formatNextReset(sample.resetsAt)}`
+          body: `새 주기의 잔여량은 ${formatPercent(sample.remainingPercent)}입니다.${formatNextReset(sample.resetsAt)}`
         });
       } else if (settings.notifyExhausted && sample.remainingPercent <= 0.5 && previous.remainingPercent > 0.5 && !exhaustedNotified) {
         events.push({
@@ -112,7 +113,7 @@ export function evaluateQuotaAlerts(samples: NormalizedQuotaSample[], settings: 
           quotaKey: sample.key,
           provider: sample.provider,
           title: `${sample.providerLabel} ${sample.windowLabel} 사용량 소진`,
-          body: `잔여량이 모두 소진되었습니다.${formatNextReset(sample.resetsAt)}`
+          body: `사용량 한도를 모두 소진했습니다.${formatNextReset(sample.resetsAt)}`
         });
         exhaustedNotified = true;
       } else {
@@ -128,7 +129,7 @@ export function evaluateQuotaAlerts(samples: NormalizedQuotaSample[], settings: 
             quotaKey: sample.key,
             provider: sample.provider,
             title: `${sample.providerLabel} ${sample.windowLabel} 잔여량 경고`,
-            body: `잔여량이 ${reachedThreshold}% 이하로 감소했습니다. 현재 ${formatPercent(sample.remainingPercent)}입니다.${formatNextReset(sample.resetsAt)}`
+            body: `잔여량이 ${reachedThreshold}% 이하입니다. 현재 ${formatPercent(sample.remainingPercent)} 남았습니다.${formatNextReset(sample.resetsAt)}`
           });
           firedThresholds = [...new Set([...firedThresholds, ...crossed])];
         }
@@ -239,7 +240,7 @@ function formatNextReset(value: string | null) {
     return "";
   }
   const formatted = new Intl.DateTimeFormat("ko-KR", { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit", hour12: false }).format(new Date(value));
-  return ` 다음 초기화는 ${formatted}입니다.`;
+  return ` 다음 초기화 시각은 ${formatted}입니다.`;
 }
 
 function pruneMissingQuotaState(samples: NormalizedQuotaSample[]) {

@@ -125,7 +125,7 @@ export async function getGeminiUsage(): Promise<GeminiUsageResult> {
 
     const credentials = readGeminiCredentials();
     if (!credentials) {
-      return makeError("Gemini CLI OAuth credentials를 찾을 수 없습니다. gemini 실행 후 Google 로그인을 완료하세요.");
+      return makeError("Gemini CLI 로그인 정보를 찾지 못했습니다. gemini를 실행해 Google 로그인을 완료해 주세요.");
     }
 
     const accessToken = await getValidAccessToken(credentials);
@@ -877,7 +877,7 @@ async function getAntigravityCliUsage(method: "google" | "auto"): Promise<Gemini
       updatedAt: readResetTime(snapshot.timestamp) ?? new Date().toISOString()
     };
   } catch {
-    return makeError("Antigravity 사용량을 읽을 수 없습니다. CLI 로그인 또는 실행 상태를 확인하세요.", source);
+    return makeError("Antigravity 사용량을 읽지 못했습니다. 로그인·실행 상태를 확인해 주세요.", source);
   }
 }
 

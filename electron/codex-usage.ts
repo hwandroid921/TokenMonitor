@@ -255,7 +255,7 @@ export async function getCodexUsage(executablePath?: string): Promise<CodexUsage
     return {
       ok: false,
       source: "codex-app-server",
-      error: "ChatGPT 사용량을 읽을 수 없습니다. Codex Desktop 연결 상태를 확인하세요.",
+      error: "ChatGPT 사용량을 읽지 못했습니다. Codex Desktop의 실행·로그인 상태를 확인해 주세요.",
       updatedAt: new Date().toISOString()
     };
   } finally {

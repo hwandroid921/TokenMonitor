@@ -39,8 +39,6 @@ type StatusLineWindow = {
   resetsAt?: unknown;
 };
 
-const snapshotStaleAfterMs = 10 * 60 * 1000;
-
 export function getClaudeUsage(snapshotPath: string): ClaudeUsageResult {
   const updatedAt = new Date().toISOString();
 
@@ -56,12 +54,11 @@ export function getClaudeUsage(snapshotPath: string): ClaudeUsageResult {
 
   const capturedAt = asIsoDate(parsed.capturedAt);
   if (!capturedAt) {
-    return makeError("Claude Status Line 사용량 정보 형식이 올바르지 않습니다.", updatedAt);
+    return makeError("Status Line에서 받은 사용량 정보의 형식이 올바르지 않습니다.", updatedAt);
   }
 
   const fiveHour = makeWindow("5시간", parsed.fiveHour);
   const sevenDay = makeWindow("주간", parsed.sevenDay);
-  const capturedAtMs = Date.parse(capturedAt);
 
   return {
     ok: true,
@@ -72,7 +69,7 @@ export function getClaudeUsage(snapshotPath: string): ClaudeUsageResult {
     fiveHour,
     sevenDay,
     capturedAt,
-    stale: Number.isFinite(capturedAtMs) && Date.now() - capturedAtMs > snapshotStaleAfterMs,
+    stale: [fiveHour, sevenDay].some((window) => Boolean(window?.resetsAt && Date.parse(window.resetsAt) <= Date.now())),
     updatedAt
   };
 }
