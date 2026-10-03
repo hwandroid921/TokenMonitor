@@ -38,7 +38,7 @@ if not "%PACKAGE_EXIT_CODE%"=="0" (
 )
 
 echo [4/4] Verifying the package and cleaning older portable files...
-powershell -NoProfile -ExecutionPolicy Bypass -Command "$manifest = Get-Content -Raw package.json | ConvertFrom-Json; $artifact = Join-Path $PWD ('TokenMonitor-' + $manifest.version + '-x64.exe'); if (-not (Test-Path -LiteralPath $artifact)) { Write-Error ('The expected portable executable was not created: ' + $artifact); exit 1 }; Get-FileHash -LiteralPath $artifact -Algorithm SHA256; Get-ChildItem -LiteralPath $PWD -Filter 'TokenMonitor-*-x64.exe' -File | Where-Object { $_.FullName -ne $artifact } | ForEach-Object { try { Remove-Item -LiteralPath $_.FullName -Force -ErrorAction Stop; Write-Host ('Removed older package: ' + $_.Name) } catch { Write-Warning ('Could not remove older package: ' + $_.Name) } }; if (Test-Path -LiteralPath (Join-Path $PWD 'dist-app')) { Get-ChildItem -LiteralPath (Join-Path $PWD 'dist-app') -Force | Remove-Item -Force -Recurse }; Write-Host ('Artifact: ' + $artifact)"
+call "%~dp0..\package-portable.cmd" --cleanup-only
 if errorlevel 1 exit /b %errorlevel%
 
 echo.
