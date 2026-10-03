@@ -57,6 +57,7 @@ const preloadPath = path.join(__dirname, "../electron/preload.cjs");
 let mainWindow: BrowserWindow | null = null;
 let overlayWindow: BrowserWindow | null = null;
 let isOverlayPositioning = false;
+let hasOverlayMeasuredSize = false;
 let tray: Tray | null = null;
 let overlaySettings: OverlaySettings = defaultOverlaySettings;
 let notificationSettings: NotificationSettings = defaultNotificationSettings;
@@ -128,6 +129,15 @@ function loadOverlaySettings() {
 function saveOverlaySettings() {
   fs.mkdirSync(app.getPath("userData"), { recursive: true });
   fs.writeFileSync(getOverlaySettingsPath(), JSON.stringify(overlaySettings, null, 2));
+}
+
+function notifyOverlaySettingsChanged() {
+  if (mainWindow && !mainWindow.isDestroyed()) {
+    mainWindow.webContents.send("overlay-settings:changed", overlaySettings);
+  }
+  if (overlayWindow && !overlayWindow.isDestroyed()) {
+    overlayWindow.webContents.send("overlay-settings:changed", overlaySettings);
+  }
 }
 
 function showMainWindow() {
@@ -332,6 +342,7 @@ function createOverlayWindow() {
     return overlayWindow;
   }
 
+  hasOverlayMeasuredSize = false;
   overlayWindow = new BrowserWindow({
     width: 620,
     height: 180,
@@ -343,6 +354,7 @@ function createOverlayWindow() {
     focusable: false,
     hasShadow: false,
     title: "Token Monitor Overlay",
+    icon: getAppIconPath(),
     backgroundColor: "#00000000",
     webPreferences: {
       preload: preloadPath,
@@ -366,6 +378,7 @@ function createOverlayWindow() {
   overlayWindow.on("closed", () => {
     overlayWindow = null;
     isOverlayPositioning = false;
+    hasOverlayMeasuredSize = false;
   });
 
   overlayWindow.webContents.once("did-finish-load", () => {
@@ -421,6 +434,7 @@ function beginOverlayPositioning() {
   isOverlayPositioning = true;
   window.setIgnoreMouseEvents(false);
   window.setFocusable(true);
+  window.setSkipTaskbar(true);
   window.showInactive();
   window.webContents.send("overlay-positioning:changed", true);
   return { ok: true };
@@ -447,8 +461,9 @@ function finishOverlayPositioning() {
   isOverlayPositioning = false;
   overlayWindow.setIgnoreMouseEvents(true, { forward: true });
   overlayWindow.setFocusable(false);
+  overlayWindow.setSkipTaskbar(true);
   overlayWindow.webContents.send("overlay-positioning:changed", false);
-  overlayWindow.webContents.send("overlay-settings:changed", overlaySettings);
+  notifyOverlaySettingsChanged();
   return { ok: true };
 }
 
@@ -456,7 +471,7 @@ function resetOverlayPosition() {
   overlaySettings = normalizeOverlaySettings({ ...overlaySettings, position: { mode: "default" } });
   saveOverlaySettings();
   positionOverlayWindow();
-  overlayWindow?.webContents.send("overlay-settings:changed", overlaySettings);
+  notifyOverlaySettingsChanged();
   return overlaySettings;
 }
 
@@ -485,22 +500,59 @@ function resizeOverlayWindow(request: { width?: number; height?: number }) {
     return { ok: false };
   }
 
-  const workArea = getOverlayDisplay().workArea;
-  const maximumWidth = Math.max(360, workArea.width - 8);
-  const maximumHeight = Math.max(120, workArea.height - 8);
-  const baseWidth = Math.min(maximumWidth, Math.max(360, Math.floor(workArea.width / 3)));
-  const baseHeight = Math.min(maximumHeight, Math.max(120, Math.floor(workArea.height / 3)));
-  const requestedWidth = Number.isFinite(request.width) ? Number(request.width) : baseWidth;
-  const requestedHeight = Number.isFinite(request.height) ? Number(request.height) : baseHeight;
-  const width = Math.max(baseWidth, Math.min(Math.round(requestedWidth), maximumWidth));
-  const height = Math.max(baseHeight, Math.min(Math.round(requestedHeight), maximumHeight));
-  overlayWindow.setSize(width, height);
-  positionOverlayWindow();
+  const currentBounds = overlayWindow.getBounds();
+  const isCustomPosition = overlaySettings.position.mode === "custom";
+  const isInitialCustomResize = isCustomPosition && !hasOverlayMeasuredSize;
+  const display = isInitialCustomResize
+    ? getOverlayDisplay()
+    : isCustomPosition
+      ? screen.getDisplayMatching(currentBounds)
+      : screen.getPrimaryDisplay();
+  const workArea = display.workArea;
+  const minimumWidth = 240;
+  const minimumHeight = 64;
+  const maximumWidth = Math.max(minimumWidth, workArea.width - 8);
+  const maximumHeight = Math.max(minimumHeight, workArea.height - 8);
+  const requestedWidth = Number.isFinite(request.width) ? Number(request.width) : currentBounds.width;
+  const requestedHeight = Number.isFinite(request.height) ? Number(request.height) : currentBounds.height;
+  const width = Math.max(minimumWidth, Math.min(Math.round(requestedWidth), maximumWidth));
+  const height = Math.max(minimumHeight, Math.min(Math.round(requestedHeight), maximumHeight));
+  const savedOffsets = getOverlayOffsets(workArea, width, height);
+  const x = isInitialCustomResize
+    ? workArea.x + workArea.width - width - savedOffsets.right
+    : isCustomPosition
+      ? Math.min(Math.max(workArea.x + 4, currentBounds.x), workArea.x + workArea.width - width - 4)
+      : workArea.x + workArea.width - width - 4;
+  const y = isInitialCustomResize
+    ? workArea.y + workArea.height - height - savedOffsets.bottom
+    : isCustomPosition
+      ? Math.min(Math.max(workArea.y + 4, currentBounds.y), workArea.y + workArea.height - height - 4)
+      : workArea.y + workArea.height - height - 4;
+  overlayWindow.setBounds({ x, y, width, height });
+  hasOverlayMeasuredSize = true;
+
+  if (isCustomPosition) {
+    overlaySettings = normalizeOverlaySettings({
+      ...overlaySettings,
+      position: {
+        mode: "custom",
+        displayId: display.id,
+        right: Math.max(4, workArea.x + workArea.width - x - width),
+        bottom: Math.max(4, workArea.y + workArea.height - y - height)
+      }
+    });
+    saveOverlaySettings();
+  }
   return { ok: true };
 }
 
-function applyOverlaySettings(settings: OverlaySettings) {
-  overlaySettings = normalizeOverlaySettings(settings);
+function applyOverlaySettings(settings: Partial<OverlaySettings>) {
+  overlaySettings = normalizeOverlaySettings({
+    ...overlaySettings,
+    ...settings,
+    providers: settings.providers ? { ...overlaySettings.providers, ...settings.providers } : overlaySettings.providers,
+    providerItems: settings.providerItems ? { ...overlaySettings.providerItems, ...settings.providerItems } : overlaySettings.providerItems
+  });
   saveOverlaySettings();
 
   if (overlaySettings.enabled) {
@@ -511,7 +563,7 @@ function applyOverlaySettings(settings: OverlaySettings) {
     overlayWindow.hide();
   }
 
-  overlayWindow?.webContents.send("overlay-settings:changed", overlaySettings);
+  notifyOverlaySettingsChanged();
   updateTrayMenu();
 }
 
@@ -995,7 +1047,7 @@ function sendTestNotification() {
     quotaKey: "test",
     provider: "codex",
     title: "Token Monitor 테스트 알림",
-    body: "Windows 알림과 전면 경고 설정이 정상적으로 적용되었습니다."
+    body: "테스트 알림을 보냈습니다."
   };
   dispatchQuotaAlerts([event]);
   return { ok: notificationSettings.windowsNotifications || notificationSettings.alwaysOnTopAlerts };
@@ -1011,7 +1063,7 @@ async function startClaudeLogin() {
       ok: true,
       command: "claude auth status --json",
       skipped: true,
-      detail: "Claude CLI 로그인이 이미 확인되었습니다. 사용량 수집이 필요하면 Status Line 등록 버튼을 누르세요."
+      detail: "Claude CLI 로그인을 확인했습니다. 사용량 수집 설정이 필요하면 Status Line 재설정을 눌러 주세요."
     };
   }
 
@@ -1066,6 +1118,44 @@ function readClaudeStatusLineRegistration() {
   };
 }
 
+function startClaudeCode() {
+  const claudeCommand = findCommandOnPath(process.platform === "win32" ? "claude.cmd" : "claude")
+    ?? findCommandOnPath("claude.exe")
+    ?? findCommandOnPath("claude");
+
+  if (!claudeCommand) {
+    return {
+      ok: false,
+      command: "claude",
+      detail: "Claude Code CLI를 찾지 못했습니다. Claude Code를 설치한 뒤 Token Monitor를 다시 실행해 주세요."
+    };
+  }
+
+  if (process.platform === "win32") {
+    const { command, launcherPath } = writeWindowsCliLauncher(
+      "claude-usage-refresh",
+      claudeCommand,
+      [],
+      getClaudeOAuthEnvironmentResetCommands(),
+      "Keep this window open, send a normal message, and wait for the first response to finish."
+    );
+    launchWindowsCliWindow(launcherPath);
+    return {
+      ok: true,
+      command,
+      detail: "Claude Code CLI를 열었습니다. 메시지를 보내고 첫 응답이 끝날 때까지 기다려 주세요."
+    };
+  }
+
+  const child = spawn(claudeCommand, [], {
+    detached: true,
+    stdio: "ignore",
+    env: createClaudeOAuthEnvironment()
+  });
+  child.unref();
+  return { ok: true, command: "claude", detail: "Claude Code CLI를 열었습니다." };
+}
+
 function isClaudeStatusLineInvocation(commandLine: string[]) {
   return commandLine.some((argument) => /claude-statusline\.(?:cjs|ps1)$/i.test(argument));
 }
@@ -1092,7 +1182,13 @@ function quoteCmdArg(value: string) {
   return `"${value.replace(/"/g, "\"\"")}"`;
 }
 
-function writeWindowsCliLauncher(name: string, commandPath: string, args: string[], environmentResetCommands: string[] = []) {
+function writeWindowsCliLauncher(
+  name: string,
+  commandPath: string,
+  args: string[],
+  environmentResetCommands: string[] = [],
+  completionMessage = "You can close this window after login finishes."
+) {
   const launcherPath = path.join(app.getPath("temp"), `token-monitor-${name}.cmd`);
   const command = [`call "${commandPath}"`, ...args.map(quoteCmdArg)].join(" ");
   const content = [
@@ -1102,7 +1198,7 @@ function writeWindowsCliLauncher(name: string, commandPath: string, args: string
     "set TOKEN_MONITOR_EXIT_CODE=%ERRORLEVEL%",
     "echo.",
     "if not \"%TOKEN_MONITOR_EXIT_CODE%\"==\"0\" echo Command exited with code %TOKEN_MONITOR_EXIT_CODE%.",
-    "echo You can close this window after login finishes."
+    `echo ${completionMessage}`
   ].join("\r\n");
   fs.writeFileSync(launcherPath, content, "utf8");
   return { command, launcherPath };
@@ -1187,6 +1283,7 @@ if (!gotSingleInstanceLock) {
     ipcMain.handle("codex-path:update", (event, candidate: string) => isMainWindowSender(event) ? applyCodexExecutablePath(candidate) : { ok: false, canceled: false, status: readCodexPathSettings() });
     ipcMain.handle("codex-path:reset", (event) => isMainWindowSender(event) ? resetCodexExecutablePath() : { ok: false, canceled: false, status: readCodexPathSettings() });
     ipcMain.handle("claude-login:start", (event) => isMainWindowSender(event) ? startClaudeLogin() : { ok: false, detail: "기본 창에서만 실행할 수 있습니다." });
+    ipcMain.handle("claude-code:start", (event) => isMainWindowSender(event) ? startClaudeCode() : { ok: false, detail: "기본 창에서만 실행할 수 있습니다." });
     ipcMain.handle("claude-statusline:setup", (event, integrateExisting?: boolean) => isMainWindowSender(event) ? setupClaudeStatusLine(Boolean(integrateExisting)) : { ok: false, detail: "기본 창에서만 실행할 수 있습니다." });
     ipcMain.handle("claude-statusline:restore", (event) => isMainWindowSender(event) ? restoreClaudeStatusLineSetup() : { ok: false, detail: "기본 창에서만 실행할 수 있습니다." });
     ipcMain.handle("claude-statusline:status", (event) => isAppWindowSender(event) ? readClaudeStatusLineRegistration() : { state: "error", mode: "none", registered: false, scriptReady: false, snapshotAvailable: false, backupAvailable: false, detail: "기본 창에서만 확인할 수 있습니다." });
@@ -1196,7 +1293,7 @@ if (!gotSingleInstanceLock) {
     ipcMain.handle("project-repository:open", (event) => isMainWindowSender(event) ? shell.openExternal("https://github.com/hwandroid921/TokenMonitor") : undefined);
     ipcMain.handle("nodejs:open-download", (event) => isMainWindowSender(event) ? shell.openExternal("https://nodejs.org/ko/download") : undefined);
     ipcMain.handle("overlay-settings:read", (event) => isAppWindowSender(event) ? overlaySettings : defaultOverlaySettings);
-    ipcMain.handle("overlay-settings:update", (event, nextSettings: OverlaySettings) => {
+    ipcMain.handle("overlay-settings:update", (event, nextSettings: Partial<OverlaySettings>) => {
       if (!isMainWindowSender(event)) {
         return overlaySettings;
       }

@@ -64,7 +64,7 @@ export function getClaudeStatusLineRegistrationStatus(userDataPath: string): Cla
   }
 
   if (isStatusLineConfig(settings.statusLine)) {
-    return registration("needs-registration", "custom", false, scriptReady, snapshotAvailable, backupAvailable, "기존 Claude Status Line이 감지되었습니다. 통합 모드로 등록하면 기존 표시를 유지하면서 사용량을 수집합니다.");
+    return registration("needs-registration", "custom", false, scriptReady, snapshotAvailable, backupAvailable, "기존 Status Line이 있습니다. 함께 연결하면 기존 표시를 유지하면서 사용량을 수집할 수 있습니다.");
   }
   return registration("needs-registration", "none", false, scriptReady, snapshotAvailable, backupAvailable, "Claude Status Line 등록이 필요합니다.");
 }
@@ -81,7 +81,7 @@ export function ensureClaudeStatusLine(userDataPath: string, options: ClaudeStat
       settings = readSettings(settingsPath);
     }
   } catch {
-    return { ok: false, detail: "Claude 설정 파일을 안전하게 읽을 수 없습니다." };
+    return { ok: false, detail: "Claude 설정 파일을 읽지 못했습니다." };
   }
 
   const existingStatusLine = asStatusLineConfig(settings.statusLine);
@@ -107,7 +107,7 @@ export function ensureClaudeStatusLine(userDataPath: string, options: ClaudeStat
     fs.mkdirSync(userDataPath, { recursive: true });
     fs.writeFileSync(scriptPath, makeStatusLineScript(snapshotPath, originalCommand), "utf8");
   } catch {
-    return { ok: false, detail: "Claude Status Line 수집 도구를 준비할 수 없습니다." };
+    return { ok: false, detail: "Status Line 수집 스크립트를 준비하지 못했습니다." };
   }
 
   const isBridge = Boolean(existingStatusLine && !existingIsTokenMonitor && originalCommand);
@@ -115,7 +115,7 @@ export function ensureClaudeStatusLine(userDataPath: string, options: ClaudeStat
     try {
       writeJsonAtomically(getClaudeStatusLineBackupPath(userDataPath), { version: 1, statusLine: existingStatusLine, bridgeCommand: makeStatusLineCommand(scriptPath) });
     } catch {
-      return { ok: false, detail: "기존 Claude Status Line 백업을 저장할 수 없어 통합을 중단했습니다." };
+      return { ok: false, detail: "기존 Status Line 설정을 백업하지 못해 연결을 중단했습니다." };
     }
   }
 
@@ -130,15 +130,15 @@ export function ensureClaudeStatusLine(userDataPath: string, options: ClaudeStat
     writeJsonAtomically(settingsPath, settings);
   } catch {
     if (isBridge) removeClaudeStatusLineBackup(userDataPath);
-    return { ok: false, detail: "Claude Status Line 설정을 저장할 수 없습니다." };
+    return { ok: false, detail: "Status Line 설정을 저장하지 못했습니다." };
   }
 
   return {
     ok: true,
     snapshotPath,
     detail: isBridge
-      ? "기존 Claude Status Line 표시를 유지하는 Token Monitor 브리지를 등록했습니다. 원래 설정은 안전하게 백업되었습니다."
-      : "Token Monitor Claude Status Line 수집 스크립트를 등록했습니다. Claude Code에서 대화를 시작하세요."
+      ? "기존 Status Line을 유지하면서 Token Monitor 수집 기능을 연결했습니다. 기존 설정도 백업했습니다."
+      : "Token Monitor의 Status Line을 등록했습니다. Claude Code CLI에서 메시지를 보내 주세요."
   };
 }
 
@@ -152,10 +152,10 @@ export function restoreClaudeStatusLine(userDataPath: string): ClaudeStatusLineS
   try {
     settings = fs.existsSync(settingsPath) ? readSettings(settingsPath) : {};
   } catch {
-    return { ok: false, detail: "Claude 설정 파일을 안전하게 읽을 수 없습니다." };
+    return { ok: false, detail: "Claude 설정 파일을 읽지 못했습니다." };
   }
   if (!isTokenMonitorStatusLine(settings.statusLine, scriptPath) || !isTokenMonitorStatusLineCommand(backup.bridgeCommand, scriptPath)) {
-    return { ok: false, detail: "현재 Claude Status Line이 Token Monitor 브리지가 아니므로 기존 설정을 덮어쓰지 않았습니다." };
+    return { ok: false, detail: "현재 Status Line이 Token Monitor 연결 설정과 달라 복원하지 않았습니다." };
   }
 
   settings.statusLine = backup.statusLine;
@@ -165,7 +165,7 @@ export function restoreClaudeStatusLine(userDataPath: string): ClaudeStatusLineS
   } catch {
     return { ok: false, detail: "기존 Claude Status Line을 복원하지 못했습니다." };
   }
-  return { ok: true, snapshotPath: getClaudeStatusLineSnapshotPath(userDataPath), detail: "기존 Claude Status Line을 복원했습니다. Token Monitor 사용량 수집은 중지됩니다." };
+  return { ok: true, snapshotPath: getClaudeStatusLineSnapshotPath(userDataPath), detail: "기존 Status Line을 복원했습니다. Token Monitor의 Claude 사용량 수집을 중지했습니다." };
 }
 
 function registration(

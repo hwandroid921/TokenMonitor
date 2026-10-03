@@ -159,7 +159,7 @@ export function renameAccountAlias(recordId: string, value: unknown) {
     return { ok: false as const, detail: "별칭을 변경할 계정을 찾을 수 없습니다." };
   }
   if (!alias) {
-    return { ok: false as const, detail: "별칭은 1~24자의 이메일이 아닌 이름으로 입력하세요." };
+    return { ok: false as const, detail: "별칭은 1~24자로 입력해 주세요. 이메일 주소는 사용할 수 없습니다." };
   }
 
   record.alias = alias;

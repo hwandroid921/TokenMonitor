@@ -277,6 +277,7 @@ declare global {
       updateCodexExecutablePath: (candidate: string) => Promise<CodexPathUpdateResult>;
       resetCodexExecutablePath: () => Promise<CodexPathUpdateResult>;
       startClaudeLogin: () => Promise<{ ok: boolean; command: string; skipped?: boolean; detail?: string }>;
+      startClaudeCode: () => Promise<{ ok: boolean; command: string; detail: string }>;
       setupClaudeStatusLine: (integrateExisting?: boolean) => Promise<{ ok: boolean; snapshotPath?: string; detail: string; requiresIntegration?: boolean }>;
       restoreClaudeStatusLine: () => Promise<{ ok: boolean; snapshotPath?: string; detail: string }>;
       getClaudeStatusLineRegistration: () => Promise<ClaudeStatusLineRegistrationStatus>;
@@ -286,7 +287,7 @@ declare global {
       openProjectRepository: () => Promise<void>;
       openNodeJsDownload: () => Promise<void>;
       getOverlaySettings: () => Promise<OverlaySettings>;
-      updateOverlaySettings: (settings: OverlaySettings) => Promise<OverlaySettings>;
+      updateOverlaySettings: (settings: Partial<OverlaySettings>) => Promise<OverlaySettings>;
       resizeOverlay: (size: { width?: number; height?: number }) => Promise<{ ok: boolean }>;
       getOverlayPositioning: () => Promise<boolean>;
       beginOverlayPositioning: () => Promise<{ ok: boolean }>;

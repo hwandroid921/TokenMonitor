@@ -47,12 +47,13 @@ type ProviderUsage = {
   usageUpdatedAt?: string;
   usageUpdateLabel?: string;
   claudeGuidance?: ClaudeConnectionGuidance;
-  claudeNextAction?: "node" | "login" | "status-line" | null;
+  claudeNextAction?: "node" | "login" | "status-line" | "claude-cli" | null;
 };
 
 type ClaudeConnectionGuidance = {
   dashboardMessage: string | null;
   overlayNotice: string | null;
+  firstConversationPending: boolean;
 };
 
 type ProviderField = {
@@ -86,7 +87,7 @@ const appIconUrl = new URL("../assets/icon.png", import.meta.url).href;
 
 const providerStatusLabels: Record<ProviderUsage["status"], string> = {
   live: "정상",
-  pending: "정보 대기",
+  pending: "사용량 확인 대기",
   error: "연동 필요",
   loading: "확인 중"
 };
@@ -170,12 +171,14 @@ function App() {
   const [isClaudeLoginPending, setIsClaudeLoginPending] = useState(false);
   const [isClaudeStatusLineSetupPending, setIsClaudeStatusLineSetupPending] = useState(false);
   const [isClaudeStatusLineRestorePending, setIsClaudeStatusLineRestorePending] = useState(false);
+  const [isClaudeCliLaunchPending, setIsClaudeCliLaunchPending] = useState(false);
   const [isGeminiLoginPending, setIsGeminiLoginPending] = useState(false);
   const [claudeLoginNotice, setClaudeLoginNotice] = useState<string | null>(null);
   const [geminiLoginNotice, setGeminiLoginNotice] = useState<string | null>(null);
-  const [refreshNotice, setRefreshNotice] = useState("사용량 정보를 불러오는 중입니다.");
+  const [refreshNotice, setRefreshNotice] = useState("사용량을 불러오고 있습니다.");
   const [settingsNotice, setSettingsNotice] = useState<string | null>(null);
   const [notificationNotice, setNotificationNotice] = useState<string | null>(null);
+  const [appNotice, setAppNotice] = useState<string | null>(null);
   const [isSettingsSaving, setIsSettingsSaving] = useState(false);
   const [accountAliases, setAccountAliases] = useState<AccountAliasView[]>(() => isDesignPreviewMode() ? buildDesignPreviewAccounts() : []);
   const [accountAliasNotice, setAccountAliasNotice] = useState<string | null>(null);
@@ -194,12 +197,12 @@ function App() {
   async function refreshUsage(forceGemini = true) {
     const requestId = ++refreshRequestRef.current;
     setIsRefreshing(true);
-    setRefreshNotice("사용량 정보를 새로고침하고 있습니다.");
+    setRefreshNotice("사용량을 새로고침하고 있습니다.");
     try {
       if (!window.tokenMonitor?.getCodexUsage || !window.tokenMonitor?.getClaudeUsage || !window.tokenMonitor?.getGeminiUsage || !window.tokenMonitor?.getCliSessionStatus) {
-        setCodexUsage(makeCodexError("데스크탑 앱 연결을 확인할 수 없습니다."));
-        setClaudeUsage(makeClaudeError("데스크탑 앱 연결을 확인할 수 없습니다."));
-        setGeminiUsage(makeGeminiError("데스크탑 앱 연결을 확인할 수 없습니다."));
+        setCodexUsage(makeCodexError("데스크톱 앱 연결을 확인할 수 없습니다."));
+        setClaudeUsage(makeClaudeError("데스크톱 앱 연결을 확인할 수 없습니다."));
+        setGeminiUsage(makeGeminiError("데스크톱 앱 연결을 확인할 수 없습니다."));
         setRefreshNotice("데스크톱 앱 연결을 확인할 수 없습니다.");
         return;
       }
@@ -220,10 +223,10 @@ function App() {
       setCliSessions(latestSessions);
       setClaudeStatusLine(latestClaudeStatusLine);
       const successCount = [latestCodex, latestClaude, latestGemini].filter((result) => result.ok).length;
-      setRefreshNotice(`${successCount}개 서비스 갱신 완료 · ${formatTime(new Date().toISOString())}`);
+      setRefreshNotice(`${successCount}개 서비스 확인 완료 · ${formatTime(new Date().toISOString())}`);
     } catch {
       if (requestId === refreshRequestRef.current) {
-        setRefreshNotice("사용량 새로고침을 완료하지 못했습니다. 다시 시도하세요.");
+        setRefreshNotice("사용량을 새로고침하지 못했습니다. 다시 시도해 주세요.");
       }
     } finally {
       if (requestId === refreshRequestRef.current) {
@@ -232,8 +235,9 @@ function App() {
     }
   }
 
-  async function updateOverlaySettings(nextSettings: OverlaySettings) {
+  async function updateOverlaySettings(patch: Partial<OverlaySettings>) {
     const previousSettings = overlaySettings;
+    const nextSettings = { ...overlaySettings, ...patch };
     setOverlaySettings(nextSettings);
     setIsSettingsSaving(true);
     setSettingsNotice("설정을 저장하고 있습니다.");
@@ -242,12 +246,12 @@ function App() {
       if (!window.tokenMonitor?.updateOverlaySettings) {
         throw new Error("설정 저장 API를 사용할 수 없습니다.");
       }
-      const saved = await window.tokenMonitor.updateOverlaySettings(nextSettings);
+      const saved = await window.tokenMonitor.updateOverlaySettings(patch);
       setOverlaySettings(saved);
       setSettingsNotice("설정이 저장되었습니다.");
     } catch {
       setOverlaySettings(previousSettings);
-      setSettingsNotice("설정을 저장하지 못했습니다. 이전 설정으로 되돌렸습니다.");
+      setSettingsNotice("설정을 저장하지 못해 이전 값으로 되돌렸습니다.");
     } finally {
       setIsSettingsSaving(false);
     }
@@ -259,7 +263,7 @@ function App() {
       return;
     }
     const result = await window.tokenMonitor.beginOverlayPositioning();
-    setSettingsNotice(result.ok ? "오버레이 창을 드래그한 뒤 우측 상단의 완료 버튼을 누르세요." : "오버레이 위치 변경을 시작하지 못했습니다.");
+    setSettingsNotice(result.ok ? "오버레이를 옮긴 뒤 완료를 눌러 주세요." : "오버레이 위치 변경을 시작하지 못했습니다.");
   }
 
   async function resetOverlayPosition() {
@@ -269,7 +273,7 @@ function App() {
     }
     const saved = await window.tokenMonitor.resetOverlayPosition();
     setOverlaySettings(saved);
-    setSettingsNotice("오버레이 위치를 초기화했습니다.");
+    setSettingsNotice("오버레이를 메인 모니터 오른쪽 아래로 옮겼습니다.");
   }
 
   async function saveNotificationSettings(patch: Partial<NotificationSettings>) {
@@ -318,13 +322,13 @@ function App() {
       setAccountAliasNotice(result?.detail ?? "계정 별칭을 삭제하지 못했습니다.");
       return;
     }
-    setAccountAliasNotice("Token Monitor의 계정 별칭 등록을 삭제했습니다. 공급자 로그인에는 영향을 주지 않습니다.");
+    setAccountAliasNotice("계정 별칭을 삭제했습니다. 서비스 로그인은 유지됩니다.");
     await refreshAccountAliases();
   }
 
   async function handleDeleteProviderAliases(provider: AccountProvider) {
     await window.tokenMonitor?.deleteProviderAliases(provider);
-    setAccountAliasNotice("해당 서비스의 저장된 별칭을 모두 삭제했습니다.");
+    setAccountAliasNotice("해당 서비스의 저장된 별칭을 이 서비스의 별칭 삭제했습니다.");
     await refreshAccountAliases();
   }
 
@@ -433,7 +437,7 @@ function App() {
     try {
       let result = await window.tokenMonitor?.setupClaudeStatusLine();
       if (result?.requiresIntegration) {
-        const shouldIntegrate = window.confirm("기존 Claude Status Line 표시는 유지하고 Token Monitor 사용량 수집을 함께 실행할까요? 기존 설정은 백업되며 언제든 복원할 수 있습니다.");
+        const shouldIntegrate = window.confirm("기존 Status Line을 유지하면서 Token Monitor 사용량 수집을 연결할까요? 기존 설정은 백업되며 나중에 복원할 수 있습니다.");
         if (shouldIntegrate) {
           result = await window.tokenMonitor?.setupClaudeStatusLine(true);
         } else {
@@ -442,6 +446,9 @@ function App() {
         }
       }
       setClaudeLoginNotice(result?.detail ?? "Claude Status Line 등록을 완료하지 못했습니다.");
+      if (result?.ok) {
+        setAppNotice("Claude Status Line을 설정했습니다. Claude Code CLI에서 첫 응답을 받으면 사용량을 확인할 수 있습니다.");
+      }
       await refreshUsage();
     } catch (error) {
       setClaudeLoginNotice(error instanceof Error ? error.message : "Claude Status Line 새로 등록을 시작할 수 없습니다.");
@@ -451,7 +458,7 @@ function App() {
   }
 
   async function handleClaudeStatusLineRestore() {
-    if (isClaudeStatusLineRestorePending || !window.confirm("Token Monitor 브리지를 해제하고 백업한 기존 Claude Status Line을 복원할까요? Claude 사용량 수집은 중지됩니다.")) {
+    if (isClaudeStatusLineRestorePending || !window.confirm("기존 Status Line으로 되돌릴까요? Token Monitor의 Claude 사용량 수집은 중지됩니다.")) {
       return;
     }
     setIsClaudeStatusLineRestorePending(true);
@@ -464,6 +471,22 @@ function App() {
       setClaudeLoginNotice(error instanceof Error ? error.message : "기존 Claude Status Line을 복원하지 못했습니다.");
     } finally {
       setIsClaudeStatusLineRestorePending(false);
+    }
+  }
+
+  async function handleClaudeCodeLaunch() {
+    if (isClaudeCliLaunchPending) {
+      return;
+    }
+    setIsClaudeCliLaunchPending(true);
+    setClaudeLoginNotice(null);
+    try {
+      const result = await window.tokenMonitor?.startClaudeCode();
+      setClaudeLoginNotice(result?.detail ?? "Claude Code CLI를 열지 못했습니다.");
+    } catch (error) {
+      setClaudeLoginNotice(error instanceof Error ? error.message : "Claude Code CLI를 열지 못했습니다.");
+    } finally {
+      setIsClaudeCliLaunchPending(false);
     }
   }
 
@@ -506,6 +529,7 @@ function App() {
   useEffect(() => {
     void refreshUsage();
     void window.tokenMonitor?.getOverlaySettings().then(setOverlaySettings);
+    const unsubscribeOverlaySettings = window.tokenMonitor?.onOverlaySettingsChanged(setOverlaySettings);
     void window.tokenMonitor?.getNotificationSettings().then((settings) => {
       notificationSettingsRef.current = settings;
       setNotificationSettings(settings);
@@ -516,6 +540,7 @@ function App() {
         void refreshDeveloperDiagnostics();
       }
     });
+    return () => unsubscribeOverlaySettings?.();
   }, []);
 
   useEffect(() => {
@@ -552,6 +577,14 @@ function App() {
     });
     return () => unsubscribe?.();
   }, []);
+
+  useEffect(() => {
+    if (!appNotice) {
+      return;
+    }
+    const timer = window.setTimeout(() => setAppNotice(null), 8000);
+    return () => window.clearTimeout(timer);
+  }, [appNotice]);
 
   useEffect(() => {
     if (!showExitConfirm) {
@@ -631,9 +664,7 @@ function App() {
                   key={provider.id}
                   provider={provider}
                   onManageAliases={() => { setRequestedSettingsSection("accounts"); setActiveTab("settings"); }}
-                  onClaudeStatusLineSetup={handleClaudeStatusLineSetup}
                   onRestoreClaudeStatusLine={handleClaudeStatusLineRestore}
-                  isClaudeStatusLineSetupPending={isClaudeStatusLineSetupPending}
                   isClaudeStatusLineRestorePending={isClaudeStatusLineRestorePending}
                 />
               ))}
@@ -642,6 +673,7 @@ function App() {
                 providers={dashboardProviders}
                 isClaudeLoginPending={isClaudeLoginPending}
                 isClaudeStatusLineSetupPending={isClaudeStatusLineSetupPending}
+                isClaudeCliLaunchPending={isClaudeCliLaunchPending}
                 isGeminiLoginPending={isGeminiLoginPending}
                 actionNotices={{
                   claude: claudeLoginNotice,
@@ -649,6 +681,7 @@ function App() {
                 }}
                 onClaudeLogin={handleClaudeLogin}
                 onClaudeStatusLineSetup={handleClaudeStatusLineSetup}
+                onClaudeCodeLaunch={handleClaudeCodeLaunch}
                 onGeminiLogin={handleGeminiLogin}
                 onOpenNodeJsDownload={() => void window.tokenMonitor?.openNodeJsDownload()}
                 onOpenCodexSettings={() => { setRequestedSettingsSection("codex"); setActiveTab("settings"); }}
@@ -687,18 +720,26 @@ function App() {
         </div>
       </section>
 
+      {appNotice ? (
+        <div className="app-toast" role="status" aria-live="polite">
+          <CheckCircle2 size={18} aria-hidden="true" />
+          <span>{appNotice}</span>
+          <button type="button" onClick={() => setAppNotice(null)} aria-label="알림 닫기">닫기</button>
+        </div>
+      ) : null}
+
       {showExitConfirm ? (
         <div className="app-dialog-backdrop" role="presentation">
           <section ref={exitDialogRef} className="app-dialog" role="dialog" aria-modal="true" aria-labelledby="exit-dialog-title" onKeyDown={(event) => handleDialogKeyDown(event, closeExitConfirm)}>
             <h2 id="exit-dialog-title">프로그램 종료</h2>
-            <p>지금 종료하면 Token Monitor와 오버레이가 모두 종료됩니다.</p>
+            <p>Token Monitor를 종료하면 오버레이와 사용량 확인도 중지됩니다.</p>
             <div className="app-dialog-actions">
               <button className="secondary-button" type="button" data-autofocus onClick={closeExitConfirm}>
                 취소
               </button>
               {overlaySettings.closeToTray ? (
                 <button className="secondary-button tray-button" type="button" onClick={() => void handleMinimizeToTray()}>
-                  최소화
+                  트레이로 최소화
                 </button>
               ) : null}
               <button className="danger-button" type="button" onClick={() => void window.tokenMonitor?.quitApp()}>
@@ -715,16 +756,12 @@ function App() {
 function ProviderCard({
   provider,
   onManageAliases,
-  onClaudeStatusLineSetup,
   onRestoreClaudeStatusLine,
-  isClaudeStatusLineSetupPending,
   isClaudeStatusLineRestorePending
 }: {
   provider: ProviderUsage;
   onManageAliases: () => void;
-  onClaudeStatusLineSetup: () => void;
   onRestoreClaudeStatusLine: () => void;
-  isClaudeStatusLineSetupPending: boolean;
   isClaudeStatusLineRestorePending: boolean;
 }) {
   const effectiveStatus = getEffectiveProviderStatus(provider);
@@ -745,18 +782,12 @@ function ProviderCard({
         <dl className="provider-metadata">
           <div><dt>별칭</dt><dd>{alias}</dd></div>
           <div><dt>플랜</dt><dd>{provider.plan}</dd></div>
-          <div><dt>수집 현황</dt><dd><span className={`status-badge ${effectiveStatus}`}>{providerStatusLabels[effectiveStatus]}</span></dd></div>
+          <div><dt>수집 상태</dt><dd><span className={`status-badge ${effectiveStatus}`}>{providerStatusLabels[effectiveStatus]}</span></dd></div>
         </dl>
         {provider.usageUpdatedAt ? (
           <p className="provider-usage-updated" title={provider.usageUpdatedAt}>
             {provider.usageUpdateLabel ?? "사용량 갱신"} <strong>{formatTime(provider.usageUpdatedAt)}</strong>
           </p>
-        ) : null}
-        {provider.id === "claude" && !provider.canLogin ? (
-          <button className="provider-inline-action" type="button" onClick={onClaudeStatusLineSetup} disabled={isClaudeStatusLineSetupPending}>
-            <RefreshCw size={14} aria-hidden="true" className={isClaudeStatusLineSetupPending ? "spinning" : ""} />
-            {isClaudeStatusLineSetupPending ? "등록 중" : provider.statusLine?.registered ? "Status Line 재등록" : "Status Line 등록"}
-          </button>
         ) : null}
         {provider.id === "claude" && provider.statusLine?.mode === "bridge" && provider.statusLine.backupAvailable ? (
           <button className="provider-inline-action" type="button" onClick={onRestoreClaudeStatusLine} disabled={isClaudeStatusLineRestorePending}>
@@ -773,12 +804,15 @@ function ProviderCard({
       </div>
 
       <div className="provider-quota-list">
+        {provider.claudeGuidance?.firstConversationPending ? (
+          <p className="provider-onboarding-note">사용량 수집에는 Claude Code CLI의 첫 응답이 필요합니다.</p>
+        ) : null}
         <QuotaLegend />
         {quotaFields.map((field) => <QuotaRow key={field.label} field={field} providerId={provider.id} />)}
         {quotaFields.length === 0 ? (
           <div className="quota-empty-state">
             <span>사용량 항목</span>
-            <strong>확인 가능한 한도 정보가 없습니다.</strong>
+            <strong>표시할 사용량 한도가 없습니다.</strong>
           </div>
         ) : null}
       </div>
@@ -856,6 +890,16 @@ function formatAbsoluteReset(value: string | null | undefined) {
 }
 
 function resolveResetLabels(field: ProviderField, fallback: string) {
+  if (field.value === "초기화 확인 중") {
+    return { relative: "초기화 확인 중", absolute: "초기화 확인 중" };
+  }
+  if (field.value.includes("갱신 필요")) {
+    return { relative: "갱신 필요", absolute: "갱신 필요" };
+  }
+  const resetTimestamp = field.resetsAt ? new Date(field.resetsAt).getTime() : Number.NaN;
+  if (Number.isFinite(resetTimestamp) && resetTimestamp <= Date.now()) {
+    return { relative: "갱신 필요", absolute: "갱신 필요" };
+  }
   const relativeFromTimestamp = formatRelativeReset(field.resetsAt);
   const absoluteFromTimestamp = formatAbsoluteReset(field.resetsAt);
   return {
@@ -876,10 +920,12 @@ function DashboardAttentionPanel({
   providers,
   isClaudeLoginPending,
   isClaudeStatusLineSetupPending,
+  isClaudeCliLaunchPending,
   isGeminiLoginPending,
   actionNotices,
   onClaudeLogin,
   onClaudeStatusLineSetup,
+  onClaudeCodeLaunch,
   onGeminiLogin,
   onOpenNodeJsDownload,
   onOpenCodexSettings
@@ -887,16 +933,19 @@ function DashboardAttentionPanel({
   providers: ProviderUsage[];
   isClaudeLoginPending: boolean;
   isClaudeStatusLineSetupPending: boolean;
+  isClaudeCliLaunchPending: boolean;
   isGeminiLoginPending: boolean;
   actionNotices: Partial<Record<ProviderId, string | null>>;
   onClaudeLogin: () => void;
   onClaudeStatusLineSetup: () => void;
+  onClaudeCodeLaunch: () => void;
   onGeminiLogin: () => void;
   onOpenNodeJsDownload: () => void;
   onOpenCodexSettings: () => void;
 }) {
   const attentionProviders = providers.filter((provider) => getEffectiveProviderStatus(provider) !== "live");
-  const primary = attentionProviders[0];
+  const primary = attentionProviders.find((provider) => provider.id === "claude" && provider.claudeNextAction)
+    ?? attentionProviders[0];
   if (!primary) {
     return null;
   }
@@ -911,9 +960,11 @@ function DashboardAttentionPanel({
     : primary.id === "claude" && primary.claudeNextAction === "node"
       ? { label: "Node.js 설치 안내", pending: false, onClick: onOpenNodeJsDownload }
       : primary.id === "claude" && primary.claudeNextAction === "status-line"
-        ? { label: isClaudeStatusLineSetupPending ? "등록 중" : primary.statusLine?.registered ? "Status Line 재등록" : "Status Line 등록", pending: isClaudeStatusLineSetupPending, onClick: onClaudeStatusLineSetup }
-        : primary.id === "claude" && primary.claudeNextAction === "login"
-          ? { label: isClaudeLoginPending ? "로그인 확인 중" : "Claude 로그인", pending: isClaudeLoginPending, onClick: onClaudeLogin }
+        ? { label: isClaudeStatusLineSetupPending ? "재설정 중" : "Status Line 재설정", pending: isClaudeStatusLineSetupPending, onClick: onClaudeStatusLineSetup }
+      : primary.id === "claude" && primary.claudeNextAction === "login"
+          ? { label: isClaudeLoginPending ? "로그인 확인 중" : "Claude CLI 로그인", pending: isClaudeLoginPending, onClick: onClaudeLogin }
+          : primary.id === "claude" && primary.claudeNextAction === "claude-cli"
+            ? { label: isClaudeCliLaunchPending ? "CLI 여는 중" : "Claude Code CLI 열기", pending: isClaudeCliLaunchPending, onClick: onClaudeCodeLaunch }
           : primary.id === "claude"
             ? null
           : { label: isGeminiLoginPending ? "연동 확인 중" : "Antigravity 연결", pending: isGeminiLoginPending, onClick: onGeminiLogin };
@@ -924,7 +975,7 @@ function DashboardAttentionPanel({
         <AlertCircle size={24} aria-hidden="true" />
         <div>
           <h2 id="dashboard-attention-title">주의가 필요한 항목</h2>
-          <p>{attentionProviders.length}개 서비스의 연결 또는 사용량 확인이 필요합니다.</p>
+          <p>{attentionProviders.length}개 서비스의 연결 상태나 사용량을 확인해 주세요.</p>
         </div>
       </div>
       <div className="attention-primary">
@@ -940,7 +991,7 @@ function DashboardAttentionPanel({
         ) : null}
       </div>
       <details className="attention-details">
-        <summary>세부 정보 보기 <ChevronDown size={16} aria-hidden="true" /></summary>
+        <summary>자세히 보기 <ChevronDown size={16} aria-hidden="true" /></summary>
         <div className="attention-detail-list">
           {attentionProviders.map((provider) => (
             <section key={provider.id}>
@@ -1058,7 +1109,7 @@ function getProviderIssues(provider: ProviderUsage): ProviderIssue[] {
       steps: [
         "Node.js LTS 설치",
         "Claude Pro/Max 이상 계정 준비",
-        "Claude CLI 설치 및 로그인 버튼 실행",
+        "Claude CLI 로그인을 눌러 로그인",
         "브라우저 인증 완료"
       ]
     }];
@@ -1179,7 +1230,7 @@ function buildDesignPreviewProviders(): ProviderUsage[] {
       remaining: "주간 63% / 5시간 사용량 45%",
       reset: "주간 5일 11시간 후 / 5시간 사용량 1시간 42분 후",
       detail: "Antigravity 최근 갱신 09:30",
-      issues: [{ reason: "Antigravity 사용량 연동 필요", steps: ["Antigravity CLI 로그인을 실행", "Google 인증 완료 후 새로고침"] }],
+      issues: [{ reason: "Antigravity 연결 필요", steps: ["Antigravity CLI 로그인을 실행", "Google 인증 완료 후 새로고침"] }],
       fields: [
         { label: "플랜", value: "Google AI Pro", kind: "plan" },
         { label: "주간", value: "사용량 37% / 잔여량 63% / 초기화 5일 11시간 후", kind: "quota", remainingPercent: 63, resetsAt: "2026-09-07T20:30:00+09:00" },
@@ -1208,7 +1259,7 @@ function SettingsPanel({
   requestedSection
 }: {
   settings: OverlaySettings;
-  onChange: (settings: OverlaySettings) => void;
+  onChange: (patch: Partial<OverlaySettings>) => void;
   onBeginOverlayPositioning: () => Promise<void>;
   onResetOverlayPosition: () => Promise<void>;
   notice: string | null;
@@ -1231,7 +1282,7 @@ function SettingsPanel({
   }, [requestedSection]);
 
   function update(patch: Partial<OverlaySettings>) {
-    onChange({ ...settings, ...patch });
+    onChange(patch);
   }
 
   function updateProviderItem(id: ProviderId, patch: Partial<OverlaySettings["providerItems"][ProviderId]>) {
@@ -1270,9 +1321,9 @@ function SettingsPanel({
           <span>앱 설정</span>
           <h2>{({ general: "일반", notifications: "알림", accounts: "계정 및 별칭", display: "오버레이 표시", codex: "Codex 연결" } as const)[activeSection]}</h2>
           <p>{({
-            general: "앱의 기본 동작과 오버레이 크기를 조정합니다.",
+            general: "앱의 동작과 오버레이 위치·글자 크기를 설정합니다.",
             notifications: "사용량 변화와 초기화 시점 알림을 관리합니다.",
-            accounts: "감지된 계정을 구분하기 위한 안전한 별칭을 관리합니다.",
+            accounts: "계정을 구분할 이름이나 별칭을 설정합니다.",
             display: "오버레이에 표시할 서비스와 세부 항목을 선택합니다.",
             codex: "Codex 실행 파일 연결과 수집 상태를 확인합니다."
           } as const)[activeSection]}</p>
@@ -1284,15 +1335,15 @@ function SettingsPanel({
         <label className="switch-row">
           <span className="overlay-toggle-copy">
             <strong>오버레이 켜기</strong>
-            <small>화면 우측 하단에 사용량 정보를 표시합니다.</small>
+            <small>바탕화면에 사용량을 표시합니다. 기본 위치는 메인 모니터 오른쪽 아래입니다.</small>
           </span>
           <input type="checkbox" checked={settings.enabled} disabled={isSaving} onChange={(event) => update({ enabled: event.target.checked })} />
         </label>
 
         <label className="switch-row">
           <span className="overlay-toggle-copy">
-            <strong>프로그램 종료 시 시스템 트레이로 최소화</strong>
-            <small>창을 닫아도 백그라운드에서 계속 실행합니다.</small>
+            <strong>창을 닫으면 시스템 트레이로 최소화</strong>
+            <small>창을 닫아도 사용량 확인과 알림을 계속 실행합니다.</small>
           </span>
           <input type="checkbox" checked={settings.closeToTray} disabled={isSaving} onChange={(event) => update({ closeToTray: event.target.checked })} />
         </label>
@@ -1300,7 +1351,7 @@ function SettingsPanel({
         <section className="overlay-position-settings" aria-labelledby="overlay-position-heading">
           <div>
             <h3 id="overlay-position-heading">오버레이 위치</h3>
-            <p>위치 변경 중에는 창 테두리가 강조되고 오버레이를 드래그할 수 있습니다. 완료하면 클릭 통과 상태로 돌아갑니다.</p>
+            <p>오버레이를 원하는 위치로 끌어 옮긴 뒤 완료를 눌러 주세요. 저장한 위치는 다음 실행에도 유지됩니다.</p>
           </div>
           <div className="button-row overlay-position-actions">
             <button className="secondary-button" type="button" disabled={isSaving || !settings.enabled} onClick={() => void onBeginOverlayPositioning()}>위치 변경</button>
@@ -1334,7 +1385,7 @@ function SettingsPanel({
 
       {/* Keep the save status outside the behavior group so it applies to every setting below. */}
       <p className={`settings-save-status${notice?.includes("못했습니다") ? " error" : ""}`} role="status" aria-live="polite" aria-busy={isSaving}>
-        {notice ?? "변경한 설정은 자동으로 저장됩니다."}
+        {notice ?? "설정을 변경하면 자동으로 저장합니다."}
       </p>
       </> : null}
 
@@ -1365,10 +1416,10 @@ function SettingsPanel({
                   <span>{providerLabels[id]}</span>
                 </label>
 
-                {!item.enabled ? <p className="provider-disabled-note">현재 오버레이에는 표시되지 않습니다.</p> : null}
+                {!item.enabled ? <p className="provider-disabled-note">오버레이에 표시하지 않습니다.</p> : null}
 
                 <details className="provider-display-options" open>
-                  <summary>표시 항목 사용자화</summary>
+                  <summary>표시 항목</summary>
                   <fieldset disabled={!item.enabled || isSaving}>
                     <legend className="visually-hidden">{providerLabels[id]} 표시 항목</legend>
                     <div className="check-list compact">
@@ -1390,7 +1441,7 @@ function SettingsPanel({
                       </label>
                       <label>
                         <input type="checkbox" checked={item.showReset} onChange={(event) => updateProviderItem(id, { showReset: event.target.checked })} />
-                        초기화 시간
+                        초기화 시각
                       </label>
                     </div>
                   </fieldset>
@@ -1449,7 +1500,7 @@ function NotificationSettingsPanel({
       <div className="notification-settings-heading">
         <div>
           <h2 id="notification-settings-heading">사용량 알림</h2>
-          <p>앱이 트레이에서 실행 중인 동안 5분마다 사용량을 확인합니다.</p>
+          <p>앱이 실행 중이면 1분마다 사용량을 확인합니다.</p>
         </div>
         <button className="secondary-button" type="button" disabled={isTesting || !settings.enabled} onClick={() => void testNotification()}>
           {isTesting ? "알림 확인 중" : "테스트 알림"}
@@ -1465,20 +1516,20 @@ function NotificationSettingsPanel({
         <legend>알림 표시 방식</legend>
         <div className="check-list compact notification-channel-list">
           <label><input type="checkbox" checked={settings.windowsNotifications} onChange={(event) => update({ windowsNotifications: event.target.checked })} />Windows 알림</label>
-          <label><input type="checkbox" checked={settings.alwaysOnTopAlerts} onChange={(event) => update({ alwaysOnTopAlerts: event.target.checked })} />12초 전면 경고</label>
-          <label><input type="checkbox" checked={settings.overlayWarnings} onChange={(event) => update({ overlayWarnings: event.target.checked })} />오버레이 잔여량 색상</label>
-          <label><input type="checkbox" checked={settings.notifyExhausted} onChange={(event) => update({ notifyExhausted: event.target.checked })} />모두 소진 알림</label>
-          <label><input type="checkbox" checked={settings.notifyReset} onChange={(event) => update({ notifyReset: event.target.checked })} />실제 초기화 알림</label>
+          <label><input type="checkbox" checked={settings.alwaysOnTopAlerts} onChange={(event) => update({ alwaysOnTopAlerts: event.target.checked })} />화면 위 경고창 · 12초</label>
+          <label><input type="checkbox" checked={settings.overlayWarnings} onChange={(event) => update({ overlayWarnings: event.target.checked })} />오버레이에 잔여량 경고 색상 표시</label>
+          <label><input type="checkbox" checked={settings.notifyExhausted} onChange={(event) => update({ notifyExhausted: event.target.checked })} />사용량 소진 알림</label>
+          <label><input type="checkbox" checked={settings.notifyReset} onChange={(event) => update({ notifyReset: event.target.checked })} />초기화 확인 알림</label>
         </div>
-        <p className="notification-help">전면 경고는 Windows 알림과 별개의 비포커스 창입니다. 네이티브 알림의 표시 순서는 Windows가 관리합니다.</p>
+        <p className="notification-help">경고창은 현재 작업의 입력 초점을 옮기지 않습니다. Windows 알림의 표시 순서는 Windows 설정을 따릅니다.</p>
 
-        <strong className="notification-subheading">자동 알림 대상</strong>
+        <strong className="notification-subheading">알림 받을 서비스</strong>
         <div className="check-list compact">
           {(Object.keys(alertProviderLabels) as AlertProviderId[]).map((provider) => (
             <label key={provider}><input type="checkbox" checked={settings.providers[provider]} onChange={(event) => toggleProvider(provider, event.target.checked)} />{alertProviderLabels[provider]}</label>
           ))}
         </div>
-        <strong className="notification-subheading">잔여량 임계치</strong>
+        <strong className="notification-subheading">잔여량 경고 기준</strong>
         <div className="threshold-grid">
           {availableNotificationThresholds.map((threshold) => (
             <label key={threshold} className={settings.thresholds.includes(threshold) ? "selected" : ""}>
@@ -1519,7 +1570,7 @@ function AccountAliasManager({
             className="danger-outline-button"
             type="button"
             onClick={() => {
-              if (window.confirm("저장된 모든 계정 별칭을 삭제하시겠습니까? 공급자 로그인에는 영향을 주지 않습니다.")) {
+              if (window.confirm("저장한 별칭을 모두 삭제할까요? 서비스 로그인은 유지됩니다.")) {
                 void onDeleteAll();
               }
             }}
@@ -1539,25 +1590,25 @@ function AccountAliasManager({
               <div className="account-provider-heading">
                 <div>
                   <h3>{accountProviderLabels[provider]}</h3>
-                  <span>{providerAccounts.some((account) => account.isCurrent) ? "현재 계정 감지됨" : "현재 계정 미감지"}</span>
+                  <span>{providerAccounts.some((account) => account.isCurrent) ? "현재 계정 확인됨" : "현재 계정 확인 안 됨"}</span>
                 </div>
                 {providerAccounts.length > 0 ? (
                   <button
                     className="text-button danger-text"
                     type="button"
                     onClick={() => {
-                      if (window.confirm(`${accountProviderLabels[provider]}의 저장된 별칭을 모두 삭제하시겠습니까?`)) {
+                      if (window.confirm(`${accountProviderLabels[provider]}의 저장된 별칭을 이 서비스의 별칭 삭제하시겠습니까?`)) {
                         void onDeleteProvider(provider);
                       }
                     }}
                   >
-                    모두 삭제
+                    이 서비스의 별칭 삭제
                   </button>
                 ) : null}
               </div>
 
               {providerAccounts.length === 0 ? (
-                <p className="account-empty">로그인 계정이 확인되면 마스킹 이메일과 별칭 입력란이 표시됩니다.</p>
+                <p className="account-empty">로그인한 계정이 확인되면 일부 가린 이메일과 별칭 입력란이 나타납니다.</p>
               ) : (
                 <div className="account-record-list">
                   {providerAccounts.map((account) => (
@@ -1604,14 +1655,14 @@ function AccountAliasRow({
       <div className="account-record-identity">
         <span className="account-current-badge">{account.isCurrent ? "현재 로그인" : "이전 계정"}</span>
         <dl className="account-identity-fields">
-          <div><dt>감지 상태</dt><dd>{account.isCurrent ? "현재 계정 감지됨" : "이전 감지 기록"}</dd></div>
+          <div><dt>감지 상태</dt><dd>{account.isCurrent ? "현재 계정 확인됨" : "이전 감지 기록"}</dd></div>
           <div><dt>이메일</dt><dd>{account.maskedEmail}</dd></div>
-          <div><dt>표시 이름</dt><dd>{account.alias ?? "미지정"}</dd></div>
-          <div><dt>감지 방식</dt><dd>{account.confidence === "verified" ? "계정 확인됨" : "계정 정보 추정"}</dd></div>
+          <div><dt>별칭</dt><dd>{account.alias ?? "미지정"}</dd></div>
+          <div><dt>확인 방식</dt><dd>{account.confidence === "verified" ? "계정 확인됨" : "계정 정보로 추정"}</dd></div>
         </dl>
       </div>
       <label>
-        <span>이름/별칭</span>
+        <span>별칭</span>
         <input
           type="text"
           value={alias}
@@ -1629,12 +1680,12 @@ function AccountAliasRow({
           type="button"
           disabled={isSaving}
           onClick={() => {
-            if (window.confirm(`${account.maskedEmail}의 Token Monitor 별칭 등록을 삭제하시겠습니까?`)) {
+            if (window.confirm(`${account.maskedEmail}의 별칭을 삭제할까요?`)) {
               void onDelete(account.recordId);
             }
           }}
         >
-          등록 삭제
+          별칭 삭제
         </button>
       </div>
     </form>
@@ -1689,9 +1740,9 @@ function OverlayApp() {
     async function refresh() {
       const requestId = ++refreshRequestRef.current;
       if (!window.tokenMonitor?.getCodexUsage || !window.tokenMonitor?.getClaudeUsage || !window.tokenMonitor?.getGeminiUsage || !window.tokenMonitor?.getCliSessionStatus) {
-        setCodexUsage(makeCodexError("데스크탑 앱 연결을 확인할 수 없습니다."));
-        setClaudeUsage(makeClaudeError("데스크탑 앱 연결을 확인할 수 없습니다."));
-        setGeminiUsage(makeGeminiError("데스크탑 앱 연결을 확인할 수 없습니다."));
+        setCodexUsage(makeCodexError("데스크톱 앱 연결을 확인할 수 없습니다."));
+        setClaudeUsage(makeClaudeError("데스크톱 앱 연결을 확인할 수 없습니다."));
+        setGeminiUsage(makeGeminiError("데스크톱 앱 연결을 확인할 수 없습니다."));
         return;
       }
 
@@ -1773,15 +1824,20 @@ function OverlayProvider({ provider, settings, notificationSettings }: { provide
   const fields = filterProviderFields(provider.fields ?? defaultProviderFields(provider), display);
   const planField = fields.find((field) => field.kind === "plan");
   const detailFields = fields.filter((field) => field !== planField);
+  const visibleDetailFields = provider.claudeGuidance?.firstConversationPending
+    ? detailFields.filter((field) => field.kind !== "quota")
+    : detailFields;
   const heading = display.showPlan && planField?.value ? `${provider.name.toUpperCase()} / ${formatOverlayValue(planField.value)}` : provider.name.toUpperCase();
 
   return (
     <article className="overlay-provider">
       <strong>{heading}</strong>
-      {detailFields.map((field) => (
+      {visibleDetailFields.map((field) => (
         <span key={field.label}>{field.label} <OverlayFieldValue field={field} display={display} warningsEnabled={notificationSettings.enabled && notificationSettings.overlayWarnings} /></span>
       ))}
-      {provider.claudeGuidance?.overlayNotice ? <span className="overlay-setup-notice">{provider.claudeGuidance.overlayNotice}</span> : null}
+      {provider.claudeGuidance?.firstConversationPending ? (
+        <span className="overlay-setup-notice">Claude Code CLI 첫 응답 필요</span>
+      ) : provider.claudeGuidance?.overlayNotice ? <span className="overlay-setup-notice">{provider.claudeGuidance.overlayNotice}</span> : null}
     </article>
   );
 }
@@ -1806,7 +1862,7 @@ function OverlayFieldValue({ field, display, warningsEnabled }: { field: Provide
     <>
       {display.showUsed ? `사용 ${match[1]} · ` : null}
       <em className={`overlay-remaining${stateClass}`}>남음 {match[2]}{warningsEnabled && field.remainingPercent <= 0 ? " · 소진" : ""}</em>
-      {display.showReset ? ` · ${match[3].replace("초기화 시간 없음", "reset 없음")}` : null}
+      {display.showReset ? ` · ${match[3].replace("초기화 시간 없음", "초기화 시각 없음")}` : null}
     </>
   );
 }
@@ -1859,7 +1915,7 @@ function formatOverlayValue(value: string) {
     .replace(/^사용량\s*/, "사용 ")
     .replace(/\s*\/\s*잔여량\s*/, " · 남음 ")
     .replace(/\s*\/\s*초기화\s*/, " · ")
-    .replace("초기화 시간 없음", "reset 없음")
+    .replace("초기화 시간 없음", "초기화 시각 없음")
     .replace("남은 사용량 데이터 없음", "데이터 없음");
 }
 
@@ -2044,7 +2100,7 @@ function buildClaudeProvider(
       claudeNextAction: guidance.nextAction,
       issues: cliIssue ? [cliIssue] : registrationError ? [{
         reason: registration.detail,
-        steps: ["Status Line 새로 등록 버튼을 다시 실행", "계속되면 Claude 설정 파일 권한과 형식을 확인"]
+        steps: ["Status Line 재설정을 다시 실행", "계속되면 Claude 설정 파일 권한과 형식을 확인"]
       }] : actualUsageError ? [{
         reason: usage.error,
         steps: buildClaudeUsageErrorSteps(usage.error)
@@ -2052,17 +2108,21 @@ function buildClaudeProvider(
     };
   }
 
-  const usedLabel = formatClaudeStatusLineWindows(usage.sevenDay, usage.fiveHour, "used");
-  const remainingLabel = formatClaudeStatusLineWindows(usage.sevenDay, usage.fiveHour, "remaining");
-  const resetLabel = formatClaudeStatusLineResets(usage.sevenDay, usage.fiveHour);
-  const hasQuota = Boolean(usage.fiveHour || usage.sevenDay);
+  const activeWindow = (window: ClaudeUsageWindow | null) => window?.resetsAt && Date.parse(window.resetsAt) > Date.now() ? window : null;
+  const currentSevenDay = activeWindow(usage.sevenDay);
+  const currentFiveHour = activeWindow(usage.fiveHour);
+  const staleQuotaLabel = "초기화 확인 중";
+  const usedLabel = usage.stale ? staleQuotaLabel : formatClaudeStatusLineWindows(currentSevenDay, currentFiveHour, "used");
+  const remainingLabel = usage.stale ? staleQuotaLabel : formatClaudeStatusLineWindows(currentSevenDay, currentFiveHour, "remaining");
+  const resetLabel = usage.stale ? staleQuotaLabel : formatClaudeStatusLineResets(currentSevenDay, currentFiveHour);
+  const hasQuota = Boolean(currentFiveHour || currentSevenDay);
   const account = sessions?.claude.account;
 
   return {
     id: "claude",
     name: "Claude",
     source: "Anthropic",
-    status: hasQuota ? "live" : "pending",
+    status: hasQuota && !usage.stale ? "live" : "pending",
     alias: account?.alias ?? (account?.detected ? "별칭 미지정" : "계정 확인 중"),
     plan: planLabel,
     session: sessionLabel,
@@ -2072,22 +2132,25 @@ function buildClaudeProvider(
     fields: [
       { label: "계정", value: accountLabel, kind: "identity" },
       { label: "플랜", value: planLabel, kind: "plan" },
-      { label: "주간", value: formatClaudeStatusLineWindowSummary(usage.sevenDay), kind: "quota", remainingPercent: usage.stale ? null : usage.sevenDay?.remainingPercent ?? null, resetsAt: usage.sevenDay?.resetsAt ?? null },
-      { label: "5시간 사용량", value: formatClaudeStatusLineWindowSummary(usage.fiveHour), kind: "quota", remainingPercent: usage.stale ? null : usage.fiveHour?.remainingPercent ?? null, resetsAt: usage.fiveHour?.resetsAt ?? null }
+      { label: "주간", value: usage.sevenDay && !currentSevenDay ? staleQuotaLabel : formatClaudeStatusLineWindowSummary(currentSevenDay), kind: "quota", remainingPercent: currentSevenDay?.remainingPercent ?? null, resetsAt: currentSevenDay?.resetsAt ?? null },
+      { label: "5시간 사용량", value: usage.fiveHour && !currentFiveHour ? staleQuotaLabel : formatClaudeStatusLineWindowSummary(currentFiveHour), kind: "quota", remainingPercent: currentFiveHour?.remainingPercent ?? null, resetsAt: currentFiveHour?.resetsAt ?? null }
     ],
-    detail: `Status Line ${usage.stale ? "마지막 확인 정보" : "최근 갱신"} ${formatTime(usage.capturedAt)}`,
+    detail: `Status Line ${"마지막 수집"} ${formatTime(usage.capturedAt)}`,
     usageUpdatedAt: usage.capturedAt,
-    usageUpdateLabel: usage.stale ? "마지막 사용량 수집" : "사용량 갱신",
+    usageUpdateLabel: "마지막 수집",
     canLogin,
     actionLabel: canLogin ? "Claude CLI 설치 및 로그인" : "Claude CLI 재연동",
     needsAlias: Boolean(account?.aliasRequired),
     statusLine: registration,
     claudeGuidance: guidance,
     claudeNextAction: guidance.nextAction,
-    issues: hasQuota ? undefined : [{
-      reason: "Claude Status Line에서 quota 데이터를 받지 못했습니다.",
-      steps: ["Claude.ai Pro/Max 구독 및 Claude.ai OAuth 로그인을 확인", "새 대화에서 첫 API 응답을 받은 뒤 대시보드를 새로고침", "계속되면 claude --debug로 Status Line 실행 상태 확인"]
-    }]
+    issues: usage.stale ? [{
+      reason: "Claude 사용량의 초기화 시각이 지났습니다.",
+      steps: ["새 터미널에서 claude를 실행", "일반 대화의 첫 응답을 받은 뒤 대시보드를 새로고침", "계속되면 claude --debug로 Status Line 실행 상태 확인"]
+    }] : hasQuota ? undefined : [{
+        reason: "Claude Status Line에서 사용량 한도를 받지 못했습니다.",
+        steps: ["Claude.ai Pro/Max 구독 및 Claude.ai OAuth 로그인을 확인", "새 대화에서 첫 API 응답을 받은 뒤 대시보드를 새로고침", "계속되면 claude --debug로 Status Line 실행 상태 확인"]
+      }]
   };
 }
 
@@ -2098,8 +2161,17 @@ function getClaudeConnectionGuidance(
 ): ClaudeConnectionGuidance & { nextAction: ProviderUsage["claudeNextAction"] } {
   const nodeReady = session?.nodeReady;
   const loggedIn = Boolean(session?.loggedIn);
+  const firstConversationPending = loggedIn && registration.registered && !registration.snapshotAvailable;
   const snapshotReady = Boolean(usage?.ok && registration.snapshotAvailable);
-  const quotaReceived = Boolean(usage?.ok && (usage.fiveHour || usage.sevenDay));
+  const expiredLabels = usage?.ok ? [
+    usage.fiveHour?.resetsAt && Date.parse(usage.fiveHour.resetsAt) <= Date.now() ? "5시간" : null,
+    usage.sevenDay?.resetsAt && Date.parse(usage.sevenDay.resetsAt) <= Date.now() ? "주간" : null
+  ].filter(Boolean).join("·") : "";
+  const quotaReceived = Boolean(usage?.ok && !usage.stale && (usage.fiveHour || usage.sevenDay));
+  const needsClaudeCli = loggedIn
+    && registration.registered
+    && registration.state !== "error"
+    && (firstConversationPending || !snapshotReady || Boolean(usage?.ok && usage.stale) || !quotaReceived);
   const nextAction = nodeReady === false
     ? "node"
     : !session
@@ -2108,37 +2180,49 @@ function getClaudeConnectionGuidance(
         ? "login"
         : registration.state === "error" || !registration.registered
           ? "status-line"
-          : null;
+          : needsClaudeCli
+            ? "claude-cli"
+            : null;
   const dashboardMessage = nodeReady === false
-    ? "Node.js/npm이 감지되지 않았습니다. Node.js LTS를 설치한 뒤 Token Monitor를 다시 실행하세요."
+    ? "Node.js와 npm을 찾지 못했습니다. Node.js LTS를 설치한 뒤 Token Monitor를 다시 실행해 주세요."
     : !session
       ? "Claude 연결 상태를 확인하고 있습니다. 잠시 후 새로고침하세요."
       : !loggedIn
-        ? "Claude CLI 로그인이 필요합니다. Claude 로그인으로 OAuth 인증을 완료하세요."
+        ? "Claude CLI 로그인이 필요합니다. Claude CLI 로그인을 눌러 브라우저에서 로그인을 완료해 주세요."
         : registration.state === "error"
-          ? `Status Line 설정을 확인할 수 없습니다. ${registration.detail}`
+          ? `Status Line 설정을 확인하지 못했습니다. Status Line 재설정을 눌러 다시 등록해 주세요. ${registration.detail}`
           : !registration.registered
-            ? `Status Line 등록이 필요합니다. ${registration.detail}`
-            : !snapshotReady
-              ? "첫 사용량 수집이 필요합니다. 새 터미널에서 claude를 실행하고 일반 대화의 첫 응답을 받으세요."
+            ? `Status Line이 등록되지 않았습니다. Status Line 재설정을 눌러 등록해 주세요. ${registration.detail}`
+            : firstConversationPending
+              ? "Status Line을 등록했습니다. Claude Code CLI 열기를 누른 뒤 메시지를 보내고 첫 응답을 기다려 주세요."
+              : !snapshotReady
+                ? "Claude 사용량을 읽지 못했습니다. Claude Code CLI에서 새 응답을 받은 뒤 다시 확인해 주세요."
+            : usage?.ok && usage.stale
+                ? `${expiredLabels} 사용량의 초기화 시각이 지났습니다. 새 정보가 확인되지 않으면 Claude Code CLI에서 새 응답을 받아 주세요.`
               : !quotaReceived
-                ? "Claude Code가 quota 데이터를 제공하지 않았습니다. Claude.ai Pro/Max 구독과 OAuth 로그인을 확인하세요."
+                ? "Claude Code CLI에서 사용량 한도를 받지 못했습니다. Claude.ai Pro/Max 구독과 로그인 상태를 확인한 뒤 새 응답을 받아 주세요."
                 : null;
   const overlayNotice = nodeReady === false
-    ? "Node.js LTS와 npm 설치 후 Claude 로그인을 진행하세요."
+    ? "Node.js 설치 필요 · 대시보드 확인"
     : !session
       ? null
       : !loggedIn
-      ? "Claude 로그인 필요 — Token Monitor 대시보드에서 Claude 로그인을 시작하세요."
+      ? "Claude CLI 로그인 필요 · 대시보드 확인"
+      : registration.state === "error"
+        ? "Status Line 설정 확인 필요 · 대시보드 확인"
       : !registration.registered
-        ? "Status Line 등록 필요 — Token Monitor 대시보드에서 등록하세요."
-        : !snapshotReady
-          ? "첫 사용량 수집 필요 — 새 Claude 대화에서 첫 응답을 받으세요."
+        ? "Status Line 등록 필요 · 대시보드 확인"
+        : firstConversationPending
+          ? "Claude Code CLI 첫 응답 후 사용량이 갱신됩니다."
+          : !snapshotReady
+            ? "사용량 수집 실패 · 대시보드 확인"
+          : usage?.ok && usage.stale
+            ? "새 사용량 확인 필요 · 대시보드 확인"
           : !quotaReceived
-            ? "사용량 데이터가 아직 제공되지 않았습니다."
+            ? "사용량 한도 확인 대기"
             : null;
 
-  return { dashboardMessage, overlayNotice, nextAction };
+  return { dashboardMessage, overlayNotice, firstConversationPending, nextAction };
 }
 
 function buildGeminiProvider(usage: GeminiUsageResult | null): ProviderUsage {
@@ -2179,7 +2263,7 @@ function buildGeminiProvider(usage: GeminiUsageResult | null): ProviderUsage {
       fields: [
         ...(usage.account.detected ? [{ label: "계정", value: formatAccountAlias(usage.account), kind: "identity" as const }] : []),
         { label: "플랜", value: planLabel, kind: "plan" },
-        { label: "주간", value: "명시적 주간 데이터 없음", kind: "quota" },
+        { label: "주간", value: "제공된 주간 한도 없음", kind: "quota" },
         { label: "5시간 사용량", value: "남은 사용량 확인 불가 / 초기화 확인 불가", kind: "quota" }
       ],
       detail: usage.error,
@@ -2226,11 +2310,11 @@ function buildAntigravityIssues(antigravityFiveHourWindow: GeminiUsageWindow | n
   const issues: ProviderIssue[] = [];
   if (!antigravityFiveHourWindow) {
     issues.push({
-      reason: "Antigravity 사용량 연동 필요",
+      reason: "Antigravity 연결 필요",
       steps: [
         "Node.js LTS 설치",
-        "Antigravity CLI 설치 및 로그인 버튼 실행",
-        "Google 인증 완료 후 대시보드 새로고침"
+        "Antigravity 연결을 눌러 로그인",
+        "Google 로그인을 완료한 뒤 새로고침"
       ]
     });
   }
@@ -2265,13 +2349,13 @@ function buildClaudeCliIssue(session: CliSessionResult["claude"] | undefined): P
   if (!session || !session.installed) {
     return {
       reason: "Claude CLI 또는 Node.js/npm 확인 필요",
-      steps: ["Node.js LTS와 npm 설치 확인", "Claude CLI 설치 및 로그인 버튼 실행", "브라우저에서 Claude.ai OAuth 로그인 완료", "대시보드 새로고침"]
+      steps: ["Node.js LTS와 npm 설치 확인", "Claude CLI 로그인을 눌러 로그인", "브라우저에서 Claude.ai OAuth 로그인 완료", "대시보드 새로고침"]
     };
   }
   if (!session.loggedIn) {
     return {
       reason: "Claude CLI 로그인 필요",
-      steps: ["Claude CLI 설치 및 로그인 버튼 실행", "브라우저에서 Claude.ai OAuth 로그인 완료", "대시보드 새로고침"]
+      steps: ["Claude CLI 로그인을 눌러 로그인", "브라우저에서 Claude.ai OAuth 로그인 완료", "대시보드 새로고침"]
     };
   }
   return null;
@@ -2281,7 +2365,7 @@ function buildClaudeUsageErrorSteps(error: string) {
   if (error === "Claude Status Line 사용량 정보를 읽을 수 없습니다.") {
     return ["Token Monitor를 종료 후 다시 실행", "새 터미널에서 claude를 실행해 일반 대화의 첫 응답 수신", "계속되면 claude --debug로 Status Line 파일 접근 또는 실행 오류 확인"];
   }
-  if (error === "Claude Status Line 사용량 정보 형식이 올바르지 않습니다.") {
+  if (error === "Status Line에서 받은 사용량 정보의 형식이 올바르지 않습니다.") {
     return ["Claude Code와 Token Monitor를 최신 버전으로 업데이트", "새 터미널에서 claude를 실행해 일반 대화의 첫 응답 수신", "계속되면 claude --debug로 Status Line 입력 형식 또는 실행 오류 확인"];
   }
   return ["열려 있는 Claude Code를 종료하고 새 터미널에서 claude를 실행", "일반 대화의 첫 응답을 받은 뒤 대시보드를 새로고침", "계속되면 claude --debug로 Status Line 실행 오류 확인"];
@@ -2295,9 +2379,9 @@ function formatAntigravitySource(source: Extract<GeminiUsageResult, { ok: true }
     return "antigravity-usage local";
   }
   if (source === "antigravity-local") {
-    return "내장 local";
+    return "내장 로컬 수집";
   }
-  return "Gemini OAuth fallback";
+  return "Gemini 로그인 대체 경로";
 }
 
 function formatPromptCredits(credits: Extract<GeminiUsageResult, { ok: true }>["promptCredits"]) {
@@ -2546,7 +2630,7 @@ function CodexPathSettings() {
     <section className="setting-group codex-path-settings" aria-labelledby="codex-path-heading" aria-busy={pending}>
       <h2 id="codex-path-heading">Codex 실행 파일 경로</h2>
       <p className="codex-path-hint">
-        Codex Desktop을 자동으로 찾지 못할 때 codex.exe 전체 경로를 지정합니다. 지정하지 않으면 자동 탐색과 <code>CODEX_CLI_PATH</code> 환경 변수를 사용합니다.
+        Codex Desktop을 찾지 못하면 codex.exe의 전체 경로를 지정해 주세요. 경로를 지정하지 않으면 자동으로 찾으며, <code>CODEX_CLI_PATH</code> 환경 변수도 확인합니다.
       </p>
       <dl className="developer-dl">
         <div>
@@ -2554,11 +2638,11 @@ function CodexPathSettings() {
           <dd><span className={`codex-path-state ${status?.connection ?? "unchecked"}`}>{formatCodexPathConnection(status)}</span></dd>
         </div>
         <div>
-          <dt>사용 중 경로</dt>
+          <dt>사용 중인 경로</dt>
           <dd>{formatCodexPathForDisplay(status?.activePath)}</dd>
         </div>
         <div>
-          <dt>탐색 방식</dt>
+          <dt>경로 확인 방식</dt>
           <dd>{formatCodexPathSource(status?.source)}</dd>
         </div>
         <div>
@@ -2608,7 +2692,7 @@ function CodexPathSettings() {
             )
           }
         >
-          {pending ? "확인 중" : "연결 테스트 및 저장"}
+          {pending ? "확인 중" : "연결 확인 후 저장"}
         </button>
         <button
           className="secondary-button"
@@ -2693,10 +2777,10 @@ function DeveloperPanel({
       <div className="settings-heading">
         <div>
           <span className="eyebrow">Developer Mode</span>
-          <h1>실제 수집 상태 검증</h1>
+          <h1>사용량 수집 상태 확인</h1>
         </div>
         <button className="secondary-button" type="button" onClick={onRefresh} disabled={isRefreshing}>
-          {isRefreshing ? "확인 중" : "현재 상태 다시 확인"}
+          {isRefreshing ? "확인 중" : "다시 확인"}
         </button>
       </div>
 
@@ -2707,7 +2791,7 @@ function DeveloperPanel({
           <div><dt>설정 출처</dt><dd>{formatDeveloperEnvSource(environment?.source)}</dd></div>
           <div><dt>환경 파일</dt><dd>{environment?.loadedFileName ?? "사용 안 함"}</dd></div>
           <div><dt>확인한 .env 후보</dt><dd>{environment?.checkedPathCount ?? 0}개</dd></div>
-          <div><dt>진단 소요</dt><dd>{diagnostics?.totalDurationMs != null ? `${diagnostics.totalDurationMs}ms` : "미측정"}</dd></div>
+          <div><dt>진단 시간</dt><dd>{diagnostics?.totalDurationMs != null ? `${diagnostics.totalDurationMs}ms` : "미측정"}</dd></div>
           <div><dt>갱신 시각</dt><dd>{diagnostics?.generatedAt ? formatTime(diagnostics.generatedAt) : "없음"}</dd></div>
         </dl>
       </section>
@@ -2723,7 +2807,7 @@ function DeveloperPanel({
       </section>
 
       <section className="developer-section">
-        <h2>Provider 진단</h2>
+        <h2>서비스별 진단</h2>
         {diagnostics && diagnostics.providers.length > 0 ? (
           <div className="developer-grid">
             {diagnostics.providers.map((provider) => (
@@ -2731,7 +2815,7 @@ function DeveloperPanel({
                 <h3>{provider.name}</h3>
                 <p className="developer-inline-note">계정: {formatDeveloperAccount(provider.account)}</p>
                 <div className="developer-prereq">
-                  <strong>필요 조건</strong>
+                  <strong>필요한 조건</strong>
                   <ul>
                     {provider.userPrerequisites.map((item) => (
                       <li key={item}>{item}</li>
@@ -2752,7 +2836,7 @@ function DeveloperPanel({
           </div>
         ) : (
           <p className="developer-inline-note">
-            개발자 모드가 켜져 있으면 provider별 수집·로그인·파서 상태가 여기에 표시됩니다. 상단 버튼으로 다시 확인하세요.
+            서비스별 수집·로그인·데이터 처리 상태를 표시합니다. 다시 확인을 눌러 현재 상태를 확인해 주세요.
           </p>
         )}
       </section>

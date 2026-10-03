@@ -13,6 +13,7 @@ contextBridge.exposeInMainWorld("tokenMonitor", {
   updateCodexExecutablePath: (candidate) => ipcRenderer.invoke("codex-path:update", candidate),
   resetCodexExecutablePath: () => ipcRenderer.invoke("codex-path:reset"),
   startClaudeLogin: () => ipcRenderer.invoke("claude-login:start"),
+  startClaudeCode: () => ipcRenderer.invoke("claude-code:start"),
   setupClaudeStatusLine: (integrateExisting) => ipcRenderer.invoke("claude-statusline:setup", integrateExisting),
   restoreClaudeStatusLine: () => ipcRenderer.invoke("claude-statusline:restore"),
   getClaudeStatusLineRegistration: () => ipcRenderer.invoke("claude-statusline:status"),

@@ -1559,6 +1559,59 @@ h2 {
   min-height: 40px;
 }
 
+.app-toast {
+  position: fixed;
+  right: 24px;
+  bottom: 24px;
+  z-index: 40;
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 10px;
+  width: min(460px, calc(100vw - 48px));
+  padding: 12px 14px;
+  color: #29483d;
+  background: #f3faf6;
+  border: 1px solid #c9e2d4;
+  border-radius: 9px;
+  box-shadow: 0 12px 28px rgba(42, 65, 55, 0.16);
+  font-size: 12px;
+  font-weight: 730;
+  line-height: 1.45;
+}
+
+.app-toast > svg {
+  color: #4e8a70;
+}
+
+.app-toast button {
+  min-height: 30px;
+  padding: 0 9px;
+  color: #45675a;
+  background: transparent;
+  border: 1px solid #c9ddd3;
+  border-radius: 6px;
+  cursor: pointer;
+  font: inherit;
+}
+
+.app-toast button:hover {
+  background: #e7f4ec;
+}
+
+.app-toast button:focus-visible {
+  outline: 2px solid #477a67;
+  outline-offset: 2px;
+}
+
+@media (max-width: 620px) {
+  .app-toast {
+    right: 12px;
+    bottom: 12px;
+    width: calc(100vw - 24px);
+  }
+}
+
 .gemini-quota-metrics {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -2540,6 +2593,7 @@ body:not(.overlay-body) summary:focus-visible {
 
 .overlay-card {
   display: block;
+  box-sizing: border-box;
   width: 100%;
   min-height: 0;
   padding: 10px 14px;
@@ -2554,7 +2608,7 @@ body:not(.overlay-body) summary:focus-visible {
 .overlay-position-finish {
   position: absolute;
   top: 8px;
-  right: 8px;
+  left: 8px;
   z-index: 1;
   -webkit-app-region: no-drag;
   padding: 6px 9px;
