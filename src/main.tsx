@@ -47,7 +47,7 @@ type ProviderUsage = {
   usageUpdatedAt?: string;
   usageUpdateLabel?: string;
   claudeGuidance?: ClaudeConnectionGuidance;
-  claudeNextAction?: "node" | "login" | "status-line" | "claude-cli" | null;
+  claudeNextAction?: "install" | "node" | "login" | "status-line" | "claude-cli" | null;
 };
 
 type ClaudeConnectionGuidance = {
@@ -135,7 +135,6 @@ const alertProviderLabels: Record<AlertProviderId, string> = {
 };
 
 const claudeLoginPollIntervalMs = 2500;
-const claudeLoginPollTimeoutMs = 30_000;
 
 function isDesignPreviewMode() {
   return ["127.0.0.1", "localhost"].includes(window.location.hostname)
@@ -490,6 +489,32 @@ function App() {
     }
   }
 
+  async function handleClaudeInstall() {
+    if (isClaudeCliLaunchPending) return;
+    setIsClaudeCliLaunchPending(true);
+    try {
+      const result = await window.tokenMonitor?.installClaudeCode();
+      setClaudeLoginNotice(result?.detail ?? "Claude Code 설치 창을 열지 못했습니다.");
+      if (!result?.ok) return;
+      const deadline = Date.now() + 5 * 60_000;
+      while (Date.now() < deadline) {
+        await delay(5000);
+        const sessions = await window.tokenMonitor?.getCliSessionStatus(true);
+        if (sessions) setCliSessions(sessions);
+        if (sessions?.claude.installed) {
+          setClaudeLoginNotice("Claude Code 설치와 실행을 확인했습니다. 로그인 상태와 사용량을 확인합니다.");
+          await refreshUsage();
+          return;
+        }
+      }
+      setClaudeLoginNotice("아직 설치를 확인하지 못했습니다. 설치 창의 결과를 확인한 뒤 새로고침해 주세요. 계속 찾지 못하면 앱을 다시 실행해 주세요.");
+    } catch {
+      setClaudeLoginNotice("Claude Code 설치를 확인하지 못했습니다. 설치 창의 결과를 확인한 뒤 새로고침해 주세요.");
+    } finally {
+      setIsClaudeCliLaunchPending(false);
+    }
+  }
+
   async function handleGeminiLogin() {
     if (isGeminiLoginPending) {
       return;
@@ -682,6 +707,7 @@ function App() {
                 onClaudeLogin={handleClaudeLogin}
                 onClaudeStatusLineSetup={handleClaudeStatusLineSetup}
                 onClaudeCodeLaunch={handleClaudeCodeLaunch}
+                onClaudeInstall={handleClaudeInstall}
                 onGeminiLogin={handleGeminiLogin}
                 onOpenNodeJsDownload={() => void window.tokenMonitor?.openNodeJsDownload()}
                 onOpenCodexSettings={() => { setRequestedSettingsSection("codex"); setActiveTab("settings"); }}
@@ -926,6 +952,7 @@ function DashboardAttentionPanel({
   onClaudeLogin,
   onClaudeStatusLineSetup,
   onClaudeCodeLaunch,
+  onClaudeInstall,
   onGeminiLogin,
   onOpenNodeJsDownload,
   onOpenCodexSettings
@@ -939,6 +966,7 @@ function DashboardAttentionPanel({
   onClaudeLogin: () => void;
   onClaudeStatusLineSetup: () => void;
   onClaudeCodeLaunch: () => void;
+  onClaudeInstall: () => void;
   onGeminiLogin: () => void;
   onOpenNodeJsDownload: () => void;
   onOpenCodexSettings: () => void;
@@ -957,6 +985,8 @@ function DashboardAttentionPanel({
     : primaryIssue?.reason ?? primary.detail;
   const primaryAction = primary.id === "codex"
     ? { label: "연결 설정", pending: false, onClick: onOpenCodexSettings }
+    : primary.id === "claude" && primary.claudeNextAction === "install"
+      ? { label: isClaudeCliLaunchPending ? "설치 확인 중" : "Claude Code 설치", pending: isClaudeCliLaunchPending, onClick: onClaudeInstall }
     : primary.id === "claude" && primary.claudeNextAction === "node"
       ? { label: "Node.js 설치 안내", pending: false, onClick: onOpenNodeJsDownload }
       : primary.id === "claude" && primary.claudeNextAction === "status-line"
@@ -1123,11 +1153,10 @@ function isUnavailableValue(value: string) {
 }
 
 async function waitForClaudeLoginCompletion({ onUpdate }: { onUpdate: (usage: { claudeUsage: ClaudeUsageResult; cliSessions: CliSessionResult }) => void }) {
-  const startedAt = Date.now();
   let latestClaudeUsage: ClaudeUsageResult | null = null;
   let latestCliSessions: CliSessionResult | null = null;
 
-  while (Date.now() - startedAt < claudeLoginPollTimeoutMs) {
+  while (true) {
     const [claudeUsage, cliSessions] = await Promise.all([
       window.tokenMonitor?.getClaudeUsage(true),
       window.tokenMonitor?.getCliSessionStatus(true)
@@ -1138,9 +1167,17 @@ async function waitForClaudeLoginCompletion({ onUpdate }: { onUpdate: (usage: { 
       latestCliSessions = cliSessions;
       onUpdate({ claudeUsage, cliSessions });
 
+      if (!cliSessions.claude.ok || cliSessions.claude.subscription === "unsupported") {
+        return { completed: false, claudeUsage, cliSessions };
+      }
+
       if (isClaudeUsageLinked(claudeUsage, cliSessions)) {
         return { completed: true, claudeUsage, cliSessions };
       }
+    }
+
+    if (!claudeUsage || !cliSessions) {
+      return { completed: false, claudeUsage: latestClaudeUsage, cliSessions: latestCliSessions };
     }
 
     await delay(claudeLoginPollIntervalMs);
@@ -1155,11 +1192,17 @@ function isClaudeUsageLinked(claudeUsage: ClaudeUsageResult, cliSessions: CliSes
 
 function makeClaudeLoginNotice(claudeUsage: ClaudeUsageResult | null, cliSessions: CliSessionResult | null) {
   const session = cliSessions?.claude;
+  if (session && !session.ok) {
+    return session.detail || "Claude 로그인 상태 확인에 실패했습니다. 로그인 실패를 의미하지 않습니다. 새로고침하여 다시 확인해 주세요.";
+  }
+  if (session?.subscription === "unsupported") {
+    return "Claude 구독 할당량 수집 대상이 아닙니다. Claude.ai Pro/Max 또는 Claude Code 권한이 있는 조직 계정으로 로그인해 주세요.";
+  }
   if (session && !session.installed) {
     return `Claude 연동에는 Node.js/npm 설치가 필요합니다. ${session.detail}`;
   }
   if (session && !session.loggedIn) {
-    return `30초 안에 Claude 로그인이 확인되지 않았습니다. ${session.detail}`;
+    return "Claude CLI 로그인이 필요합니다. 브라우저에서 인증을 완료해 주세요.";
   }
   if (!claudeUsage?.ok) {
     return `Claude 연결은 확인되었습니다. Claude Code에서 대화를 시작한 뒤 첫 응답을 받으면 Status Line 사용량이 표시됩니다. ${claudeUsage?.error ?? ""}`.trim();
@@ -2014,11 +2057,11 @@ function buildClaudeProvider(
 ): ProviderUsage {
   const claudeSession = sessions?.claude;
   const nodeMissing = Boolean(claudeSession && !claudeSession.nodeReady);
-  const canLogin = !claudeSession?.loggedIn;
+  const canLogin = Boolean(claudeSession?.ok && (!claudeSession.loggedIn || claudeSession.subscription === "unsupported"));
   const sessionLabel = formatSession(sessions?.claude);
   const accountLabel = formatClaudeAccountStatus(sessions?.claude);
   const cliIssue = buildClaudeCliIssue(sessions?.claude);
-  const planLabel = sessions?.claude.loggedIn ? "Claude 구독" : "확인 필요";
+  const planLabel = claudeSession?.subscription === "supported" ? `Claude ${claudeSession.subscriptionType ?? "구독"}` : claudeSession?.subscription === "unsupported" ? "구독 수집 미지원" : "구독 확인 필요";
   const registration = statusLine ?? {
     state: "needs-registration" as const,
     mode: "none" as const,
@@ -2029,6 +2072,17 @@ function buildClaudeProvider(
     detail: "Claude Status Line 등록 상태를 확인하고 있습니다."
   };
   const guidance = getClaudeConnectionGuidance(claudeSession, registration, usage);
+
+  if (claudeSession && (!claudeSession.ok || !claudeSession.loggedIn || claudeSession.subscription !== "supported")) {
+    const message = guidance.dashboardMessage ?? "Claude 계정 상태 확인 필요";
+    return {
+      id: "claude", name: "Claude", source: "Anthropic", status: "error",
+      plan: planLabel, session: sessionLabel, used: "확인 불가", remaining: "확인 불가", reset: "확인 불가",
+      fields: [{ label: "계정", value: accountLabel, kind: "identity" }, { label: "플랜", value: planLabel, kind: "plan" }, { label: "주간", value: "계정 상태 확인 후 수집", kind: "quota" }, { label: "5시간 사용량", value: "계정 상태 확인 후 수집", kind: "quota" }],
+      detail: message, canLogin, actionLabel: "Claude CLI 로그인", statusLine: registration,
+      claudeGuidance: guidance, claudeNextAction: guidance.nextAction, issues: cliIssue ? [cliIssue] : undefined
+    };
+  }
 
   if (usage == null) {
     return {
@@ -2159,6 +2213,16 @@ function getClaudeConnectionGuidance(
   registration: ClaudeStatusLineRegistrationStatus,
   usage: ClaudeUsageResult | null
 ): ClaudeConnectionGuidance & { nextAction: ProviderUsage["claudeNextAction"] } {
+  if (session && !session.installed) {
+    return { dashboardMessage: "Claude Code 설치를 확인하지 못했습니다. Claude Code 설치를 눌러 설치한 뒤 실행 상태를 확인해 주세요.", overlayNotice: "Claude Code 설치 필요 · 대시보드 확인", firstConversationPending: false, nextAction: "install" };
+  }
+  if (session && !session.ok) {
+    return { dashboardMessage: session.detail || "Claude 로그인 상태를 확인하지 못했습니다. 로그인 실패와는 별개입니다. 새로고침하여 다시 확인해 주세요.", overlayNotice: "로그인 상태 확인 실패 · 대시보드 확인", firstConversationPending: false, nextAction: null };
+  }
+  if (session?.loggedIn && session.subscription !== "supported") {
+    const unsupported = session.subscription === "unsupported";
+    return { dashboardMessage: unsupported ? "구독 할당량 수집을 지원하지 않는 계정 또는 인증 방식입니다. Claude.ai Pro/Max 또는 Claude Code 권한이 있는 조직 계정으로 로그인해 주세요." : "로그인은 확인됐지만 구독 여부를 확인하지 못했습니다. CLI 인증 상태의 구독 정보와 Claude.ai 플랜을 확인해 주세요. 사용량 미확인과 로그인 실패는 별개입니다.", overlayNotice: unsupported ? "구독 할당량 수집 미지원" : "구독 여부 확인 필요", firstConversationPending: false, nextAction: unsupported ? "login" : null };
+  }
   const nodeReady = session?.nodeReady;
   const loggedIn = Boolean(session?.loggedIn);
   const firstConversationPending = loggedIn && registration.registered && !registration.snapshotAvailable;
@@ -2333,6 +2397,9 @@ function formatClaudeAccountStatus(session: CliSessionResult["claude"] | undefin
   if (!session) {
     return "계정 확인 중";
   }
+  if (!session.ok) {
+    return "로그인 상태 확인 실패";
+  }
   if (!session.installed) {
     return "Claude CLI 없음";
   }
@@ -2346,6 +2413,12 @@ function formatClaudeAccountStatus(session: CliSessionResult["claude"] | undefin
 }
 
 function buildClaudeCliIssue(session: CliSessionResult["claude"] | undefined): ProviderIssue | null {
+  if (session && !session.ok) {
+    return { reason: session.detail || "Claude 로그인 상태 확인 실패", steps: ["안내에 따라 CLI 설치 또는 업데이트 상태 확인", "대시보드 새로고침"] };
+  }
+  if (session?.loggedIn && session.subscription !== "supported") {
+    return { reason: session.subscription === "unsupported" ? "구독 할당량 수집 미지원" : "구독 여부 확인 필요", steps: ["Claude.ai 플랜 및 Claude Code 접근 권한 확인", "구독 계정의 OAuth 인증 상태 확인"] };
+  }
   if (!session || !session.installed) {
     return {
       reason: "Claude CLI 또는 Node.js/npm 확인 필요",
@@ -2428,6 +2501,9 @@ function makeGeminiError(error: string): GeminiUsageResult {
 function formatSession(session: CliSessionResult["codex"] | undefined) {
   if (!session) {
     return "확인 중";
+  }
+  if (!session.ok) {
+    return "상태 확인 실패";
   }
   if (!session.installed) {
     return "CLI 없음";

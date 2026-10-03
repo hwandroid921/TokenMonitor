@@ -5,6 +5,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { getClaudeUsage } from "./claude-usage.js";
 import { getCliSessionStatus } from "./cli-session.js";
+import { getClaudeCommands } from "./claude-command.js";
 import { createClaudeOAuthEnvironment, getClaudeOAuthEnvironmentResetCommands } from "./claude-oauth-env.js";
 import { ensureClaudeStatusLine, getClaudeStatusLineRegistrationStatus, getClaudeStatusLineSnapshotPath, restoreClaudeStatusLine } from "./claude-statusline.js";
 import {
@@ -1054,11 +1055,14 @@ function sendTestNotification() {
 }
 
 async function startClaudeLogin() {
+  const { claude: claudeCommand, npx: npxCommand } = getClaudeCommands();
+  const loginCommand = claudeCommand ?? npxCommand;
+  const loginArgs = claudeCommand ? ["auth", "login", "--claudeai"] : ["-y", "@anthropic-ai/claude-code", "auth", "login", "--claudeai"];
   const sessionStatus = await readCliSessionShared(true);
   cliSessionCache = sessionStatus;
   cliSessionCacheTime = Date.now();
 
-  if (sessionStatus.claude.loggedIn) {
+  if (sessionStatus.claude.ok && sessionStatus.claude.loggedIn && sessionStatus.claude.subscription !== "unsupported") {
     return {
       ok: true,
       command: "claude auth status --json",
@@ -1067,28 +1071,26 @@ async function startClaudeLogin() {
     };
   }
 
-  if (process.platform === "win32") {
-    const npxCommand = findCommandOnPath("npx.cmd") ?? findCommandOnPath("npx.exe") ?? findCommandOnPath("npx");
-
-    if (!npxCommand) {
+  if (!loginCommand) {
       return {
         ok: false,
         command: "npx -y @anthropic-ai/claude-code auth login --claudeai",
         detail: "Claude 연동에는 Node.js/npm이 필요합니다. Node.js LTS 설치 후 Token Monitor를 다시 실행하세요."
       };
-    }
+  }
 
+  if (process.platform === "win32") {
     const { command, launcherPath } = writeWindowsCliLauncher(
       "claude-login",
-      npxCommand,
-      ["-y", "@anthropic-ai/claude-code", "auth", "login", "--claudeai"],
+      loginCommand,
+      loginArgs,
       getClaudeOAuthEnvironmentResetCommands()
     );
     launchWindowsCliWindow(launcherPath);
     return { ok: true, command };
   }
 
-  const child = spawn("npx", ["-y", "@anthropic-ai/claude-code", "auth", "login", "--claudeai"], {
+  const child = spawn(loginCommand, loginArgs, {
     detached: true,
     stdio: "ignore",
     env: createClaudeOAuthEnvironment()
@@ -1118,10 +1120,19 @@ function readClaudeStatusLineRegistration() {
   };
 }
 
+function installClaudeCode() {
+  if (process.platform !== "win32") return { ok: false, detail: "이 설치 버튼은 Windows에서 사용할 수 있습니다." };
+  const powershell = findCommandOnPath("pwsh.exe") ?? findCommandOnPath("powershell.exe");
+  if (!powershell) return { ok: false, detail: "PowerShell을 찾지 못했습니다. Windows 터미널에서 Claude Code를 설치해 주세요." };
+  const { launcherPath } = writeWindowsCliLauncher("claude-install", powershell,
+    ["-NoProfile", "-Command", "irm https://claude.ai/install.ps1 | iex"], [],
+    "After installation, return to Token Monitor and refresh to verify the CLI.");
+  launchWindowsCliWindow(launcherPath);
+  return { ok: true, detail: "Claude Code 설치 창을 열었습니다. 창의 안내에 따라 설치를 완료해 주세요." };
+}
+
 function startClaudeCode() {
-  const claudeCommand = findCommandOnPath(process.platform === "win32" ? "claude.cmd" : "claude")
-    ?? findCommandOnPath("claude.exe")
-    ?? findCommandOnPath("claude");
+  const { claude: claudeCommand } = getClaudeCommands();
 
   if (!claudeCommand) {
     return {
@@ -1284,6 +1295,7 @@ if (!gotSingleInstanceLock) {
     ipcMain.handle("codex-path:reset", (event) => isMainWindowSender(event) ? resetCodexExecutablePath() : { ok: false, canceled: false, status: readCodexPathSettings() });
     ipcMain.handle("claude-login:start", (event) => isMainWindowSender(event) ? startClaudeLogin() : { ok: false, detail: "기본 창에서만 실행할 수 있습니다." });
     ipcMain.handle("claude-code:start", (event) => isMainWindowSender(event) ? startClaudeCode() : { ok: false, detail: "기본 창에서만 실행할 수 있습니다." });
+    ipcMain.handle("claude-code:install", (event) => isMainWindowSender(event) ? installClaudeCode() : { ok: false, detail: "기본 창에서만 실행할 수 있습니다." });
     ipcMain.handle("claude-statusline:setup", (event, integrateExisting?: boolean) => isMainWindowSender(event) ? setupClaudeStatusLine(Boolean(integrateExisting)) : { ok: false, detail: "기본 창에서만 실행할 수 있습니다." });
     ipcMain.handle("claude-statusline:restore", (event) => isMainWindowSender(event) ? restoreClaudeStatusLineSetup() : { ok: false, detail: "기본 창에서만 실행할 수 있습니다." });
     ipcMain.handle("claude-statusline:status", (event) => isAppWindowSender(event) ? readClaudeStatusLineRegistration() : { state: "error", mode: "none", registered: false, scriptReady: false, snapshotAvailable: false, backupAvailable: false, detail: "기본 창에서만 확인할 수 있습니다." });

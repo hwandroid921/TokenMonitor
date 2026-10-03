@@ -136,6 +136,13 @@ npx electron-builder --win dir --x64 --publish never --config.win.signAndEditExe
 
 ## Build and Packaging Process
 
+Use the repository scripts for Windows portable packaging and cleanup:
+
+- Full typecheck, build, portable packaging, verification, and cleanup: `.\scripts\build-package-windows.bat`.
+- Portable packaging of an already verified current build: `.\package-portable.cmd`.
+- Verify the existing current portable executable and remove previous versions without rebuilding: `.\package-portable.cmd --cleanup-only`.
+- Do not replace these workflows with ad hoc packaging or artifact deletion commands. If a script fails, inspect and fix the script within the requested scope before retrying.
+
 Before running build or packaging tasks, check whether related processes are already running.
 
 Look for stale packaging processes such as:

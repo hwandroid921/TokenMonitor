@@ -131,6 +131,10 @@ export type CliSessionStatus = {
   nodeReady: boolean;
   loggedIn: boolean;
   authMethod: string | null;
+  subscription?: "supported" | "unsupported" | "unknown";
+  subscriptionType?: string | null;
+  cliVersion?: string | null;
+  npxAvailable?: boolean;
   account: AccountAliasState;
   detail: string;
   checkedAt: string;
@@ -278,6 +282,7 @@ declare global {
       resetCodexExecutablePath: () => Promise<CodexPathUpdateResult>;
       startClaudeLogin: () => Promise<{ ok: boolean; command: string; skipped?: boolean; detail?: string }>;
       startClaudeCode: () => Promise<{ ok: boolean; command: string; detail: string }>;
+      installClaudeCode: () => Promise<{ ok: boolean; detail: string }>;
       setupClaudeStatusLine: (integrateExisting?: boolean) => Promise<{ ok: boolean; snapshotPath?: string; detail: string; requiresIntegration?: boolean }>;
       restoreClaudeStatusLine: () => Promise<{ ok: boolean; snapshotPath?: string; detail: string }>;
       getClaudeStatusLineRegistration: () => Promise<ClaudeStatusLineRegistrationStatus>;

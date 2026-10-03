@@ -73,10 +73,10 @@ Before `v1.0.0`, do not maintain a fixed version-by-version feature roadmap. Whe
 Current package version:
 
 ```text
-1.6.8
+1.6.11
 ```
 
-`v1.6.8` preserves overlay size while positioning and reapplies taskbar exclusion when positioning ends.
+`v1.6.11` distinguishes an installed Claude Code CLI from npx availability, offers the official Windows installer when needed, and verifies the CLI version before proceeding to authentication and usage guidance.
 
 - ChatGPT quota display through the Codex Desktop local usage flow, with an optional user-set `codex.exe` path
 - Claude quota display
@@ -197,6 +197,29 @@ For each release-worthy version bump, summarize:
 - Known limitations
 
 ## Release History
+
+### 1.6.11 — 2026-10-03 — PATCH
+
+- Missing Claude Code now offers the official PowerShell installer from the dashboard.
+- Direct CLI installation is verified with `claude --version`; npx availability no longer implies installation.
+- The native user-local install directory is discovered without restarting the app. Installation is checked for five minutes, with manual refresh and restart guidance if not detected.
+- Authentication and usage setup guidance follows installation confirmation.
+- Portable packaging and old artifact cleanup use the repository scripts.
+
+### 1.6.10 — 2026-10-03 — PATCH
+
+- Claude login and status checks share command discovery, prioritizing the installed CLI before the npx fallback.
+- Windows command scripts use explicit cmd.exe invocation; executable files launch without a shell.
+- Status check failures explain execution, timeout, and invalid response problems without exposing raw CLI output.
+- Korean login check messages were reviewed with humanize-korean.
+- Typecheck, production build, and portable packaging use the repository packaging script.
+
+### 1.6.9 — 2026-10-03 — PATCH
+
+- Claude subscription eligibility is checked from CLI authentication and subscription metadata before usage recovery guidance.
+- Authentication check failures, signed-out accounts, unsupported subscriptions, unknown subscriptions, and unavailable usage receive distinct dashboard messages.
+- Login completion polling has no overall 30-second deadline; individual CLI command timeouts remain bounded.
+- Windows portable packaging is required for this patch release.
 
 ### 1.6.8 — 2026-10-02 — PATCH
 
